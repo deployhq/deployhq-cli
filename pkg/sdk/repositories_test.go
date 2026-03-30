@@ -14,7 +14,7 @@ import (
 func TestGetRepository(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/repository", r.URL.Path)
-		json.NewEncoder(w).Encode(Repository{
+		_ = json.NewEncoder(w).Encode(Repository{
 			ScmType: "git",
 			URL:     "git@github.com:myco/myapp.git",
 			Branch:  "main",
@@ -44,7 +44,7 @@ func TestCreateRepository(t *testing.T) {
 		assert.Equal(t, "git@github.com:myco/myapp.git", body.Repository.URL)
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(Repository{ScmType: "git", URL: "git@github.com:myco/myapp.git", Branch: "main"})
+		_ = json.NewEncoder(w).Encode(Repository{ScmType: "git", URL: "git@github.com:myco/myapp.git", Branch: "main"})
 	}))
 	defer server.Close()
 
@@ -59,7 +59,7 @@ func TestCreateRepository(t *testing.T) {
 func TestListBranches(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/repository/branches", r.URL.Path)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"main":           "abc123",
 			"develop":        "def456",
 			"feature/new-ui": "ghi789",
@@ -78,7 +78,7 @@ func TestListBranches(t *testing.T) {
 func TestGetLatestRevision(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/repository/latest_revision", r.URL.Path)
-		json.NewEncoder(w).Encode(map[string]string{"ref": "abc123def456"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"ref": "abc123def456"})
 	}))
 	defer server.Close()
 
@@ -91,7 +91,7 @@ func TestGetLatestRevision(t *testing.T) {
 func TestListRecentCommits(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/repository/recent_commits", r.URL.Path)
-		json.NewEncoder(w).Encode(CommitsTagsReleases{
+		_ = json.NewEncoder(w).Encode(CommitsTagsReleases{
 			Commits: []Commit{
 				{Ref: "abc123", Author: "Jane", Message: "Fix bug"},
 			},

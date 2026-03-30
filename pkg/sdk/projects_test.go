@@ -15,7 +15,7 @@ func TestListProjects(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects", r.URL.Path)
 		assert.Equal(t, http.MethodGet, r.Method)
-		json.NewEncoder(w).Encode([]Project{
+		_ = json.NewEncoder(w).Encode([]Project{
 			{Name: "My App", Permalink: "my-app", Identifier: "abc123", Zone: "us-east"},
 			{Name: "Other App", Permalink: "other-app", Identifier: "def456", Zone: "eu-west"},
 		})
@@ -33,7 +33,7 @@ func TestListProjects(t *testing.T) {
 func TestGetProject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app", r.URL.Path)
-		json.NewEncoder(w).Encode(Project{
+		_ = json.NewEncoder(w).Encode(Project{
 			Name: "My App", Permalink: "my-app", Identifier: "abc123",
 			AutoDeployURL: "https://deployhq.com/deploy/abc123",
 		})
@@ -59,7 +59,7 @@ func TestCreateProject(t *testing.T) {
 		assert.Equal(t, "New Project", body.Project.Name)
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(Project{Name: "New Project", Permalink: "new-project", Identifier: "new123"})
+		_ = json.NewEncoder(w).Encode(Project{Name: "New Project", Permalink: "new-project", Identifier: "new123"})
 	}))
 	defer server.Close()
 
@@ -73,7 +73,7 @@ func TestUpdateProject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
 		assert.Equal(t, "/projects/my-app", r.URL.Path)
-		json.NewEncoder(w).Encode(Project{Name: "Updated App", Permalink: "my-app"})
+		_ = json.NewEncoder(w).Encode(Project{Name: "Updated App", Permalink: "my-app"})
 	}))
 	defer server.Close()
 

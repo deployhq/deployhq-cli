@@ -15,7 +15,7 @@ func TestListServers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/servers", r.URL.Path)
 		assert.Equal(t, http.MethodGet, r.Method)
-		json.NewEncoder(w).Encode([]Server{
+		_ = json.NewEncoder(w).Encode([]Server{
 			{ID: 1, Identifier: "srv1", Name: "Production", ProtocolType: "ssh", Enabled: true},
 			{ID: 2, Identifier: "srv2", Name: "Staging", ProtocolType: "ftp", Enabled: true},
 		})
@@ -33,7 +33,7 @@ func TestListServers(t *testing.T) {
 func TestGetServer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/servers/srv1", r.URL.Path)
-		json.NewEncoder(w).Encode(Server{
+		_ = json.NewEncoder(w).Encode(Server{
 			ID: 1, Identifier: "srv1", Name: "Production",
 			ProtocolType: "ssh", ServerPath: "/var/www", Enabled: true,
 		})
@@ -59,7 +59,7 @@ func TestCreateServer(t *testing.T) {
 		assert.Equal(t, "ssh", body.Server.ProtocolType)
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(Server{Identifier: "new-srv", Name: "New Server", ProtocolType: "ssh"})
+		_ = json.NewEncoder(w).Encode(Server{Identifier: "new-srv", Name: "New Server", ProtocolType: "ssh"})
 	}))
 	defer server.Close()
 

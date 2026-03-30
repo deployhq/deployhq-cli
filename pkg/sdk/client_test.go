@@ -64,7 +64,7 @@ func TestClient_BasicAuth(t *testing.T) {
 		assert.Equal(t, "test-key", pass)
 		assert.Equal(t, "application/json", r.Header.Get("Accept"))
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]Project{})
+		_ = json.NewEncoder(w).Encode([]Project{})
 	}))
 	defer server.Close()
 
@@ -76,7 +76,7 @@ func TestClient_BasicAuth(t *testing.T) {
 func TestClient_APIError_SingleError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Project not found"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Project not found"})
 	}))
 	defer server.Close()
 
@@ -95,7 +95,7 @@ func TestClient_APIError_SingleError(t *testing.T) {
 func TestClient_APIError_MultipleErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(map[string][]string{"errors": {"name is required", "permalink is taken"}})
+		_ = json.NewEncoder(w).Encode(map[string][]string{"errors": {"name is required", "permalink is taken"}})
 	}))
 	defer server.Close()
 
@@ -113,7 +113,7 @@ func TestClient_APIError_MultipleErrors(t *testing.T) {
 func TestClient_APIError_Unauthorized(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
 	}))
 	defer server.Close()
 
@@ -127,7 +127,7 @@ func TestClient_UserAgent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.Header.Get("User-Agent"), "my-agent")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]Project{})
+		_ = json.NewEncoder(w).Encode([]Project{})
 	}))
 	defer server.Close()
 
@@ -142,7 +142,7 @@ func TestClient_Do_EscapeHatch(t *testing.T) {
 		assert.Equal(t, "/custom/endpoint", r.URL.Path)
 		assert.Equal(t, http.MethodPost, r.Method)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"result": "ok"}`))
+		_, _ = w.Write([]byte(`{"result": "ok"}`))
 	}))
 	defer server.Close()
 

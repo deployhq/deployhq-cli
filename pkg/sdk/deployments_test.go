@@ -14,7 +14,7 @@ import (
 func TestListDeployments(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/deployments", r.URL.Path)
-		json.NewEncoder(w).Encode(PaginatedResponse[Deployment]{
+		_ = json.NewEncoder(w).Encode(PaginatedResponse[Deployment]{
 			Pagination: Pagination{CurrentPage: 1, TotalPages: 1, TotalCount: 2, PerPage: 20},
 			Records: []Deployment{
 				{Identifier: "dep1", Status: "completed", Branch: "main"},
@@ -35,7 +35,7 @@ func TestListDeployments(t *testing.T) {
 func TestGetDeployment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/deployments/dep1", r.URL.Path)
-		json.NewEncoder(w).Encode(Deployment{
+		_ = json.NewEncoder(w).Encode(Deployment{
 			Identifier: "dep1",
 			Status:     "completed",
 			Branch:     "main",
@@ -70,7 +70,7 @@ func TestCreateDeployment(t *testing.T) {
 		assert.Equal(t, "main", body.Deployment.Branch)
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(Deployment{Identifier: "dep-new", Status: "queued", Branch: "main"})
+		_ = json.NewEncoder(w).Encode(Deployment{Identifier: "dep-new", Status: "queued", Branch: "main"})
 	}))
 	defer server.Close()
 
@@ -99,7 +99,7 @@ func TestRollbackDeployment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/projects/my-app/deployments/dep1/rollback", r.URL.Path)
-		json.NewEncoder(w).Encode(Deployment{Identifier: "dep-rollback", Status: "queued"})
+		_ = json.NewEncoder(w).Encode(Deployment{Identifier: "dep-rollback", Status: "queued"})
 	}))
 	defer server.Close()
 
@@ -112,7 +112,7 @@ func TestRollbackDeployment(t *testing.T) {
 func TestGetDeploymentStepLogs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/deployments/dep1/steps/step1/logs", r.URL.Path)
-		json.NewEncoder(w).Encode([]DeploymentStepLog{
+		_ = json.NewEncoder(w).Encode([]DeploymentStepLog{
 			{ID: "log1", Step: "transfer", Message: "Uploading file.txt"},
 		})
 	}))

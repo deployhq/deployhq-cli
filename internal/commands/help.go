@@ -122,7 +122,3 @@ func buildHelpSchema(cmd *cobra.Command) AgentHelpSchema {
 	return schema
 }
 
-// agentHelpHint prints a hint about --agent mode when in a detected agent context.
-func agentHelpHint(cmd *cobra.Command) string {
-	return fmt.Sprintf("Tip: run '%s --help --agent' for structured JSON help", cmd.CommandPath())
-}

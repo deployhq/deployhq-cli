@@ -14,7 +14,7 @@ import (
 func TestListServerGroups(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/server_groups", r.URL.Path)
-		json.NewEncoder(w).Encode([]ServerGroup{
+		_ = json.NewEncoder(w).Encode([]ServerGroup{
 			{Identifier: "sg1", Name: "Production", Environment: "production"},
 		})
 	}))
@@ -30,7 +30,7 @@ func TestListServerGroups(t *testing.T) {
 func TestGetServerGroup(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/server_groups/sg1", r.URL.Path)
-		json.NewEncoder(w).Encode(ServerGroup{
+		_ = json.NewEncoder(w).Encode(ServerGroup{
 			Identifier: "sg1", Name: "Production",
 			Servers: []Server{
 				{Identifier: "srv1", Name: "Server 1"},
@@ -58,7 +58,7 @@ func TestCreateServerGroup(t *testing.T) {
 		assert.Equal(t, "Staging", body.ServerGroup.Name)
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(ServerGroup{Identifier: "sg-new", Name: "Staging"})
+		_ = json.NewEncoder(w).Encode(ServerGroup{Identifier: "sg-new", Name: "Staging"})
 	}))
 	defer server.Close()
 

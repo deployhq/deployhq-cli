@@ -144,7 +144,7 @@ func (e *Envelope) WriteTable(columns []string, rows [][]string) {
 		if i > 0 {
 			header.WriteString("  ")
 		}
-		header.WriteString(fmt.Sprintf("%-*s", widths[i], strings.ToUpper(col)))
+		fmt.Fprintf(&header, "%-*s", widths[i], strings.ToUpper(col)) //nolint:errcheck
 	}
 	fmt.Fprintln(e.Stdout, header.String()) //nolint:errcheck
 
@@ -156,7 +156,7 @@ func (e *Envelope) WriteTable(columns []string, rows [][]string) {
 				line.WriteString("  ")
 			}
 			if i < len(widths) {
-				line.WriteString(fmt.Sprintf("%-*s", widths[i], cell))
+				fmt.Fprintf(&line, "%-*s", widths[i], cell) //nolint:errcheck
 			} else {
 				line.WriteString(cell)
 			}
