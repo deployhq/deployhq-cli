@@ -45,11 +45,36 @@ deployhq deployments logs <id> -p my-app
 # Interactive login (stores in OS keyring)
 deployhq auth login
 
-# API token via environment variable (CI/agents)
-export DEPLOYHQ_API_TOKEN=your-api-key
+# Environment variables (CI/agents — no login needed)
+export DEPLOYHQ_API_KEY=your-api-key
 export DEPLOYHQ_ACCOUNT=your-account
 export DEPLOYHQ_EMAIL=your-email
 ```
+
+## CI/CD (GitHub Actions)
+
+No `deployhq auth login` needed — set secrets and go:
+
+```yaml
+# .github/workflows/deploy.yml
+env:
+  DEPLOYHQ_ACCOUNT: ${{ secrets.DEPLOYHQ_ACCOUNT }}
+  DEPLOYHQ_EMAIL: ${{ secrets.DEPLOYHQ_EMAIL }}
+  DEPLOYHQ_API_KEY: ${{ secrets.DEPLOYHQ_API_KEY }}
+  DEPLOYHQ_PROJECT: my-app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+      - run: deployhq deploy --server production --revision ${{ github.sha }} --json true
+```
+
+See `examples/github-actions/` for complete workflows:
+- **deploy.yml** — Deploy on push to main with polling and failure logs
+- **deploy-multi-env.yml** — Staging on push, production on release, auto-rollback
+- **deploy-on-pr-merge.yml** — Deploy on PR merge with status comment on the PR
 
 ## Commands
 

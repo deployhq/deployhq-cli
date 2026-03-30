@@ -1,0 +1,66 @@
+# .github/workflows/deploy-multi-env.yml
+#
+# Deploy to staging on push to main, production on release.
+# Uses GitHub Environments for per-environment secrets.
+
+name: Deploy (multi-environment)
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+env:
+  DEPLOYHQ_ACCOUNT: ${{ secrets.DEPLOYHQ_ACCOUNT }}
+  DEPLOYHQ_EMAIL: ${{ secrets.DEPLOYHQ_EMAIL }}
+  DEPLOYHQ_API_KEY: ${{ secrets.DEPLOYHQ_API_KEY }}
+  DEPLOYHQ_PROJECT: my-app
+
+jobs:
+  deploy-staging:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Install DeployHQ CLI
+        run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+
+      - name: Deploy to staging
+        run: |
+          deployhq deploy --server staging --revision ${{ github.sha }} --json true | jq '.summary'
+
+  deploy-production:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Install DeployHQ CLI
+        run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+
+      - name: Deploy to production
+        run: |
+          RESULT=$(deployhq deploy --server production --revision ${{ github.sha }} --json true)
+          DEP_ID=$(echo "$RESULT" | jq -r '.data.identifier')
+          echo "Deployment: $DEP_ID"
+
+          # Wait for completion
+          for i in $(seq 1 60); do
+            STATUS=$(deployhq deployments show "$DEP_ID" --json true | jq -r '.data.status')
+            case "$STATUS" in
+              completed) echo "Production deploy complete!"; exit 0 ;;
+              failed)
+                echo "Production deploy failed!"
+                deployhq deployments logs "$DEP_ID"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          PREV=$(deployhq deployments list --json true | jq -r '.data.records[1].identifier')
+          deployhq rollback "$PREV" --json true | jq '.summary'

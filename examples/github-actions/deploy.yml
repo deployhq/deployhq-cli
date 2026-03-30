@@ -1,0 +1,68 @@
+# .github/workflows/deploy.yml
+#
+# Deploy via DeployHQ when pushing to main.
+# No `deployhq auth login` needed — env vars handle auth in CI.
+#
+# Required repository secrets:
+#   DEPLOYHQ_ACCOUNT  - Account subdomain (e.g. "mycompany")
+#   DEPLOYHQ_EMAIL    - API user email
+#   DEPLOYHQ_API_KEY  - API key (Profile > API Key in DeployHQ)
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  DEPLOYHQ_ACCOUNT: ${{ secrets.DEPLOYHQ_ACCOUNT }}
+  DEPLOYHQ_EMAIL: ${{ secrets.DEPLOYHQ_EMAIL }}
+  DEPLOYHQ_API_KEY: ${{ secrets.DEPLOYHQ_API_KEY }}
+  DEPLOYHQ_PROJECT: my-app  # or use --project flag per command
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install DeployHQ CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+
+      - name: Get latest revision
+        id: rev
+        run: |
+          REV=$(deployhq repos latest-revision --json true | jq -r '.data.ref')
+          echo "revision=$REV" >> "$GITHUB_OUTPUT"
+          echo "Deploying revision: $REV"
+
+      - name: Deploy to production
+        id: deploy
+        run: |
+          RESULT=$(deployhq deploy \
+            --server production \
+            --revision ${{ steps.rev.outputs.revision }} \
+            --json true)
+          DEP_ID=$(echo "$RESULT" | jq -r '.data.identifier')
+          echo "deployment_id=$DEP_ID" >> "$GITHUB_OUTPUT"
+          echo "Deployment queued: $DEP_ID"
+
+      - name: Wait for deployment
+        run: |
+          DEP_ID=${{ steps.deploy.outputs.deployment_id }}
+          echo "Waiting for deployment $DEP_ID..."
+          for i in $(seq 1 60); do
+            STATUS=$(deployhq deployments show "$DEP_ID" --json true | jq -r '.data.status')
+            echo "  [$i] $STATUS"
+            case "$STATUS" in
+              completed) echo "Deployment completed!"; exit 0 ;;
+              failed)    echo "Deployment failed!"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "Deployment timed out after 10 minutes"
+          exit 1
+
+      - name: Show deployment logs (on failure)
+        if: failure()
+        run: |
+          deployhq deployments logs ${{ steps.deploy.outputs.deployment_id }}
