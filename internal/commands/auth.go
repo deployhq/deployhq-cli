@@ -193,7 +193,7 @@ func newAuthTokenCmd() *cobra.Command {
 					Hint:    "Run 'deployhq auth login' first",
 				}
 			}
-			fmt.Fprintln(cliCtx.Envelope.Stdout, creds.APIKey)
+			fmt.Fprintln(cliCtx.Envelope.Stdout, creds.APIKey) //nolint:errcheck
 			return nil
 		},
 	}

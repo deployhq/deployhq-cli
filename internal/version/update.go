@@ -45,7 +45,7 @@ func Check(currentVersion string) UpdateInfo {
 	if err != nil {
 		return info
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return info

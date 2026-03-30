@@ -321,7 +321,7 @@ func newDeploymentsLogsCmd() *cobra.Command {
 					}
 					cliCtx.Envelope.Status("\n--- %s (%s) ---", step.Description, step.Status)
 					for _, log := range logs {
-						fmt.Fprintln(cliCtx.Envelope.Stdout, log.Message)
+						fmt.Fprintln(cliCtx.Envelope.Stdout, log.Message) //nolint:errcheck
 					}
 				}
 				return nil
@@ -338,7 +338,7 @@ func newDeploymentsLogsCmd() *cobra.Command {
 			}
 
 			for _, log := range logs {
-				fmt.Fprintln(env.Stdout, log.Message)
+				fmt.Fprintln(env.Stdout, log.Message) //nolint:errcheck
 			}
 			return nil
 		},

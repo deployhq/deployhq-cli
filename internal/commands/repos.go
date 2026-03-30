@@ -142,7 +142,7 @@ func newReposBranchesCmd() *cobra.Command {
 				if len(short) > 8 {
 					short = short[:8]
 				}
-				fmt.Fprintf(env.Stdout, "%s\t%s\n", name, short)
+				fmt.Fprintf(env.Stdout, "%s\t%s\n", name, short) //nolint:errcheck
 			}
 			return nil
 		},
@@ -222,7 +222,7 @@ func newReposLatestRevisionCmd() *cobra.Command {
 				return env.WriteJSON(output.NewResponse(map[string]string{"ref": rev}, rev))
 			}
 
-			fmt.Fprintln(env.Stdout, rev)
+			fmt.Fprintln(env.Stdout, rev) //nolint:errcheck
 			return nil
 		},
 	}

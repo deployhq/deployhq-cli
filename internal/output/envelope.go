@@ -110,8 +110,8 @@ func (e *Envelope) WriteJSON(data interface{}) error {
 	if e.OutputFile != nil {
 		compact, err := json.Marshal(output)
 		if err == nil {
-			e.OutputFile.Write(compact)
-			e.OutputFile.Write([]byte("\n"))
+			_, _ = e.OutputFile.Write(compact)
+			_, _ = e.OutputFile.Write([]byte("\n"))
 		}
 	}
 
@@ -146,7 +146,7 @@ func (e *Envelope) WriteTable(columns []string, rows [][]string) {
 		}
 		header.WriteString(fmt.Sprintf("%-*s", widths[i], strings.ToUpper(col)))
 	}
-	fmt.Fprintln(e.Stdout, header.String())
+	fmt.Fprintln(e.Stdout, header.String()) //nolint:errcheck
 
 	// Print rows
 	for _, row := range rows {
@@ -161,7 +161,7 @@ func (e *Envelope) WriteTable(columns []string, rows [][]string) {
 				line.WriteString(cell)
 			}
 		}
-		fmt.Fprintln(e.Stdout, line.String())
+		fmt.Fprintln(e.Stdout, line.String()) //nolint:errcheck
 	}
 }
 

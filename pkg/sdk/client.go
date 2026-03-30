@@ -109,7 +109,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, v interface{
 	if err != nil {
 		return fmt.Errorf("deployhq: request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode >= 400 {
 		return parseAPIError(resp)

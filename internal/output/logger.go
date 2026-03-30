@@ -46,7 +46,7 @@ func (l *Logger) Write(format string, args ...interface{}) {
 	}
 	ts := time.Now().Format("15:04:05.000")
 	msg := fmt.Sprintf(format, args...)
-	fmt.Fprintf(l.file, "[%s] %s\n", ts, msg)
+	fmt.Fprintf(l.file, "[%s] %s\n", ts, msg) //nolint:errcheck
 }
 
 // Writer returns the underlying io.Writer for the log file.
@@ -61,6 +61,6 @@ func (l *Logger) Writer() io.Writer {
 // Close closes the log file.
 func (l *Logger) Close() {
 	if l.file != nil {
-		l.file.Close()
+		_ = l.file.Close()
 	}
 }
