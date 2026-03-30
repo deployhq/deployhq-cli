@@ -9,6 +9,7 @@ import (
 	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/harness"
 	"github.com/deployhq/deployhq-cli/internal/output"
+	versionpkg "github.com/deployhq/deployhq-cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -72,10 +73,20 @@ func NewRootCmd(version string) *cobra.Command {
 			return nil
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
-			if cliCtx != nil {
-				cliCtx.Envelope.Close()
-				cliCtx.Logger.Close()
+			if cliCtx == nil {
+				return
 			}
+
+			// Version update check (Wrangler pattern: show on exit, non-blocking)
+			if version != "dev" && !cliCtx.IsAgent {
+				info := versionpkg.Check(version)
+				if msg := versionpkg.FormatUpdateMessage(info); msg != "" {
+					cliCtx.Envelope.Status(msg)
+				}
+			}
+
+			cliCtx.Envelope.Close()
+			cliCtx.Logger.Close()
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -103,12 +114,15 @@ func NewRootCmd(version string) *cobra.Command {
 		newEnvVarsCmd(),
 		newConfigFilesCmd(),
 		newBuildCommandsCmd(),
+		newBuildConfigsCmd(),
 		newSSHCommandsCmd(),
 		newExcludedFilesCmd(),
 		newIntegrationsCmd(),
 		newAgentsCmd(),
 		newGlobalServersCmd(),
 		newGlobalEnvVarsCmd(),
+		newAutoDeploysCmd(),
+		newScheduledDeploysCmd(),
 
 		// Shortcuts
 		newDeployCmd(),
@@ -126,9 +140,13 @@ func NewRootCmd(version string) *cobra.Command {
 		newShowCmd(),
 		newURLCmd(),
 		newSetupCmd(),
+		newMCPCmd(),
 		newDoctorCmd(),
 		newVersionCmd(version),
 	)
+
+	// Install --help --agent JSON help on all commands
+	installAgentHelp(root)
 
 	return root
 }
