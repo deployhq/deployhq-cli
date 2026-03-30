@@ -1,0 +1,134 @@
+// Package commands provides all CLI commands.
+package commands
+
+import (
+	"os"
+	"strings"
+
+	"github.com/deployhq/deployhq-cli/internal/cli"
+	"github.com/deployhq/deployhq-cli/internal/config"
+	"github.com/deployhq/deployhq-cli/internal/harness"
+	"github.com/deployhq/deployhq-cli/internal/output"
+	"github.com/spf13/cobra"
+)
+
+var (
+	// Global flags
+	flagAccount string
+	flagEmail   string
+	flagAPIKey  string
+	flagProject string
+	flagJSON    string
+	flagCwd     string
+
+	// Shared context
+	cliCtx *cli.Context
+)
+
+// NewRootCmd creates the root command with all subcommands.
+func NewRootCmd(version string) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "deployhq",
+		Short: "DeployHQ CLI — deploy from your terminal",
+		Long:  `The official DeployHQ command-line interface for managing projects, servers, and deployments.`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Handle --cwd
+			if flagCwd != "" {
+				if err := os.Chdir(flagCwd); err != nil {
+					return &output.UserError{
+						Message: "Cannot change to directory: " + flagCwd,
+						Hint:    "Check that the directory exists",
+					}
+				}
+			}
+
+			// Load config
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+
+			// Apply flag overrides (Layer 1)
+			cfg.ApplyFlags(flagAccount, flagEmail, flagAPIKey, flagProject, "")
+
+			// Setup output
+			logger := output.NewLogger()
+			env := output.NewEnvelope(logger)
+
+			// Handle --json flag
+			if flagJSON != "" {
+				env.JSONMode = true
+				if flagJSON != "true" && flagJSON != "1" {
+					env.JSONFields = strings.Split(flagJSON, ",")
+				}
+			}
+
+			// Detect agent mode
+			agent := harness.Detect()
+
+			cliCtx = cli.NewContext(cfg, env, logger)
+			cliCtx.IsAgent = agent.Detected
+
+			return nil
+		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			if cliCtx != nil {
+				cliCtx.Envelope.Close()
+				cliCtx.Logger.Close()
+			}
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+
+	// Global persistent flags
+	pf := root.PersistentFlags()
+	pf.StringVar(&flagAccount, "account", "", "DeployHQ account subdomain")
+	pf.StringVar(&flagEmail, "email", "", "Authentication email")
+	pf.StringVar(&flagAPIKey, "api-key", "", "API key")
+	pf.StringVarP(&flagProject, "project", "p", "", "Project permalink or identifier")
+	pf.StringVar(&flagJSON, "json", "", "Output as JSON (optionally specify fields: --json name,status)")
+	pf.StringVarP(&flagCwd, "cwd", "C", "", "Change working directory before running")
+
+	// Register subcommands
+	root.AddCommand(
+		// Core resource commands
+		newProjectsCmd(),
+		newServersCmd(),
+		newServerGroupsCmd(),
+		newDeploymentsCmd(),
+		newReposCmd(),
+
+		// Extended resource commands
+		newEnvVarsCmd(),
+		newConfigFilesCmd(),
+		newBuildCommandsCmd(),
+		newSSHCommandsCmd(),
+		newExcludedFilesCmd(),
+		newIntegrationsCmd(),
+		newAgentsCmd(),
+		newGlobalServersCmd(),
+		newGlobalEnvVarsCmd(),
+
+		// Shortcuts
+		newDeployCmd(),
+		newRollbackCmd(),
+
+		// Escape hatch
+		newAPICmd(),
+
+		// Auth & Config
+		newAuthCmd(),
+		newConfigCmd(),
+
+		// Agent & Meta
+		newCommandsCatalogCmd(),
+		newShowCmd(),
+		newURLCmd(),
+		newSetupCmd(),
+		newDoctorCmd(),
+		newVersionCmd(version),
+	)
+
+	return root
+}

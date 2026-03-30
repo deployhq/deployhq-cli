@@ -1,0 +1,83 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: deployhq
+    main: ./cmd/deployhq
+    binary: deployhq
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: deployhq
+    builds:
+      - deployhq
+    name_template: "deployhq_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+brews:
+  - name: deployhq
+    repository:
+      owner: deployhq
+      name: homebrew-tap
+    homepage: "https://www.deployhq.com"
+    description: "DeployHQ CLI — deploy from your terminal"
+    license: "MIT"
+    install: |
+      bin.install "deployhq"
+    test: |
+      system "#{bin}/deployhq", "version"
+
+scoops:
+  - name: deployhq
+    repository:
+      owner: deployhq
+      name: scoop-bucket
+    homepage: "https://www.deployhq.com"
+    description: "DeployHQ CLI — deploy from your terminal"
+    license: "MIT"
+
+nfpms:
+  - id: deployhq
+    package_name: deployhq
+    vendor: DeployHQ
+    homepage: "https://www.deployhq.com"
+    description: "DeployHQ CLI — deploy from your terminal"
+    license: "MIT"
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+
+release:
+  github:
+    owner: deployhq
+    name: deployhq-cli
+  prerelease: auto
