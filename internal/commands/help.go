@@ -47,7 +47,9 @@ func installAgentHelp(root *cobra.Command) {
 				schema := buildHelpSchema(c)
 				enc := json.NewEncoder(c.OutOrStdout())
 				enc.SetIndent("", "  ")
-				enc.Encode(schema)
+				if err := enc.Encode(schema); err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "Error encoding agent help: %v\n", err) //nolint:errcheck // best-effort stderr
+				}
 				return
 			}
 			original(c, args)

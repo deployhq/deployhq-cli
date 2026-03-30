@@ -52,18 +52,18 @@ func NewEnvelope(logger *Logger) *Envelope {
 // Close cleans up resources (output file).
 func (e *Envelope) Close() {
 	if e.OutputFile != nil {
-		e.OutputFile.Close()
+		_ = e.OutputFile.Close()
 	}
 }
 
 // Status writes a human-readable message to stderr.
 func (e *Envelope) Status(format string, args ...interface{}) {
-	fmt.Fprintf(e.Stderr, format+"\n", args...)
+	fmt.Fprintf(e.Stderr, format+"\n", args...) //nolint:errcheck // best-effort stderr
 }
 
 // Warn writes a warning message to stderr.
 func (e *Envelope) Warn(format string, args ...interface{}) {
-	fmt.Fprintf(e.Stderr, "Warning: "+format+"\n", args...)
+	fmt.Fprintf(e.Stderr, "Warning: "+format+"\n", args...) //nolint:errcheck // best-effort stderr
 }
 
 // Error writes an error message to stderr and logs debug info.
@@ -76,18 +76,18 @@ func (e *Envelope) Error(err error) {
 
 	switch typedErr := err.(type) {
 	case *UserError:
-		fmt.Fprintln(e.Stderr, typedErr.Error())
+		fmt.Fprintln(e.Stderr, typedErr.Error()) //nolint:errcheck // best-effort stderr
 	case *AuthError:
-		fmt.Fprintln(e.Stderr, typedErr.Error())
+		fmt.Fprintln(e.Stderr, typedErr.Error()) //nolint:errcheck // best-effort stderr
 	case *InternalError:
-		fmt.Fprintf(e.Stderr, "Internal error: %s\n", typedErr.Message)
+		fmt.Fprintf(e.Stderr, "Internal error: %s\n", typedErr.Message) //nolint:errcheck // best-effort stderr
 		if e.Logger.Path != "" {
-			fmt.Fprintf(e.Stderr, "Debug log: %s\n", e.Logger.Path)
+			fmt.Fprintf(e.Stderr, "Debug log: %s\n", e.Logger.Path) //nolint:errcheck // best-effort stderr
 		}
 	default:
-		fmt.Fprintf(e.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(e.Stderr, "Error: %v\n", err) //nolint:errcheck // best-effort stderr
 		if e.Logger.Path != "" {
-			fmt.Fprintf(e.Stderr, "Debug log: %s\n", e.Logger.Path)
+			fmt.Fprintf(e.Stderr, "Debug log: %s\n", e.Logger.Path) //nolint:errcheck // best-effort stderr
 		}
 	}
 }

@@ -85,9 +85,10 @@ func TestFindProjectConfig(t *testing.T) {
 	subDir := filepath.Join(tmpDir, "sub", "deep")
 	require.NoError(t, os.MkdirAll(subDir, 0755))
 
-	origDir, _ := os.Getwd()
-	defer os.Chdir(origDir)
-	os.Chdir(subDir)
+	origDir, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, os.Chdir(origDir)) }()
+	require.NoError(t, os.Chdir(subDir))
 
 	found := findProjectConfig()
 	assert.Equal(t, configPath, found)

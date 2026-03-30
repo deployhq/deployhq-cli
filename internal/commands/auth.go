@@ -72,7 +72,7 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 				Hint:    "Use --account flag",
 			}
 		}
-		fmt.Fprint(env.Stderr, "Account subdomain: ")
+		fmt.Fprint(env.Stderr, "Account subdomain: ") //nolint:errcheck // best-effort stderr
 		input, _ := reader.ReadString('\n')
 		opts.Account = strings.TrimSpace(input)
 	}
@@ -84,7 +84,7 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 				Hint:    "Use --email flag",
 			}
 		}
-		fmt.Fprint(env.Stderr, "Email: ")
+		fmt.Fprint(env.Stderr, "Email: ") //nolint:errcheck // best-effort stderr
 		input, _ := reader.ReadString('\n')
 		opts.Email = strings.TrimSpace(input)
 	}
@@ -96,9 +96,9 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 				Hint:    "Use --api-key flag",
 			}
 		}
-		fmt.Fprint(env.Stderr, "API key: ")
+		fmt.Fprint(env.Stderr, "API key: ") //nolint:errcheck // best-effort stderr
 		key, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(env.Stderr) // newline after hidden input
+		fmt.Fprintln(env.Stderr) //nolint:errcheck // best-effort stderr newline after hidden input
 		if err != nil {
 			return &output.InternalError{Message: "read api key", Cause: err}
 		}
