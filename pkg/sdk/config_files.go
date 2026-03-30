@@ -12,7 +12,7 @@ type ConfigFile struct {
 	Path        string   `json:"path"`
 	Body        string   `json:"body"`
 	Build       bool     `json:"build"`
-	Servers     []string `json:"servers,omitempty"`
+	Servers     []interface{} `json:"servers,omitempty"`
 }
 
 // ConfigFileCreateRequest is the payload for creating/updating a config file.

@@ -13,7 +13,7 @@ type SSHCommand struct {
 	Description string   `json:"description"`
 	Command     string   `json:"command"`
 	HaltOnError bool     `json:"halt_on_error"`
-	Servers     []string `json:"servers,omitempty"`
+	Servers     []interface{} `json:"servers,omitempty"`
 	Timing      string   `json:"timing"`
 	Timeout     int      `json:"timeout"`
 	Enabled     bool     `json:"enabled"`

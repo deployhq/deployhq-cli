@@ -207,17 +207,17 @@ type DeployConfig struct {
 
 // DeploymentStep represents a step within a deployment.
 type DeploymentStep struct {
-	Step                string  `json:"step"`
-	Stage               string  `json:"stage"`
-	Identifier          string  `json:"identifier"`
-	Server              *string `json:"server,omitempty"`
-	TotalItems          *string `json:"total_items,omitempty"`
-	CompletedItems      *string `json:"completed_items,omitempty"`
-	Description         string  `json:"description"`
-	Status              string  `json:"status"`
-	Logs                bool    `json:"logs"`
-	DeploymentStartedAt *string `json:"deployment_started_at,omitempty"`
-	UpdatedAt           string  `json:"updated_at"`
+	Step                string      `json:"step"`
+	Stage               string      `json:"stage"`
+	Identifier          string      `json:"identifier"`
+	Server              *FlexString `json:"server,omitempty"`
+	TotalItems          *FlexString `json:"total_items,omitempty"`
+	CompletedItems      *FlexString `json:"completed_items,omitempty"`
+	Description         string      `json:"description"`
+	Status              string      `json:"status"`
+	Logs                bool        `json:"logs"`
+	DeploymentStartedAt *string     `json:"deployment_started_at,omitempty"`
+	UpdatedAt           string      `json:"updated_at"`
 }
 
 // DeploymentCreateRequest is the payload for creating a deployment.

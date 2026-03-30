@@ -230,7 +230,7 @@ func TestRealDeploymentShape(t *testing.T) {
 	require.Len(t, dep.Steps, 1)
 	assert.Equal(t, "transfer", dep.Steps[0].Step)
 	assert.True(t, dep.Steps[0].Logs)
-	assert.Equal(t, "15", *dep.Steps[0].TotalItems)
+	assert.Equal(t, "15", dep.Steps[0].TotalItems.String())
 
 	// Flags
 	assert.False(t, dep.Legacy)

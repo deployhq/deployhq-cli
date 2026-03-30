@@ -7,9 +7,9 @@ import (
 
 // ExcludedFile represents an excluded file pattern.
 type ExcludedFile struct {
-	Identifier string   `json:"identifier"`
-	Path       string   `json:"path"`
-	Servers    []string `json:"servers,omitempty"`
+	Identifier string        `json:"identifier"`
+	Path       string        `json:"path"`
+	Servers    []interface{} `json:"servers,omitempty"`
 }
 
 // ExcludedFileCreateRequest is the payload for creating/updating an excluded file.
