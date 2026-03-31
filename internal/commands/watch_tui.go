@@ -146,7 +146,7 @@ func (m *watchModel) View() string {
 		case "failed":
 			desc = styleError.Render(desc)
 		}
-		b.WriteString(fmt.Sprintf("  %s %s\n", icon, desc))
+		fmt.Fprintf(&b, "  %s %s\n", icon, desc)
 	}
 
 	b.WriteString("\n")
