@@ -98,7 +98,12 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 		}
 		fmt.Fprint(env.Stderr, "API key: ") //nolint:errcheck // best-effort stderr
 		key, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(env.Stderr) //nolint:errcheck // best-effort stderr newline after hidden input
+		if err == nil && len(key) > 0 {
+			masked := strings.Repeat("*", len(key))
+			fmt.Fprintf(env.Stderr, "%s\n", masked) //nolint:errcheck // best-effort stderr
+		} else {
+			fmt.Fprintln(env.Stderr) //nolint:errcheck // best-effort stderr
+		}
 		if err != nil {
 			return &output.InternalError{Message: "read api key", Cause: err}
 		}

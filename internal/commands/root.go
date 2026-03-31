@@ -29,9 +29,10 @@ var (
 // NewRootCmd creates the root command with all subcommands.
 func NewRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "deployhq",
-		Short: "DeployHQ CLI — deploy from your terminal",
-		Long:  `The official DeployHQ command-line interface for managing projects, servers, and deployments.`,
+		Use:     "deployhq",
+		Short:   "DeployHQ CLI — deploy from your terminal",
+		Long:    `The official DeployHQ command-line interface for managing projects, servers, and deployments.`,
+		Version: version,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Handle --cwd
 			if flagCwd != "" {
