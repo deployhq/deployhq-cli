@@ -286,9 +286,11 @@ type CommitsTagsReleases struct {
 
 // DeploymentStepLog represents logs for a deployment step.
 type DeploymentStepLog struct {
-	ID      string `json:"id"`
-	Step    string `json:"step"`
-	Message string `json:"message"`
+	ID      FlexString  `json:"id"`
+	Step    string      `json:"step"`
+	Type    string      `json:"type,omitempty"`
+	Detail  *string     `json:"detail,omitempty"`
+	Message string      `json:"message"`
 }
 
 // Pagination holds pagination metadata from list responses.
