@@ -141,6 +141,10 @@ func NewRootCmd(version string) *cobra.Command {
 		newConfigCmd(),
 		newConfigureCmd(),
 
+		// Dashboard
+		newActivityCmd(),
+		newStatusCmd(),
+
 		// AI Assistant
 		newAssistCmd(),
 
