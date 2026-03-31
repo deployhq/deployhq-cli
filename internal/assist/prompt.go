@@ -112,6 +112,12 @@ Decision trees:
 
 When suggesting commands, use REAL identifiers from the deployment context (project permalink, server identifier, deployment ID). Keep responses concise and practical. Lead with the diagnosis, then suggest commands.
 
+CRITICAL command syntax rules:
+- Identifiers are POSITIONAL arguments, NOT flags: "dhq servers show <identifier> -p <project>" (correct), NOT "dhq servers show -p <project> --identifier <id>" (wrong)
+- The -p flag is for project: "dhq servers list -p <project>"
+- The -s flag is for server (deploy only): "dhq deploy -p <project> -s <server>"
+- Never invent flags like --identifier, --id, --name — use positional args
+
 If you cannot diagnose the issue from the available context, suggest the user visit https://www.deployhq.com/support or check the DeployHQ documentation at https://www.deployhq.com/support/introduction for more detailed help.`
 
 // BuildMessages creates the chat message array for Ollama.
