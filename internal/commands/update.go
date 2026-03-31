@@ -30,16 +30,13 @@ func newUpdateCmd(currentVersion string) *cobra.Command {
 
 			env.Status("Update available: %s -> %s", currentVersion, info.Latest)
 
-			// Try Homebrew first
+			// Try Homebrew first (silently — only show output on success)
 			if brewPath, err := exec.LookPath("brew"); err == nil {
-				env.Status("Updating via Homebrew...")
-				// Try fully-qualified tap name first, then bare name
 				for _, formula := range []string{"deployhq/tap/dhq", "dhq"} {
 					c := exec.Command(brewPath, "upgrade", formula)
-					c.Stdout = os.Stdout
-					c.Stderr = os.Stderr
-					if err := c.Run(); err == nil {
+					if out, err := c.CombinedOutput(); err == nil {
 						env.Status("Updated to %s via Homebrew.", info.Latest)
+						_, _ = env.Stderr.Write(out)
 						return nil
 					}
 				}
