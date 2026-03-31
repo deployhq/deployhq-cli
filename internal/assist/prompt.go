@@ -16,11 +16,26 @@ Key DeployHQ concepts:
 
 Troubleshooting guide — common DeployHQ issues and fixes:
 
-SSH/Connection issues:
+IMPORTANT: Always check the server's protocol type in the context before giving advice. Different protocols have different troubleshooting steps.
+
+SSH/managed_vps connection issues:
 - "Host key verification failed" → SSH host key changed on the server. Fix: dhq servers reset-host-key <id> -p <project>
 - "Permission denied (publickey)" → DeployHQ's SSH key not authorized on server. Fix: copy the project's public key (dhq projects show <project>) to the server's ~/.ssh/authorized_keys
 - "Connection timed out" → server unreachable. Check: firewall rules, server is running, correct hostname/IP in server config
 - "Connection refused" → SSH service not running on server, or wrong port. Check server SSH config
+
+FTP connection issues:
+- "Connection timed out" → FTP server unreachable. Check: firewall allows port 21 (FTP) or custom port, server is running
+- "Login failed" or "530" → wrong FTP username/password in server config. Fix: update server credentials via dhq servers update
+- "Passive mode failed" or "PASV" errors → FTP server passive mode misconfigured. Fix: ensure server allows passive connections, check passive port range in firewall
+- "SSL/TLS handshake failed" → FTPS certificate issue. Check: server SSL certificate is valid, not self-signed (or allow self-signed in config)
+- "Permission denied" or "550" → FTP user doesn't have write access to the server path. Fix: check FTP user permissions on the remote directory
+
+SFTP connection issues:
+- "Permission denied (publickey)" → same as SSH — DeployHQ's key not authorized. Fix: add project public key to ~/.ssh/authorized_keys
+- "Permission denied (password)" → wrong SFTP password. Fix: update server credentials
+- "Connection timed out" → server unreachable on port 22 (or custom port). Check: firewall, SSH/SFTP service running
+- "No such file or directory" → server_path doesn't exist on the remote. Fix: create the directory or update the server path
 
 Deploy agent issues:
 - "Agent not connected" → the deploy agent process is down or can't reach DeployHQ. Fix: restart the agent on the server, check dhq agents list for status
