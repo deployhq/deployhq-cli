@@ -321,10 +321,11 @@ func (m *initModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case stepDeployKeyManual:
-		if key == "enter" {
+		switch key {
+		case "enter":
 			m.step = stepProtocol
 			m.cursor = 0
-		} else if key == "backspace" || key == "left" {
+		case "backspace", "left":
 			m.step = stepBranch
 		}
 		return m, nil
@@ -531,13 +532,13 @@ func (m *initModel) addDeployKeyViaGH() tea.Msg {
 	if err != nil {
 		return createResultMsg{err: err, step: stepDeployKeyAuto}
 	}
-	defer os.Remove(tmpFile.Name())
+	defer os.Remove(tmpFile.Name()) //nolint:errcheck
 
 	if _, err := tmpFile.WriteString(m.project.PublicKey); err != nil {
-		tmpFile.Close()
+		tmpFile.Close() //nolint:errcheck
 		return createResultMsg{err: err, step: stepDeployKeyAuto}
 	}
-	tmpFile.Close()
+	tmpFile.Close() //nolint:errcheck
 
 	// Run gh repo deploy-key add
 	cmd := exec.Command("gh", "repo", "deploy-key", "add", tmpFile.Name(),
@@ -619,7 +620,7 @@ func (m *initModel) View() string {
 		b.WriteString("\n")
 		b.WriteString(initHighlight.Render("  Add this deploy key to your repository:"))
 		b.WriteString("\n\n")
-		b.WriteString(fmt.Sprintf("  %s", m.project.PublicKey))
+		fmt.Fprintf(&b, "  %s", m.project.PublicKey)
 		b.WriteString("\n\n")
 		b.WriteString(initDim.Render("  GitHub:    repo → Settings → Deploy keys → Add deploy key"))
 		b.WriteString("\n")
@@ -724,13 +725,13 @@ func (m *initModel) viewCompleted(b *strings.Builder, num, name, status string) 
 }
 
 func (m *initModel) viewTextPrompt(b *strings.Builder, label, value string) {
-	b.WriteString(fmt.Sprintf("  %s: %s", label, value))
+	fmt.Fprintf(b, "  %s: %s", label, value)
 	b.WriteString(initHighlight.Render("▊")) // cursor
 	b.WriteString("\n")
 }
 
 func (m *initModel) viewSelect(b *strings.Builder, label string, items []string) {
-	b.WriteString(fmt.Sprintf("  %s:\n", label))
+	fmt.Fprintf(b, "  %s:\n", label)
 	for i, item := range items {
 		if i == m.cursor {
 			b.WriteString(initHighlight.Render(fmt.Sprintf("  ▸ %s", item)))
