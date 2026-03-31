@@ -11,8 +11,16 @@ import (
 
 const pollInterval = 3 * time.Second
 
-// watchDeployment polls a deployment until it completes or fails, showing real-time step progress.
+// watchDeployment uses the TUI in interactive terminals, falls back to append-only otherwise.
 func watchDeployment(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) error {
+	if env.IsTTY && !env.JSONMode {
+		return watchDeploymentTUI(ctx, client, env, projectID, deploymentID)
+	}
+	return watchDeploymentPlain(ctx, client, env, projectID, deploymentID)
+}
+
+// watchDeploymentPlain is the append-only fallback for non-TTY/JSON mode.
+func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) error {
 	printed := make(map[string]bool) // step identifier → printed as terminal
 	stageShown := make(map[string]bool)
 	shownRunning := "" // identifier of step currently shown as "running"
