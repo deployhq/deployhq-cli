@@ -4,10 +4,10 @@ DeployHQ from your terminal -- for humans and agents.
 
 ## Install
 
-### Homebrew (macOS/Linux)
+### Script (macOS/Linux)
 
 ```bash
-brew install deployhq/tap/deployhq
+curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
 ```
 
 ### Go
@@ -19,6 +19,12 @@ go install github.com/deployhq/deployhq-cli/cmd/deployhq@latest
 ### Binary
 
 Download from [Releases](https://github.com/deployhq/deployhq-cli/releases).
+
+### Updating
+
+```bash
+deployhq update
+```
 
 ## Quick Start
 
@@ -91,8 +97,22 @@ deployhq auth          login | logout | status | token
 deployhq config        show | init | set | unset
 deployhq commands      (full catalog as JSON for agents)
 deployhq show <url>    (show any DeployHQ resource by URL)
+deployhq env-vars      list | show | create | update | delete
+deployhq config-files  list | show | create | delete
+deployhq build-commands list | create | delete
+deployhq build-configs list | show | default | delete
+deployhq ssh-commands  list | show | create | delete
+deployhq excluded-files list | create | delete
+deployhq integrations list | show | delete
+deployhq agents        list | create | delete | revoke
+deployhq global-servers list | show | delete | copy-to-project
+deployhq global-env-vars list | show | delete
+deployhq auto-deploys list
+deployhq scheduled-deploys list | show | delete
 deployhq doctor        (health check)
+deployhq update        (self-update to latest version)
 deployhq setup         claude | codex (install agent plugins)
+deployhq mcp           (start MCP server in stdio mode)
 ```
 
 ## JSON Output
