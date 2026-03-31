@@ -736,7 +736,7 @@ func (m *initModel) viewSelect(b *strings.Builder, label string, items []string)
 		if i == m.cursor {
 			b.WriteString(initHighlight.Render(fmt.Sprintf("  ▸ %s", item)))
 		} else {
-			b.WriteString(fmt.Sprintf("    %s", item))
+			fmt.Fprintf(b, "    %s", item)
 		}
 		b.WriteString("\n")
 	}
