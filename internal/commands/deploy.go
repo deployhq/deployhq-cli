@@ -27,9 +27,28 @@ func newDeployCmd() *cobra.Command {
 				return err
 			}
 
+			env := cliCtx.Envelope
+
+			// Auto-select server if not specified and project has exactly one
+			if server == "" {
+				servers, err := client.ListServers(cliCtx.Background(), projectID)
+				if err == nil && len(servers) == 1 {
+					server = servers[0].Identifier
+					env.Status("Auto-selected server: %s", servers[0].Name)
+				} else if err == nil && len(servers) > 1 {
+					env.Status("Available servers:")
+					for _, s := range servers {
+						env.Status("  %s (%s)", s.Name, s.Identifier)
+					}
+					return &output.UserError{
+						Message: "Multiple servers found — specify which one",
+						Hint:    fmt.Sprintf("Use --server <identifier>, e.g. dhq deploy -p %s -s %s", projectID, servers[0].Identifier),
+					}
+				}
+			}
+
 			// Auto-fetch latest revision if none specified
 			if revision == "" && !useLatest {
-				env := cliCtx.Envelope
 				env.Status("Fetching latest revision...")
 				rev, err := client.GetLatestRevision(cliCtx.Background(), projectID)
 				if err != nil {
@@ -55,7 +74,6 @@ func newDeployCmd() *cobra.Command {
 				return err
 			}
 
-			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Deployment %s queued", dep.Identifier),
