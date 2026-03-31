@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -125,7 +126,7 @@ func runAssistSetup(env *output.Envelope, ollama *assist.OllamaClient) error {
 	output.ColorGreen.Fprintf(env.Stderr, "Ollama found: %s\n", ollamaPath) //nolint:errcheck
 
 	// Check if Ollama is running
-	if !ollama.IsAvailable(nil) {
+	if !ollama.IsAvailable(context.TODO()) {
 		env.Status("")
 		env.Status("Ollama is installed but not running.")
 		env.Status("Start it with: ollama serve")
@@ -136,7 +137,7 @@ func runAssistSetup(env *output.Envelope, ollama *assist.OllamaClient) error {
 	output.ColorGreen.Fprintln(env.Stderr, "Ollama is running") //nolint:errcheck
 
 	// Check if model is available
-	models, err := ollama.ListModels(nil)
+	models, err := ollama.ListModels(context.TODO())
 	if err != nil {
 		return err
 	}
@@ -178,7 +179,7 @@ func runAssistStatus(env *output.Envelope, ollama *assist.OllamaClient) error {
 	env.Status("")
 
 	// Ollama running?
-	if !ollama.IsAvailable(nil) {
+	if !ollama.IsAvailable(context.TODO()) {
 		output.ColorRed.Fprintln(env.Stderr, "Ollama: not running") //nolint:errcheck
 		env.Status("")
 		env.Status("Run 'dhq assist --setup' to get started.")
@@ -187,7 +188,7 @@ func runAssistStatus(env *output.Envelope, ollama *assist.OllamaClient) error {
 	output.ColorGreen.Fprintf(env.Stderr, "Ollama: running (%s)\n", ollama.BaseURL) //nolint:errcheck
 
 	// List models
-	models, err := ollama.ListModels(nil)
+	models, err := ollama.ListModels(context.TODO())
 	if err != nil {
 		output.ColorRed.Fprintf(env.Stderr, "Models: error (%v)\n", err) //nolint:errcheck
 		return nil

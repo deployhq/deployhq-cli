@@ -85,7 +85,7 @@ func (c *OllamaClient) IsAvailable(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	resp.Body.Close() //nolint:errcheck
 	return resp.StatusCode == http.StatusOK
 }
 
@@ -99,7 +99,7 @@ func (c *OllamaClient) ListModels(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect to Ollama: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	var tags ollamaTagsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
@@ -131,13 +131,13 @@ func (c *OllamaClient) Chat(ctx context.Context, messages []Message) (string, er
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("Ollama request failed: %w", err)
+		return "", fmt.Errorf("ollama request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("Ollama error %d: %s", resp.StatusCode, string(b))
+		return "", fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(b))
 	}
 
 	var result chatResponse
@@ -166,9 +166,9 @@ func (c *OllamaClient) ChatStream(ctx context.Context, messages []Message, w io.
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("Ollama request failed: %w", err)
+		return fmt.Errorf("ollama request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
