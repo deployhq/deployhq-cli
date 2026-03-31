@@ -130,6 +130,7 @@ func NewRootCmd(version string) *cobra.Command {
 		// Shortcuts
 		newDeployCmd(),
 		newRollbackCmd(),
+		newOpenCmd(),
 
 		// Escape hatch
 		newAPICmd(),

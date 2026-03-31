@@ -109,7 +109,10 @@ func newServerGroupsShowCmd() *cobra.Command {
 				env.WriteTable(srvCols, srvRows)
 			}
 
-			env.Status("\nTip: dhq deploy -p %s", projectID)
+			env.Status("\nNext commands:")
+			env.Status("  dhq deploy -p %s", projectID)
+			env.Status("  dhq servers list -p %s", projectID)
+			env.Status("  dhq server-groups update %s -p %s", group.Identifier, projectID)
 			return nil
 		},
 	}

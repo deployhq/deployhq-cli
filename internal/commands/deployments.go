@@ -154,7 +154,15 @@ func newDeploymentsShowCmd() *cobra.Command {
 				env.WriteTable(stepCols, stepRows)
 			}
 
-			env.Status("\nTip: dhq deployments logs %s -p %s", dep.Identifier, projectID)
+			d := dep.Identifier
+			env.Status("\nNext commands:")
+			env.Status("  dhq deployments logs %s -p %s", d, projectID)
+			if dep.Status == "completed" {
+				env.Status("  dhq rollback %s -p %s", d, projectID)
+			}
+			if dep.Status == "running" || dep.Status == "pending" {
+				env.Status("  dhq deployments abort %s -p %s", d, projectID)
+			}
 			return nil
 		},
 	}

@@ -120,7 +120,11 @@ func newServersShowCmd() *cobra.Command {
 				{"Last Revision", server.LastRevision},
 			})
 
-			env.Status("\nTip: dhq deploy -p %s -s %s", projectID, server.Identifier)
+			s := server.Identifier
+			env.Status("\nNext commands:")
+			env.Status("  dhq deploy -p %s -s %s", projectID, s)
+			env.Status("  dhq servers update %s -p %s", s, projectID)
+			env.Status("  dhq env-vars list -p %s", projectID)
 			return nil
 		},
 	}

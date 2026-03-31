@@ -124,7 +124,21 @@ func newProjectsShowCmd() *cobra.Command {
 				env.WriteTable(srvCols, srvRows)
 			}
 
-			env.Status("\nTip: dhq deployments list -p %s", project.Permalink)
+			p := project.Permalink
+			env.Status("\nNext commands:")
+			env.Status("  dhq deployments list -p %s", p)
+			env.Status("  dhq servers list -p %s", p)
+			env.Status("  dhq env-vars list -p %s", p)
+			env.Status("  dhq config-files list -p %s", p)
+			env.Status("  dhq excluded-files list -p %s", p)
+			env.Status("  dhq integrations list -p %s", p)
+			env.Status("  dhq ssh-commands list -p %s", p)
+			env.Status("  dhq auto-deploys list -p %s", p)
+			env.Status("  dhq build-commands list -p %s", p)
+			env.Status("  dhq build-configs list -p %s", p)
+			env.Status("  dhq repos show -p %s", p)
+			env.Status("  dhq deploy -p %s", p)
+			env.Status("  dhq open %s", p)
 			return nil
 		},
 	}

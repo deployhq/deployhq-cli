@@ -27,6 +27,11 @@ type Client struct {
 	userAgent  string
 }
 
+// Account returns the account subdomain this client is configured for.
+func (c *Client) Account() string {
+	return strings.TrimSuffix(c.baseURL.Hostname(), ".deployhq.com")
+}
+
 // Option configures the Client.
 type Option func(*Client)
 

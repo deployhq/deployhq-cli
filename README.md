@@ -98,6 +98,7 @@ dhq deployments   list | show | create | abort | rollback | logs
 dhq repos         show | create | update | branches | commits | latest-revision
 dhq deploy        (shortcut for deployments create)
 dhq rollback      (shortcut for deployments rollback)
+dhq open          [project] (open DeployHQ in browser)
 dhq api           GET|POST|PUT|PATCH|DELETE <path> (escape hatch)
 dhq auth          login | logout | status | token
 dhq config        show | init | set | unset
