@@ -137,7 +137,9 @@ func NewRootCmd(version string) *cobra.Command {
 
 		// Auth & Config
 		newAuthCmd(),
+		newSignupCmd(),
 		newConfigCmd(),
+		newConfigureCmd(),
 
 		// Agent & Meta
 		newCommandsCatalogCmd(),

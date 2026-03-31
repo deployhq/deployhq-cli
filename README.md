@@ -101,7 +101,9 @@ dhq rollback      (shortcut for deployments rollback)
 dhq open          [project] (open DeployHQ in browser)
 dhq api           GET|POST|PUT|PATCH|DELETE <path> (escape hatch)
 dhq auth          login | logout | status | token
+dhq signup        (create a new DeployHQ account)
 dhq config        show | init | set | unset
+dhq configure     (interactive setup wizard)
 dhq commands      (full catalog as JSON for agents)
 dhq show <url>    (show any DeployHQ resource by URL)
 dhq env-vars      list | show | create | update | delete
