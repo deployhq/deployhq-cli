@@ -142,6 +142,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newSetupCmd(),
 		newMCPCmd(),
 		newDoctorCmd(),
+		newUpdateCmd(version),
 		newVersionCmd(version),
 	)
 
