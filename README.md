@@ -119,7 +119,7 @@ dhq global-servers list | show | create | update | delete | copy-to-project
 dhq global-env-vars list | show | create | update | delete
 dhq auto-deploys list | enable
 dhq scheduled-deploys list | show | delete
-dhq activity      (account activity and deploy stats — coming soon)
+dhq activity      list | stats (account activity — coming soon)
 dhq status        (quick dashboard across all projects — coming soon)
 dhq assist        (AI deployment assistant, requires Ollama)
 dhq completion    bash | zsh | fish | powershell
