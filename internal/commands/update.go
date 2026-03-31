@@ -33,12 +33,15 @@ func newUpdateCmd(currentVersion string) *cobra.Command {
 			// Try Homebrew first
 			if brewPath, err := exec.LookPath("brew"); err == nil {
 				env.Status("Updating via Homebrew...")
-				c := exec.Command(brewPath, "upgrade", "dhq")
-				c.Stdout = os.Stdout
-				c.Stderr = os.Stderr
-				if err := c.Run(); err == nil {
-					env.Status("Updated to %s via Homebrew.", info.Latest)
-					return nil
+				// Try fully-qualified tap name first, then bare name
+				for _, formula := range []string{"deployhq/tap/dhq", "dhq"} {
+					c := exec.Command(brewPath, "upgrade", formula)
+					c.Stdout = os.Stdout
+					c.Stderr = os.Stderr
+					if err := c.Run(); err == nil {
+						env.Status("Updated to %s via Homebrew.", info.Latest)
+						return nil
+					}
 				}
 				// Homebrew failed (maybe not installed via brew), fall through
 			}

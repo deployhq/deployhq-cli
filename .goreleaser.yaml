@@ -42,19 +42,18 @@ changelog:
       - "^ci:"
       - "^chore:"
 
-# Uncomment when deployhq/homebrew-tap repo is created:
-# brews:
-#   - name: dhq
-#     repository:
-#       owner: deployhq
-#       name: homebrew-tap
-#     homepage: "https://www.deployhq.com"
-#     description: "DeployHQ CLI — deploy from your terminal"
-#     license: "MIT"
-#     install: |
-#       bin.install "dhq"
-#     test: |
-#       system "#{bin}/dhq", "version"
+brews:
+  - name: dhq
+    repository:
+      owner: deployhq
+      name: homebrew-tap
+    homepage: "https://www.deployhq.com"
+    description: "DeployHQ CLI — deploy from your terminal"
+    license: "MIT"
+    install: |
+      bin.install "dhq"
+    test: |
+      system "#{bin}/dhq", "version"
 
 # Uncomment when deployhq/scoop-bucket repo is created:
 # scoops:

@@ -4,6 +4,12 @@ DeployHQ from your terminal -- for humans and agents.
 
 ## Install
 
+### Homebrew (macOS/Linux)
+
+```bash
+brew install deployhq/tap/dhq
+```
+
 ### Script (macOS/Linux)
 
 ```bash
@@ -105,6 +111,7 @@ dhq ssh-commands  list | show | create | update | delete
 dhq excluded-files list | show | create | update | delete
 dhq integrations list | show | create | update | delete
 dhq agents        list | create | update | delete | revoke
+dhq ssh-keys      list | create | delete
 dhq global-servers list | show | create | update | delete | copy-to-project
 dhq global-env-vars list | show | create | update | delete
 dhq auto-deploys list | enable
