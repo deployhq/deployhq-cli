@@ -13,8 +13,9 @@ const pollInterval = 3 * time.Second
 
 // watchDeployment polls a deployment until it completes or fails, showing real-time step progress.
 func watchDeployment(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) error {
-	seen := make(map[string]string) // step identifier → last seen status
-	lastStage := ""
+	printed := make(map[string]bool) // step identifier → printed as terminal
+	stageShown := make(map[string]bool)
+	shownRunning := "" // identifier of step currently shown as "running"
 
 	for {
 		dep, err := client.GetDeployment(ctx, projectID, deploymentID)
@@ -22,19 +23,32 @@ func watchDeployment(ctx context.Context, client *sdk.Client, env *output.Envelo
 			return err
 		}
 
-		// Show step progress grouped by stage
 		for _, s := range dep.Steps {
-			prev, exists := seen[s.Identifier]
-			if !exists || prev != s.Status {
-				seen[s.Identifier] = s.Status
+			isTerminal := s.Status == "completed" || s.Status == "failed" || s.Status == "skipped"
 
-				// Print stage header when it changes
-				if s.Stage != lastStage {
-					lastStage = s.Stage
+			// Print terminal steps once
+			if isTerminal && !printed[s.Identifier] {
+				if !stageShown[s.Stage] {
+					stageShown[s.Stage] = true
 					env.Status("\n%s %s:", stageEmoji(s.Stage), capitalize(s.Stage))
 				}
-
 				env.Status("  %s %s", stepEmoji(s.Status), s.Description)
+				printed[s.Identifier] = true
+
+				// Clear running indicator if this was the running step
+				if shownRunning == s.Identifier {
+					shownRunning = ""
+				}
+			}
+
+			// Show the first running step (only one at a time, only once)
+			if s.Status == "running" && shownRunning != s.Identifier && !printed[s.Identifier] {
+				if !stageShown[s.Stage] {
+					stageShown[s.Stage] = true
+					env.Status("\n%s %s:", stageEmoji(s.Stage), capitalize(s.Stage))
+				}
+				env.Status("  %s %s...", stepEmoji("running"), s.Description)
+				shownRunning = s.Identifier
 			}
 		}
 
