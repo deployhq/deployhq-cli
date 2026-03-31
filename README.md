@@ -100,6 +100,7 @@ dhq repos         show | create | update | branches | commits | latest-revision
 dhq deploy        [-p project] [-s server] [--wait] (deploy with live progress)
 dhq rollback      <deployment-id> -p <project>
 dhq open          [project] (open DeployHQ in browser)
+dhq init          (interactive project setup wizard)
 dhq api           GET|POST|PUT|PATCH|DELETE <path> (escape hatch)
 dhq auth          login | logout | status | token
 dhq signup        (create a new DeployHQ account)

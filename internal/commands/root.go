@@ -131,6 +131,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newDeployCmd(),
 		newRollbackCmd(),
 		newOpenCmd(),
+		newInitCmd(),
 
 		// Escape hatch
 		newAPICmd(),
