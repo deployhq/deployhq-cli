@@ -120,6 +120,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newExcludedFilesCmd(),
 		newIntegrationsCmd(),
 		newAgentsCmd(),
+		newSSHKeysCmd(),
 		newGlobalServersCmd(),
 		newGlobalEnvVarsCmd(),
 		newAutoDeploysCmd(),
