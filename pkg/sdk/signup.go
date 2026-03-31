@@ -45,7 +45,7 @@ func Signup(req SignupRequest) (*SignupResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("signup request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	respBody, _ := io.ReadAll(resp.Body)
 

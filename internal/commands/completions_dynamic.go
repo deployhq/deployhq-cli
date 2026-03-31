@@ -22,6 +22,8 @@ func completeProjectNames(cmd *cobra.Command, args []string, toComplete string) 
 }
 
 // completeServerNames provides dynamic completion for server identifiers within a project.
+//
+//nolint:unused // Reserved for future use by server-specific commands.
 func completeServerNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	projectID, err := cliCtx.RequireProject()
 	if err != nil {
