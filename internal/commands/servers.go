@@ -66,6 +66,10 @@ func newServersListCmd() *cobra.Command {
 				rows[i] = []string{s.Name, s.Identifier, s.ProtocolType, s.Branch, enabled}
 			}
 			env.WriteTable(columns, rows)
+
+			if len(servers) > 0 {
+				env.Status("\nTip: dhq deploy -p %s -s %s", projectID, servers[0].Identifier)
+			}
 			return nil
 		},
 	}

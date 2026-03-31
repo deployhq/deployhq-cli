@@ -53,6 +53,8 @@ func newEnvVarsListCmd() *cobra.Command {
 				rows[i] = []string{v.Name, v.MaskedValue, locked}
 			}
 			env.WriteTable([]string{"Name", "Value", "Locked"}, rows)
+
+			env.Status("\nTip: dhq env-vars create --name KEY --value VALUE -p %s", projectID)
 			return nil
 		},
 	}

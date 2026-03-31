@@ -57,6 +57,10 @@ func newServerGroupsListCmd() *cobra.Command {
 				rows[i] = []string{g.Name, g.Identifier, fmt.Sprintf("%d", len(g.Servers)), g.Environment}
 			}
 			env.WriteTable(columns, rows)
+
+			if len(groups) > 0 {
+				env.Status("\nTip: dhq server-groups show %s -p %s", groups[0].Identifier, projectID)
+			}
 			return nil
 		},
 	}

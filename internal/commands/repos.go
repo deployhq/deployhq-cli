@@ -69,6 +69,7 @@ func newReposShowCmd() *cobra.Command {
 				rows = append(rows, []string{"Hosting", repo.HostingService.Name})
 			}
 			env.WriteTable([]string{"Field", "Value"}, rows)
+			env.Status("\nTip: dhq repos branches -p %s", projectID)
 			return nil
 		},
 	}

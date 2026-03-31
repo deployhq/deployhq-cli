@@ -70,6 +70,10 @@ func newDeploymentsListCmd() *cobra.Command {
 				rows[i] = []string{d.Identifier, d.Status, d.Branch, deployer, queued}
 			}
 			env.WriteTable(columns, rows)
+
+			if len(result.Records) > 0 {
+				env.Status("\nTip: dhq deployments show %s -p %s", result.Records[0].Identifier, projectID)
+			}
 			return nil
 		},
 	}
