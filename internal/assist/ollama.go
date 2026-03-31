@@ -172,7 +172,7 @@ func (c *OllamaClient) ChatStream(ctx context.Context, messages []Message, w io.
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("Ollama error %d: %s", resp.StatusCode, string(b))
+		return fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(b))
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
