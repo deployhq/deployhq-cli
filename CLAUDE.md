@@ -7,7 +7,7 @@
 ## Development
 
 ```bash
-go build ./cmd/deployhq/       # Build binary
+go build ./cmd/deployhq/   # binary outputs as dhq       # Build binary
 go test ./... -v               # Run all tests (96 tests)
 go vet ./...                   # Static analysis
 ```
@@ -42,7 +42,7 @@ internal/version/   Update checker (GitHub releases API)
 - **Output contract**: stdout is ALWAYS data (table or JSON), stderr is ALWAYS human text. Never mixed.
 - **`--json <fields>`**: Field selection on any command. Piped output auto-switches to JSON.
 - **`FlexString` type**: The DeployHQ API inconsistently returns some fields as strings or numbers. `FlexString` handles both.
-- **`deployhq api`**: Escape hatch covering all 144+ endpoints not in the command tree.
+- **`dhq api`**: Escape hatch covering all 144+ endpoints not in the command tree.
 - **Breadcrumbs**: JSON responses include suggested next commands.
 - **No login in CI**: `DEPLOYHQ_ACCOUNT` + `DEPLOYHQ_EMAIL` + `DEPLOYHQ_API_KEY` env vars.
 

@@ -1,7 +1,7 @@
 # .github/workflows/deploy.yml
 #
 # Deploy via DeployHQ when pushing to main.
-# No `deployhq auth login` needed — env vars handle auth in CI.
+# No `dhq auth login` needed — env vars handle auth in CI.
 #
 # Required repository secrets:
 #   DEPLOYHQ_ACCOUNT  - Account subdomain (e.g. "mycompany")
@@ -31,14 +31,14 @@ jobs:
       - name: Get latest revision
         id: rev
         run: |
-          REV=$(deployhq repos latest-revision --json true | jq -r '.data.ref')
+          REV=$(dhq repos latest-revision --json true | jq -r '.data.ref')
           echo "revision=$REV" >> "$GITHUB_OUTPUT"
           echo "Deploying revision: $REV"
 
       - name: Deploy to production
         id: deploy
         run: |
-          RESULT=$(deployhq deploy \
+          RESULT=$(dhq deploy \
             --server production \
             --revision ${{ steps.rev.outputs.revision }} \
             --json true)
@@ -51,7 +51,7 @@ jobs:
           DEP_ID=${{ steps.deploy.outputs.deployment_id }}
           echo "Waiting for deployment $DEP_ID..."
           for i in $(seq 1 60); do
-            STATUS=$(deployhq deployments show "$DEP_ID" --json true | jq -r '.data.status')
+            STATUS=$(dhq deployments show "$DEP_ID" --json true | jq -r '.data.status')
             echo "  [$i] $STATUS"
             case "$STATUS" in
               completed) echo "Deployment completed!"; exit 0 ;;
@@ -65,4 +65,4 @@ jobs:
       - name: Show deployment logs (on failure)
         if: failure()
         run: |
-          deployhq deployments logs ${{ steps.deploy.outputs.deployment_id }}
+          dhq deployments logs ${{ steps.deploy.outputs.deployment_id }}

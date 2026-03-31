@@ -14,7 +14,7 @@ import (
 func newUpdateCmd(currentVersion string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "update",
-		Short: "Update deployhq-cli to the latest version",
+		Short: "Update dhq to the latest version",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
@@ -33,7 +33,7 @@ func newUpdateCmd(currentVersion string) *cobra.Command {
 			// Try Homebrew first
 			if brewPath, err := exec.LookPath("brew"); err == nil {
 				env.Status("Updating via Homebrew...")
-				c := exec.Command(brewPath, "upgrade", "deployhq")
+				c := exec.Command(brewPath, "upgrade", "dhq")
 				c.Stdout = os.Stdout
 				c.Stderr = os.Stderr
 				if err := c.Run(); err == nil {

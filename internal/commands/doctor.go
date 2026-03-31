@@ -20,7 +20,7 @@ func newDoctorCmd() *cobra.Command {
 			// Check 1: Auth
 			creds, err := auth.Load()
 			if err != nil {
-				checks = append(checks, doctorCheck{"Authentication", "fail", "Not logged in. Run 'deployhq auth login'."})
+				checks = append(checks, doctorCheck{"Authentication", "fail", "Not logged in. Run 'dhq auth login'."})
 			} else {
 				checks = append(checks, doctorCheck{"Authentication", "ok", "Logged in as " + creds.Email})
 			}
@@ -31,7 +31,7 @@ func newDoctorCmd() *cobra.Command {
 			} else if creds != nil && creds.Account != "" {
 				checks = append(checks, doctorCheck{"Account", "ok", creds.Account + ".deployhq.com (from auth store)"})
 			} else {
-				checks = append(checks, doctorCheck{"Account", "fail", "No account configured. Set DEPLOYHQ_ACCOUNT or run 'deployhq config set account <name>'."})
+				checks = append(checks, doctorCheck{"Account", "fail", "No account configured. Set DEPLOYHQ_ACCOUNT or run 'dhq config set account <name>'."})
 			}
 
 			// Check 3: Project config
@@ -46,7 +46,7 @@ func newDoctorCmd() *cobra.Command {
 			if _, err := os.Stat(projectCfg); err == nil {
 				checks = append(checks, doctorCheck{"Project config", "ok", projectCfg})
 			} else {
-				checks = append(checks, doctorCheck{"Project config", "info", "No .deployhq.toml found. Run 'deployhq config init' to create one."})
+				checks = append(checks, doctorCheck{"Project config", "info", "No .deployhq.toml found. Run 'dhq config init' to create one."})
 			}
 
 			// Check 5: Global config
@@ -54,7 +54,7 @@ func newDoctorCmd() *cobra.Command {
 			if _, err := os.Stat(globalCfg); err == nil {
 				checks = append(checks, doctorCheck{"Global config", "ok", globalCfg})
 			} else {
-				checks = append(checks, doctorCheck{"Global config", "info", "No global config. Run 'deployhq config init --global'."})
+				checks = append(checks, doctorCheck{"Global config", "info", "No global config. Run 'dhq config init --global'."})
 			}
 
 			// Check 6: API connectivity

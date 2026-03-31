@@ -21,7 +21,7 @@ func TestHelpAgent_RootCommand(t *testing.T) {
 	var schema AgentHelpSchema
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &schema))
 
-	assert.Equal(t, "deployhq", schema.Name)
+	assert.Equal(t, "dhq", schema.Name)
 	assert.NotEmpty(t, schema.Subcommands)
 	assert.NotEmpty(t, schema.Flags)
 
@@ -48,7 +48,7 @@ func TestHelpAgent_Subcommand(t *testing.T) {
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &schema))
 
 	assert.Equal(t, "projects", schema.Name)
-	assert.Equal(t, "deployhq projects", schema.FullCommand)
+	assert.Equal(t, "dhq projects", schema.FullCommand)
 	assert.NotEmpty(t, schema.Subcommands)
 
 	// Check subcommands include list, show, create

@@ -24,7 +24,7 @@ func newVersionCmd(version string) *cobra.Command {
 				return env.WriteJSON(info)
 			}
 
-			env.Status("deployhq-cli %s (%s/%s, %s)", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
+			env.Status("dhq %s (%s/%s, %s)", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
 			return nil
 		},
 	}

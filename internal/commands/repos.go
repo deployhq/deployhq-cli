@@ -50,8 +50,8 @@ func newReposShowCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(repo,
 					fmt.Sprintf("Repository: %s (%s)", repo.URL, repo.ScmType),
-					output.Breadcrumb{Action: "branches", Cmd: fmt.Sprintf("deployhq repos branches -p %s", projectID)},
-					output.Breadcrumb{Action: "commits", Cmd: fmt.Sprintf("deployhq repos commits -p %s", projectID)},
+					output.Breadcrumb{Action: "branches", Cmd: fmt.Sprintf("dhq repos branches -p %s", projectID)},
+					output.Breadcrumb{Action: "commits", Cmd: fmt.Sprintf("dhq repos commits -p %s", projectID)},
 				))
 			}
 

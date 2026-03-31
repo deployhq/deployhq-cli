@@ -30,7 +30,7 @@ func TestInternalError(t *testing.T) {
 }
 
 func TestAuthError(t *testing.T) {
-	err := &AuthError{Message: "not logged in", Hint: "run deployhq auth login"}
+	err := &AuthError{Message: "not logged in", Hint: "run dhq auth login"}
 	assert.Contains(t, err.Error(), "not logged in")
 	assert.Equal(t, ExitAuthError, ClassifyError(err))
 }

@@ -195,7 +195,7 @@ func newAuthTokenCmd() *cobra.Command {
 			if err != nil {
 				return &output.AuthError{
 					Message: "Not logged in",
-					Hint:    "Run 'deployhq auth login' first",
+					Hint:    "Run 'dhq auth login' first",
 				}
 			}
 			fmt.Fprintln(cliCtx.Envelope.Stdout, creds.APIKey) //nolint:errcheck

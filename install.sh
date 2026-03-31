@@ -4,7 +4,7 @@
 set -e
 
 REPO="deployhq/deployhq-cli"
-BINARY="deployhq"
+BINARY="dhq"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and architecture
@@ -32,7 +32,7 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-echo "Installing deployhq-cli v$VERSION ($OS/$ARCH)..."
+echo "Installing dhq v$VERSION ($OS/$ARCH)..."
 
 # Download
 EXT="tar.gz"
@@ -66,9 +66,9 @@ fi
 chmod +x "$INSTALL_DIR/$BINARY"
 
 echo ""
-echo "deployhq-cli v$VERSION installed to $INSTALL_DIR/$BINARY"
+echo "dhq v$VERSION installed to $INSTALL_DIR/$BINARY"
 echo ""
 echo "Get started:"
-echo "  deployhq auth login"
-echo "  deployhq projects list"
-echo "  deployhq --help"
+echo "  dhq auth login"
+echo "  dhq projects list"
+echo "  dhq --help"

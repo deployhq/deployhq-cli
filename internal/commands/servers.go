@@ -51,8 +51,8 @@ func newServersListCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(servers,
 					fmt.Sprintf("%d servers", len(servers)),
-					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("deployhq servers show <id> -p %s", projectID)},
-					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("deployhq deploy -p %s", projectID)},
+					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq servers show <id> -p %s", projectID)},
+					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
 				))
 			}
 
@@ -96,8 +96,8 @@ func newServersShowCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(server,
 					fmt.Sprintf("Server: %s", server.Name),
-					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("deployhq deploy -p %s", projectID)},
-					output.Breadcrumb{Action: "reset-host-key", Cmd: fmt.Sprintf("deployhq servers reset-host-key %s -p %s", server.Identifier, projectID)},
+					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
+					output.Breadcrumb{Action: "reset-host-key", Cmd: fmt.Sprintf("dhq servers reset-host-key %s -p %s", server.Identifier, projectID)},
 				))
 			}
 

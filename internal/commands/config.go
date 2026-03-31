@@ -98,7 +98,7 @@ func newConfigInitCmd() *cobra.Command {
 			if fileExists(path) {
 				return &output.UserError{
 					Message: fmt.Sprintf("Config file already exists: %s", path),
-					Hint:    "Use 'deployhq config set' to modify existing config",
+					Hint:    "Use 'dhq config set' to modify existing config",
 				}
 			}
 

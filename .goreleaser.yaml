@@ -6,9 +6,9 @@ before:
     - go generate ./...
 
 builds:
-  - id: deployhq
+  - id: dhq
     main: ./cmd/deployhq
-    binary: deployhq
+    binary: dhq
     env:
       - CGO_ENABLED=0
     goos:
@@ -22,10 +22,10 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - id: deployhq
+  - id: dhq
     builds:
-      - deployhq
-    name_template: "deployhq_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+      - dhq
+    name_template: "dhq_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         format: zip
@@ -44,7 +44,7 @@ changelog:
 
 # Uncomment when deployhq/homebrew-tap repo is created:
 # brews:
-#   - name: deployhq
+#   - name: dhq
 #     repository:
 #       owner: deployhq
 #       name: homebrew-tap
@@ -52,13 +52,13 @@ changelog:
 #     description: "DeployHQ CLI — deploy from your terminal"
 #     license: "MIT"
 #     install: |
-#       bin.install "deployhq"
+#       bin.install "dhq"
 #     test: |
-#       system "#{bin}/deployhq", "version"
+#       system "#{bin}/dhq", "version"
 
 # Uncomment when deployhq/scoop-bucket repo is created:
 # scoops:
-#   - name: deployhq
+#   - name: dhq
 #     repository:
 #       owner: deployhq
 #       name: scoop-bucket
@@ -67,8 +67,8 @@ changelog:
 #     license: "MIT"
 
 nfpms:
-  - id: deployhq
-    package_name: deployhq
+  - id: dhq
+    package_name: dhq
     vendor: DeployHQ
     homepage: "https://www.deployhq.com"
     description: "DeployHQ CLI — deploy from your terminal"

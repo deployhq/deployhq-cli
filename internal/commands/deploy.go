@@ -15,7 +15,7 @@ func newDeployCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "Deploy to a server (shortcut for deployments create)",
-		Long:  "Create a deployment. Shortcut for 'deployhq deployments create'.",
+		Long:  "Create a deployment. Shortcut for 'dhq deployments create'.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -59,16 +59,16 @@ func newDeployCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Deployment %s queued", dep.Identifier),
-					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("deployhq deployments show %s -p %s", dep.Identifier, projectID)},
-					output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("deployhq deployments logs %s -p %s", dep.Identifier, projectID)},
-					output.Breadcrumb{Action: "abort", Cmd: fmt.Sprintf("deployhq deployments abort %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "abort", Cmd: fmt.Sprintf("dhq deployments abort %s -p %s", dep.Identifier, projectID)},
 				))
 			}
 
 			env.Status("Deployment %s queued (status: %s)", dep.Identifier, dep.Status)
 			env.Status("\nNext:")
-			env.Status("  deployhq deployments show %s -p %s", dep.Identifier, projectID)
-			env.Status("  deployhq deployments logs %s -p %s", dep.Identifier, projectID)
+			env.Status("  dhq deployments show %s -p %s", dep.Identifier, projectID)
+			env.Status("  dhq deployments logs %s -p %s", dep.Identifier, projectID)
 			return nil
 		},
 	}
@@ -105,7 +105,7 @@ func newRollbackCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Rollback deployment %s queued", dep.Identifier),
-					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("deployhq deployments show %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
 				))
 			}
 

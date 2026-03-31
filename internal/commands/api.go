@@ -19,10 +19,10 @@ func newAPICmd() *cobra.Command {
 Covers all 144+ endpoints including those without dedicated commands.
 
 Examples:
-  deployhq api GET /projects
-  deployhq api POST /projects --body '{"project":{"name":"New"}}'
-  deployhq api GET /projects/my-app/deployments
-  deployhq api DELETE /projects/my-app/servers/srv-123`,
+  dhq api GET /projects
+  dhq api POST /projects --body '{"project":{"name":"New"}}'
+  dhq api GET /projects/my-app/deployments
+  dhq api DELETE /projects/my-app/servers/srv-123`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			method := strings.ToUpper(args[0])

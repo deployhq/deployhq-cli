@@ -51,8 +51,8 @@ func newDeploymentsListCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(result,
 					fmt.Sprintf("%d deployments (page %d/%d)", len(result.Records), result.Pagination.CurrentPage, result.Pagination.TotalPages),
-					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("deployhq deployments show <id> -p %s", projectID)},
-					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("deployhq deploy -p %s", projectID)},
+					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq deployments show <id> -p %s", projectID)},
+					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
 				))
 			}
 
@@ -99,13 +99,13 @@ func newDeploymentsShowCmd() *cobra.Command {
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
 				crumbs := []output.Breadcrumb{
-					{Action: "logs", Cmd: fmt.Sprintf("deployhq deployments logs %s -p %s", dep.Identifier, projectID)},
+					{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", dep.Identifier, projectID)},
 				}
 				if dep.Status == "completed" {
-					crumbs = append(crumbs, output.Breadcrumb{Action: "rollback", Cmd: fmt.Sprintf("deployhq rollback %s -p %s", dep.Identifier, projectID)})
+					crumbs = append(crumbs, output.Breadcrumb{Action: "rollback", Cmd: fmt.Sprintf("dhq rollback %s -p %s", dep.Identifier, projectID)})
 				}
 				if dep.Status == "running" {
-					crumbs = append(crumbs, output.Breadcrumb{Action: "abort", Cmd: fmt.Sprintf("deployhq deployments abort %s -p %s", dep.Identifier, projectID)})
+					crumbs = append(crumbs, output.Breadcrumb{Action: "abort", Cmd: fmt.Sprintf("dhq deployments abort %s -p %s", dep.Identifier, projectID)})
 				}
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Deployment %s: %s", dep.Identifier, dep.Status),
@@ -200,13 +200,13 @@ func newDeploymentsCreateCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Deployment %s queued", dep.Identifier),
-					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("deployhq deployments show %s -p %s", dep.Identifier, projectID)},
-					output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("deployhq deployments logs %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", dep.Identifier, projectID)},
 				))
 			}
 
 			env.Status("Deployment %s queued (status: %s)", dep.Identifier, dep.Status)
-			env.Status("\nNext: deployhq deployments show %s -p %s", dep.Identifier, projectID)
+			env.Status("\nNext: dhq deployments show %s -p %s", dep.Identifier, projectID)
 			return nil
 		},
 	}
@@ -272,7 +272,7 @@ func newDeploymentsRollbackCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Rollback deployment %s queued", dep.Identifier),
-					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("deployhq deployments show %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
 				))
 			}
 

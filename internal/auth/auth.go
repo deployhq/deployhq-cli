@@ -107,7 +107,7 @@ func loadFromFile() (*Credentials, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("auth: not logged in (run 'deployhq auth login')")
+			return nil, fmt.Errorf("auth: not logged in (run 'dhq auth login')")
 		}
 		return nil, fmt.Errorf("auth: read credentials: %w", err)
 	}

@@ -12,8 +12,8 @@ func TestNewResponse(t *testing.T) {
 	resp := NewResponse(
 		map[string]string{"id": "123"},
 		"Deployment created",
-		Breadcrumb{Action: "logs", Cmd: "deployhq deployments logs 123"},
-		Breadcrumb{Action: "abort", Cmd: "deployhq deployments abort 123"},
+		Breadcrumb{Action: "logs", Cmd: "dhq deployments logs 123"},
+		Breadcrumb{Action: "abort", Cmd: "dhq deployments abort 123"},
 	)
 
 	assert.True(t, resp.OK)

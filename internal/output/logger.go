@@ -28,7 +28,7 @@ func NewLogger() *Logger {
 		return &Logger{}
 	}
 
-	name := fmt.Sprintf("deployhq-%s.log", time.Now().Format("2006-01-02T15-04-05"))
+	name := fmt.Sprintf("dhq-%s.log", time.Now().Format("2006-01-02T15-04-05"))
 	path := filepath.Join(dir, name)
 
 	f, err := os.Create(path)

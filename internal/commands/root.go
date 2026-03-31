@@ -29,7 +29,7 @@ var (
 // NewRootCmd creates the root command with all subcommands.
 func NewRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
-		Use:     "deployhq",
+		Use:     "dhq",
 		Short:   "DeployHQ CLI — deploy from your terminal",
 		Long:    `The official DeployHQ command-line interface for managing projects, servers, and deployments.`,
 		Version: version,

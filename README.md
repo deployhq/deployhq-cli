@@ -23,33 +23,33 @@ Download from [Releases](https://github.com/deployhq/deployhq-cli/releases).
 ### Updating
 
 ```bash
-deployhq update
+dhq update
 ```
 
 ## Quick Start
 
 ```bash
 # Login
-deployhq auth login
+dhq auth login
 
 # List projects
-deployhq projects list
+dhq projects list
 
 # Deploy
-deployhq deploy -p my-app -s production --use-latest
+dhq deploy -p my-app -s production --use-latest
 
 # Check status
-deployhq deployments show <id> -p my-app
+dhq deployments show <id> -p my-app
 
 # View logs
-deployhq deployments logs <id> -p my-app
+dhq deployments logs <id> -p my-app
 ```
 
 ## Authentication
 
 ```bash
 # Interactive login (stores in OS keyring)
-deployhq auth login
+dhq auth login
 
 # Environment variables (CI/agents — no login needed)
 export DEPLOYHQ_API_KEY=your-api-key
@@ -59,7 +59,7 @@ export DEPLOYHQ_EMAIL=your-email
 
 ## CI/CD (GitHub Actions)
 
-No `deployhq auth login` needed — set secrets and go:
+No `dhq auth login` needed — set secrets and go:
 
 ```yaml
 # .github/workflows/deploy.yml
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
-      - run: deployhq deploy --server production --revision ${{ github.sha }} --json true
+      - run: dhq deploy --server production --revision ${{ github.sha }} --json true
 ```
 
 See `examples/github-actions/` for complete workflows:
@@ -85,34 +85,34 @@ See `examples/github-actions/` for complete workflows:
 ## Commands
 
 ```
-deployhq projects      list | show | create | update | delete | star | insights
-deployhq servers       list | show | create | update | delete | reset-host-key
-deployhq server-groups list | show | create | update | delete
-deployhq deployments   list | show | create | abort | rollback | logs
-deployhq repos         show | update | branches | commits | latest-revision
-deployhq deploy        (shortcut for deployments create)
-deployhq rollback      (shortcut for deployments rollback)
-deployhq api           GET|POST|PUT|PATCH|DELETE <path> (escape hatch)
-deployhq auth          login | logout | status | token
-deployhq config        show | init | set | unset
-deployhq commands      (full catalog as JSON for agents)
-deployhq show <url>    (show any DeployHQ resource by URL)
-deployhq env-vars      list | show | create | update | delete
-deployhq config-files  list | show | create | delete
-deployhq build-commands list | create | delete
-deployhq build-configs list | show | default | delete
-deployhq ssh-commands  list | show | create | delete
-deployhq excluded-files list | create | delete
-deployhq integrations list | show | delete
-deployhq agents        list | create | delete | revoke
-deployhq global-servers list | show | delete | copy-to-project
-deployhq global-env-vars list | show | delete
-deployhq auto-deploys list
-deployhq scheduled-deploys list | show | delete
-deployhq doctor        (health check)
-deployhq update        (self-update to latest version)
-deployhq setup         claude | codex (install agent plugins)
-deployhq mcp           (start MCP server in stdio mode)
+dhq projects      list | show | create | update | delete | star | insights
+dhq servers       list | show | create | update | delete | reset-host-key
+dhq server-groups list | show | create | update | delete
+dhq deployments   list | show | create | abort | rollback | logs
+dhq repos         show | update | branches | commits | latest-revision
+dhq deploy        (shortcut for deployments create)
+dhq rollback      (shortcut for deployments rollback)
+dhq api           GET|POST|PUT|PATCH|DELETE <path> (escape hatch)
+dhq auth          login | logout | status | token
+dhq config        show | init | set | unset
+dhq commands      (full catalog as JSON for agents)
+dhq show <url>    (show any DeployHQ resource by URL)
+dhq env-vars      list | show | create | update | delete
+dhq config-files  list | show | create | delete
+dhq build-commands list | create | delete
+dhq build-configs list | show | default | delete
+dhq ssh-commands  list | show | create | delete
+dhq excluded-files list | create | delete
+dhq integrations list | show | delete
+dhq agents        list | create | delete | revoke
+dhq global-servers list | show | delete | copy-to-project
+dhq global-env-vars list | show | delete
+dhq auto-deploys list
+dhq scheduled-deploys list | show | delete
+dhq doctor        (health check)
+dhq update        (self-update to latest version)
+dhq setup         claude | codex (install agent plugins)
+dhq mcp           (start MCP server in stdio mode)
 ```
 
 ## JSON Output
@@ -121,13 +121,13 @@ All commands support `--json` for machine-readable output:
 
 ```bash
 # Full JSON
-deployhq projects list --json
+dhq projects list --json
 
 # Selected fields
-deployhq projects list --json name,permalink,zone
+dhq projects list --json name,permalink,zone
 
 # Pipe to jq
-deployhq deployments show abc123 -p my-app --json | jq '.data.status'
+dhq deployments show abc123 -p my-app --json | jq '.data.status'
 ```
 
 JSON responses include breadcrumbs with suggested next commands:
@@ -138,8 +138,8 @@ JSON responses include breadcrumbs with suggested next commands:
   "data": { ... },
   "summary": "Deployment abc123 completed",
   "breadcrumbs": [
-    {"action": "logs", "cmd": "deployhq deployments logs abc123 -p my-app"},
-    {"action": "rollback", "cmd": "deployhq rollback abc123 -p my-app"}
+    {"action": "logs", "cmd": "dhq deployments logs abc123 -p my-app"},
+    {"action": "rollback", "cmd": "dhq rollback abc123 -p my-app"}
   ]
 }
 ```
@@ -155,13 +155,13 @@ JSON responses include breadcrumbs with suggested next commands:
 
 ```bash
 # Create project config
-deployhq config init
+dhq config init
 
 # Set default project
-deployhq config set project my-app
+dhq config set project my-app
 
 # Show resolved config with sources
-deployhq config show --resolved
+dhq config show --resolved
 ```
 
 ## Agent Integration
@@ -170,31 +170,31 @@ The CLI is designed for AI agents that can run shell commands.
 
 ```bash
 # Install agent plugin
-deployhq setup claude
+dhq setup claude
 
 # Full command catalog for agent discovery
-deployhq commands --json
+dhq commands --json
 
 # Agent-optimized workflow
-DEPLOYHQ_AGENT=my-bot deployhq deploy -p my-app --json
+DEPLOYHQ_AGENT=my-bot dhq deploy -p my-app --json
 ```
 
 Set `DEPLOYHQ_OUTPUT_FILE` to capture all operations as JSONL:
 
 ```bash
 export DEPLOYHQ_OUTPUT_FILE=/tmp/deployhq.jsonl
-deployhq deploy -p my-app
+dhq deploy -p my-app
 cat /tmp/deployhq.jsonl
 ```
 
 ## Escape Hatch
 
-`deployhq api` covers all 144+ API endpoints:
+`dhq api` covers all 144+ API endpoints:
 
 ```bash
-deployhq api GET /projects/my-app/environment_variables
-deployhq api POST /projects/my-app/config_files --body '{"config_file":{"path":".env","body":"KEY=val"}}'
-deployhq api DELETE /projects/my-app/excluded_files/abc123
+dhq api GET /projects/my-app/environment_variables
+dhq api POST /projects/my-app/config_files --body '{"config_file":{"path":".env","body":"KEY=val"}}'
+dhq api DELETE /projects/my-app/excluded_files/abc123
 ```
 
 ## Go SDK

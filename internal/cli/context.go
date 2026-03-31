@@ -49,7 +49,7 @@ func (c *Context) Client() (*sdk.Client, error) {
 		if err != nil {
 			return nil, &output.AuthError{
 				Message: "Not logged in",
-				Hint:    "Run 'deployhq auth login' to authenticate",
+				Hint:    "Run 'dhq auth login' to authenticate",
 			}
 		}
 		if account == "" {
@@ -66,14 +66,14 @@ func (c *Context) Client() (*sdk.Client, error) {
 	if account == "" {
 		return nil, &output.UserError{
 			Message: "Account not configured",
-			Hint:    "Set via --account flag, DEPLOYHQ_ACCOUNT env var, or 'deployhq config set account <name>'",
+			Hint:    "Set via --account flag, DEPLOYHQ_ACCOUNT env var, or 'dhq config set account <name>'",
 		}
 	}
 
 	opts := []sdk.Option{}
-	ua := "deployhq-cli"
+	ua := "dhq"
 	if c.IsAgent {
-		ua = "deployhq-cli (agent)"
+		ua = "dhq (agent)"
 	}
 	opts = append(opts, sdk.WithUserAgent(ua))
 

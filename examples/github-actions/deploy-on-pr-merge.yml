@@ -26,7 +26,7 @@ jobs:
       - name: Deploy
         id: deploy
         run: |
-          RESULT=$(deployhq deploy \
+          RESULT=$(dhq deploy \
             --server production \
             --revision ${{ github.event.pull_request.merge_commit_sha }} \
             --json true)
@@ -38,7 +38,7 @@ jobs:
         run: |
           DEP_ID=${{ steps.deploy.outputs.deployment_id }}
           for i in $(seq 1 60); do
-            RESULT=$(deployhq deployments show "$DEP_ID" --json true)
+            RESULT=$(dhq deployments show "$DEP_ID" --json true)
             STATUS=$(echo "$RESULT" | jq -r '.data.status')
             case "$STATUS" in
               completed)

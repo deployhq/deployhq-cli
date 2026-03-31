@@ -51,7 +51,7 @@ func newSetupClaudeCmd() *cobra.Command {
 
 			// Write commands.json reference
 			commandsRef := filepath.Join(dir, "deployhq-commands.md")
-			content := "# DeployHQ CLI Commands\n\nRun `deployhq commands --json` to get the full command catalog.\n\nRun `deployhq --help` for usage information.\n"
+			content := "# DeployHQ CLI Commands\n\nRun `dhq commands --json` to get the full command catalog.\n\nRun `dhq --help` for usage information.\n"
 			if err := os.WriteFile(commandsRef, []byte(content), 0644); err != nil {
 				return &output.InternalError{Message: "write commands reference", Cause: err}
 			}
@@ -59,7 +59,7 @@ func newSetupClaudeCmd() *cobra.Command {
 			env.Status("Installed Claude Code integration:")
 			env.Status("  %s (agent workflow guide)", skillPath)
 			env.Status("  %s (commands reference)", commandsRef)
-			env.Status("\nTo uninstall: deployhq setup claude --uninstall")
+			env.Status("\nTo uninstall: dhq setup claude --uninstall")
 			return nil
 		},
 	}
@@ -95,7 +95,7 @@ func newSetupCodexCmd() *cobra.Command {
 
 			env.Status("Installed Codex integration:")
 			env.Status("  %s (agent workflow guide)", skillPath)
-			env.Status("\nTo uninstall: deployhq setup codex --uninstall")
+			env.Status("\nTo uninstall: dhq setup codex --uninstall")
 			return nil
 		},
 	}
@@ -126,73 +126,73 @@ const skillMD = `# DeployHQ CLI — Agent Skill Guide
 DeployHQ is a deployment automation platform. The ` + "`deployhq`" + ` CLI manages projects, servers, and deployments.
 
 ## Authentication
-Set ` + "`DEPLOYHQ_API_TOKEN`" + ` environment variable, or run ` + "`deployhq auth login`" + `.
+Set ` + "`DEPLOYHQ_API_TOKEN`" + ` environment variable, or run ` + "`dhq auth login`" + `.
 
 ## Quick Reference
 
 ### Discovery
 ` + "```" + `
-deployhq commands --json          # Full command catalog
-deployhq --help                   # Usage overview
-deployhq <command> --help         # Command details
+dhq commands --json          # Full command catalog
+dhq --help                   # Usage overview
+dhq <command> --help         # Command details
 ` + "```" + `
 
 ### Common Workflows
 
 #### List projects
 ` + "```" + `
-deployhq projects list --json
+dhq projects list --json
 ` + "```" + `
 
 #### Deploy latest to a server
 ` + "```" + `
-deployhq deploy -p <project> -s <server> --use-latest --json
+dhq deploy -p <project> -s <server> --use-latest --json
 ` + "```" + `
 
 #### Check deployment status
 ` + "```" + `
-deployhq deployments show <id> -p <project> --json
+dhq deployments show <id> -p <project> --json
 ` + "```" + `
 
 #### View deployment logs
 ` + "```" + `
-deployhq deployments logs <id> -p <project>
+dhq deployments logs <id> -p <project>
 ` + "```" + `
 
 #### Rollback
 ` + "```" + `
-deployhq rollback <deployment-id> -p <project> --json
+dhq rollback <deployment-id> -p <project> --json
 ` + "```" + `
 
 #### Escape hatch (any API endpoint)
 ` + "```" + `
-deployhq api GET /projects/<id>/environment_variables
-deployhq api POST /projects/<id>/config_files --body '{"config_file":{...}}'
+dhq api GET /projects/<id>/environment_variables
+dhq api POST /projects/<id>/config_files --body '{"config_file":{...}}'
 ` + "```" + `
 
 ## Decision Tree
 
 ### "Deploy code"
-1. ` + "`deployhq projects list --json`" + ` → find project
-2. ` + "`deployhq servers list -p <project> --json`" + ` → find server
-3. ` + "`deployhq deploy -p <project> -s <server> --json`" + ` → create deployment
-4. ` + "`deployhq deployments show <id> -p <project> --json`" + ` → check status
+1. ` + "`dhq projects list --json`" + ` → find project
+2. ` + "`dhq servers list -p <project> --json`" + ` → find server
+3. ` + "`dhq deploy -p <project> -s <server> --json`" + ` → create deployment
+4. ` + "`dhq deployments show <id> -p <project> --json`" + ` → check status
 
 ### "Check what's deployed"
-1. ` + "`deployhq deployments list -p <project> --json`" + ` → recent deployments
-2. ` + "`deployhq deployments show <id> -p <project> --json`" + ` → details + steps
+1. ` + "`dhq deployments list -p <project> --json`" + ` → recent deployments
+2. ` + "`dhq deployments show <id> -p <project> --json`" + ` → details + steps
 
 ### "Something went wrong"
-1. ` + "`deployhq deployments logs <id> -p <project>`" + ` → read logs
-2. ` + "`deployhq rollback <id> -p <project> --json`" + ` → rollback if needed
-3. ` + "`deployhq deployments abort <id> -p <project>`" + ` → abort if running
+1. ` + "`dhq deployments logs <id> -p <project>`" + ` → read logs
+2. ` + "`dhq rollback <id> -p <project> --json`" + ` → rollback if needed
+3. ` + "`dhq deployments abort <id> -p <project>`" + ` → abort if running
 
 ## Invariants
 - Always use ` + "`--json`" + ` for machine-readable output
 - JSON responses include ` + "`breadcrumbs`" + ` with suggested next commands
 - Exit code 0 = success, 1 = failure (check JSON ` + "`ok`" + ` field for details)
 - Empty results return exit 0 with empty ` + "`data`" + ` (not an error)
-- ` + "`deployhq api`" + ` covers any endpoint not in the command tree
+- ` + "`dhq api`" + ` covers any endpoint not in the command tree
 
 ## Triggers
 - User mentions "deploy", "deployment", "release" → deployment workflow

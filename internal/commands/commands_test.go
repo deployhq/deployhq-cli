@@ -16,7 +16,7 @@ func TestRootCommand_Help(t *testing.T) {
 
 	err := cmd.Execute()
 	require.NoError(t, err)
-	assert.Contains(t, stdout.String(), "deployhq")
+	assert.Contains(t, stdout.String(), "dhq")
 	assert.Contains(t, stdout.String(), "auth")
 	assert.Contains(t, stdout.String(), "config")
 	assert.Contains(t, stdout.String(), "version")

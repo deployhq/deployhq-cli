@@ -47,8 +47,8 @@ func newProjectsListCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(projects,
 					fmt.Sprintf("%d projects", len(projects)),
-					output.Breadcrumb{Action: "show", Cmd: "deployhq projects show <permalink>"},
-					output.Breadcrumb{Action: "create", Cmd: "deployhq projects create --name <name>"},
+					output.Breadcrumb{Action: "show", Cmd: "dhq projects show <permalink>"},
+					output.Breadcrumb{Action: "create", Cmd: "dhq projects create --name <name>"},
 				))
 			}
 
@@ -64,7 +64,7 @@ func newProjectsListCmd() *cobra.Command {
 			env.WriteTable(columns, rows)
 
 			if len(projects) > 0 {
-				env.Status("\nTip: deployhq projects show %s", projects[0].Permalink)
+				env.Status("\nTip: dhq projects show %s", projects[0].Permalink)
 			}
 			return nil
 		},
@@ -96,9 +96,9 @@ func newProjectsShowCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(project,
 					fmt.Sprintf("Project: %s", project.Name),
-					output.Breadcrumb{Action: "servers", Cmd: fmt.Sprintf("deployhq servers list -p %s", project.Permalink)},
-					output.Breadcrumb{Action: "deployments", Cmd: fmt.Sprintf("deployhq deployments list -p %s", project.Permalink)},
-					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("deployhq deploy -p %s", project.Permalink)},
+					output.Breadcrumb{Action: "servers", Cmd: fmt.Sprintf("dhq servers list -p %s", project.Permalink)},
+					output.Breadcrumb{Action: "deployments", Cmd: fmt.Sprintf("dhq deployments list -p %s", project.Permalink)},
+					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", project.Permalink)},
 				))
 			}
 
@@ -140,12 +140,12 @@ func newProjectsCreateCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(project,
 					fmt.Sprintf("Created project: %s", project.Name),
-					output.Breadcrumb{Action: "servers", Cmd: fmt.Sprintf("deployhq servers create -p %s --name <name> --protocol-type ssh", project.Permalink)},
+					output.Breadcrumb{Action: "servers", Cmd: fmt.Sprintf("dhq servers create -p %s --name <name> --protocol-type ssh", project.Permalink)},
 				))
 			}
 
 			env.Status("Created project: %s (%s)", project.Name, project.Permalink)
-			env.Status("\nNext: deployhq servers create -p %s --name <name> --protocol-type ssh", project.Permalink)
+			env.Status("\nNext: dhq servers create -p %s --name <name> --protocol-type ssh", project.Permalink)
 			return nil
 		},
 	}
