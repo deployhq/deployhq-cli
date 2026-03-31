@@ -123,6 +123,8 @@ func newProjectsShowCmd() *cobra.Command {
 				}
 				env.WriteTable(srvCols, srvRows)
 			}
+
+			env.Status("\nTip: dhq deployments list -p %s", project.Permalink)
 			return nil
 		},
 	}

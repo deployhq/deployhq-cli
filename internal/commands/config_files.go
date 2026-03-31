@@ -79,6 +79,8 @@ func newConfigFilesShowCmd() *cobra.Command {
 				{"Identifier", f.Identifier},
 			})
 			env.Status("\nContent:\n%s", f.Body)
+
+			env.Status("\nTip: dhq config-files update %s -p %s", f.Identifier, projectID)
 			return nil
 		},
 	}

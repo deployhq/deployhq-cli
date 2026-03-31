@@ -119,6 +119,8 @@ func newServersShowCmd() *cobra.Command {
 				{"Enabled", enabled},
 				{"Last Revision", server.LastRevision},
 			})
+
+			env.Status("\nTip: dhq deploy -p %s -s %s", projectID, server.Identifier)
 			return nil
 		},
 	}

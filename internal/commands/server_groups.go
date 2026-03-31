@@ -108,6 +108,8 @@ func newServerGroupsShowCmd() *cobra.Command {
 				}
 				env.WriteTable(srvCols, srvRows)
 			}
+
+			env.Status("\nTip: dhq deploy -p %s", projectID)
 			return nil
 		},
 	}

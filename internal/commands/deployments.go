@@ -153,6 +153,8 @@ func newDeploymentsShowCmd() *cobra.Command {
 				}
 				env.WriteTable(stepCols, stepRows)
 			}
+
+			env.Status("\nTip: dhq deployments logs %s -p %s", dep.Identifier, projectID)
 			return nil
 		},
 	}
