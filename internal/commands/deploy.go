@@ -2,12 +2,18 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
+
+// isUUID checks if a string looks like a UUID (contains dashes and hex chars).
+func isUUID(s string) bool {
+	return len(s) >= 32 && strings.ContainsRune(s, '-')
+}
 
 func newDeployCmd() *cobra.Command {
 	var branch, server, revision string
@@ -57,6 +63,19 @@ func newDeployCmd() *cobra.Command {
 						return &output.UserError{
 							Message: "Multiple servers found — specify which one",
 							Hint:    fmt.Sprintf("Use --server <identifier>, e.g. dhq deploy -p %s -s %s", projectID, servers[0].Identifier),
+						}
+					}
+				}
+			}
+
+			// Resolve server name to identifier if needed
+			if server != "" && !isUUID(server) {
+				servers, err := client.ListServers(cliCtx.Background(), projectID)
+				if err == nil {
+					for _, s := range servers {
+						if strings.EqualFold(s.Name, server) {
+							server = s.Identifier
+							break
 						}
 					}
 				}

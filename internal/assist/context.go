@@ -34,10 +34,11 @@ type stepSummary struct {
 }
 
 type serverSummary struct {
-	Name     string
-	Protocol string
-	Branch   string
-	Enabled  bool
+	Name       string
+	Identifier string
+	Protocol   string
+	Branch     string
+	Enabled    bool
 }
 
 type stepLog struct {
@@ -124,10 +125,11 @@ func GatherContext(ctx context.Context, client *sdk.Client, projectID string) (*
 	if err == nil {
 		for _, s := range servers {
 			ac.Servers = append(ac.Servers, serverSummary{
-				Name:     s.Name,
-				Protocol: s.ProtocolType,
-				Branch:   s.PreferredBranch,
-				Enabled:  s.Enabled,
+				Name:       s.Name,
+				Identifier: s.Identifier,
+				Protocol:   s.ProtocolType,
+				Branch:     s.PreferredBranch,
+				Enabled:    s.Enabled,
 			})
 		}
 	}
@@ -149,7 +151,7 @@ func (ac *AssistContext) FormatContext() string {
 			if !s.Enabled {
 				enabled = "disabled"
 			}
-			fmt.Fprintf(&b, "  - %s (%s, branch: %s, %s)\n", s.Name, s.Protocol, s.Branch, enabled)
+			fmt.Fprintf(&b, "  - %s (identifier: %s, protocol: %s, branch: %s, %s)\n", s.Name, s.Identifier, s.Protocol, s.Branch, enabled)
 		}
 		b.WriteString("\n")
 	}
@@ -157,8 +159,8 @@ func (ac *AssistContext) FormatContext() string {
 	if len(ac.Deployments) > 0 {
 		b.WriteString("Recent deployments:\n")
 		for _, d := range ac.Deployments {
-			fmt.Fprintf(&b, "  - %s: status=%s branch=%s deployer=%s queued=%s\n",
-				d.ID[:8], d.Status, d.Branch, d.Deployer, d.QueuedAt)
+			fmt.Fprintf(&b, "  - id=%s status=%s branch=%s deployer=%s queued=%s\n",
+				d.ID, d.Status, d.Branch, d.Deployer, d.QueuedAt)
 			if len(d.Steps) > 0 {
 				b.WriteString("    Steps:\n")
 				for _, s := range d.Steps {
@@ -172,7 +174,7 @@ func (ac *AssistContext) FormatContext() string {
 	if len(ac.FailedLogs) > 0 {
 		b.WriteString("Failed step logs:\n")
 		for _, fl := range ac.FailedLogs {
-			fmt.Fprintf(&b, "  --- %s (%s) ---\n", fl.StepName, fl.DeploymentID[:8])
+			fmt.Fprintf(&b, "  --- %s (deployment: %s) ---\n", fl.StepName, fl.DeploymentID)
 			// Limit to last 20 log lines to fit context
 			start := 0
 			if len(fl.Messages) > 20 {
