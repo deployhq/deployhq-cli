@@ -15,7 +15,7 @@ go vet ./...                   # Static analysis
 ## Architecture
 
 ```
-pkg/sdk/           Public Go SDK (93 methods, zero internal/ imports)
+pkg/sdk/           Public Go SDK (97 methods, zero internal/ imports)
                     Clean boundary — extractable to standalone module later.
 
 internal/output/    Wrangler-pattern output engine
@@ -32,7 +32,7 @@ internal/harness/   Agent detection (DEPLOYHQ_AGENT, CLAUDE_CODE, CI)
 
 internal/cli/       Command execution pipeline, lazy SDK client
 
-internal/commands/  All CLI commands (30 top-level, 127 total)
+internal/commands/  All CLI commands (37 top-level, 140 total)
 
 internal/version/   Update checker (GitHub releases API)
 ```

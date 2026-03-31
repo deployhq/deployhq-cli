@@ -27,8 +27,7 @@ jobs:
         run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
 
       - name: Deploy to staging
-        run: |
-          dhq deploy --server staging --revision ${{ github.sha }} --json true | jq '.summary'
+        run: dhq deploy --server staging --revision ${{ github.sha }} --wait --json
 
   deploy-production:
     if: github.event_name == 'release'
@@ -39,28 +38,10 @@ jobs:
         run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
 
       - name: Deploy to production
-        run: |
-          RESULT=$(dhq deploy --server production --revision ${{ github.sha }} --json true)
-          DEP_ID=$(echo "$RESULT" | jq -r '.data.identifier')
-          echo "Deployment: $DEP_ID"
-
-          # Wait for completion
-          for i in $(seq 1 60); do
-            STATUS=$(dhq deployments show "$DEP_ID" --json true | jq -r '.data.status')
-            case "$STATUS" in
-              completed) echo "Production deploy complete!"; exit 0 ;;
-              failed)
-                echo "Production deploy failed!"
-                dhq deployments logs "$DEP_ID"
-                exit 1
-                ;;
-            esac
-            sleep 10
-          done
-          exit 1
+        run: dhq deploy --server production --revision ${{ github.sha }} --wait --json
 
       - name: Rollback on failure
         if: failure()
         run: |
-          PREV=$(dhq deployments list --json true | jq -r '.data.records[1].identifier')
-          dhq rollback "$PREV" --json true | jq '.summary'
+          PREV=$(dhq deployments list --json | jq -r '.data.records[1].identifier')
+          dhq rollback "$PREV" --json

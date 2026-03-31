@@ -23,51 +23,31 @@ jobs:
       - name: Install DeployHQ CLI
         run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
 
-      - name: Deploy
+      - name: Deploy and wait
         id: deploy
         run: |
           RESULT=$(dhq deploy \
             --server production \
             --revision ${{ github.event.pull_request.merge_commit_sha }} \
-            --json true)
+            --wait --json)
           DEP_ID=$(echo "$RESULT" | jq -r '.data.identifier')
+          STATUS=$(echo "$RESULT" | jq -r '.data.status')
+          DURATION=$(echo "$RESULT" | jq -r '.data.timestamps.duration // "?"')
+          SERVERS=$(echo "$RESULT" | jq -r '.data.servers | length')
           echo "deployment_id=$DEP_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Wait for completion
-        id: wait
-        run: |
-          DEP_ID=${{ steps.deploy.outputs.deployment_id }}
-          for i in $(seq 1 60); do
-            RESULT=$(dhq deployments show "$DEP_ID" --json true)
-            STATUS=$(echo "$RESULT" | jq -r '.data.status')
-            case "$STATUS" in
-              completed)
-                DURATION=$(echo "$RESULT" | jq -r '.data.timestamps.duration // "?"')
-                SERVERS=$(echo "$RESULT" | jq -r '.data.servers | length')
-                echo "status=completed" >> "$GITHUB_OUTPUT"
-                echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
-                echo "servers=$SERVERS" >> "$GITHUB_OUTPUT"
-                exit 0
-                ;;
-              failed)
-                echo "status=failed" >> "$GITHUB_OUTPUT"
-                exit 1
-                ;;
-            esac
-            sleep 10
-          done
-          echo "status=timeout" >> "$GITHUB_OUTPUT"
-          exit 1
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
+          echo "servers=$SERVERS" >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
-            const status = '${{ steps.wait.outputs.status }}';
+            const status = '${{ steps.deploy.outputs.status }}' || 'unknown';
             const depId = '${{ steps.deploy.outputs.deployment_id }}';
-            const duration = '${{ steps.wait.outputs.duration }}';
-            const servers = '${{ steps.wait.outputs.servers }}';
+            const duration = '${{ steps.deploy.outputs.duration }}';
+            const servers = '${{ steps.deploy.outputs.servers }}';
             const icon = status === 'completed' ? ':white_check_mark:' : ':x:';
 
             const body = `${icon} **Deployment ${status}**

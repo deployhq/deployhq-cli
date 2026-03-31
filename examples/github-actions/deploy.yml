@@ -25,44 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install DeployHQ CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
-
-      - name: Get latest revision
-        id: rev
-        run: |
-          REV=$(dhq repos latest-revision --json true | jq -r '.data.ref')
-          echo "revision=$REV" >> "$GITHUB_OUTPUT"
-          echo "Deploying revision: $REV"
+        run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
 
       - name: Deploy to production
-        id: deploy
-        run: |
-          RESULT=$(dhq deploy \
-            --server production \
-            --revision ${{ steps.rev.outputs.revision }} \
-            --json true)
-          DEP_ID=$(echo "$RESULT" | jq -r '.data.identifier')
-          echo "deployment_id=$DEP_ID" >> "$GITHUB_OUTPUT"
-          echo "Deployment queued: $DEP_ID"
-
-      - name: Wait for deployment
-        run: |
-          DEP_ID=${{ steps.deploy.outputs.deployment_id }}
-          echo "Waiting for deployment $DEP_ID..."
-          for i in $(seq 1 60); do
-            STATUS=$(dhq deployments show "$DEP_ID" --json true | jq -r '.data.status')
-            echo "  [$i] $STATUS"
-            case "$STATUS" in
-              completed) echo "Deployment completed!"; exit 0 ;;
-              failed)    echo "Deployment failed!"; exit 1 ;;
-            esac
-            sleep 10
-          done
-          echo "Deployment timed out after 10 minutes"
-          exit 1
+        run: dhq deploy --server production --revision ${{ github.sha }} --wait --json
 
       - name: Show deployment logs (on failure)
         if: failure()
         run: |
-          dhq deployments logs ${{ steps.deploy.outputs.deployment_id }}
+          DEP_ID=$(dhq deployments list --json | jq -r '.data.records[0].identifier')
+          dhq deployments logs "$DEP_ID"
