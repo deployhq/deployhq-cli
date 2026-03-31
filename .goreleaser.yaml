@@ -47,6 +47,7 @@ brews:
     repository:
       owner: deployhq
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://www.deployhq.com"
     description: "DeployHQ CLI — deploy from your terminal"
     license: "MIT"
