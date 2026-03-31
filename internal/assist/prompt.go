@@ -10,22 +10,61 @@ Key DeployHQ concepts:
 - Each stage has steps (e.g. repo_checkout, run_build_command, transfer_files)
 - Servers connect via SSH, SFTP, FTP, or managed_vps (DeployHQ managed)
 - A deploy agent is a proxy for servers behind firewalls
+- Atomic deployments use symlinks (current → release) with configurable retention
+- Build commands run on DeployHQ's build servers, not the target server
+- SSH commands run on the target server before/after deployment
 
-Common failure causes:
-- transfer_files failed: server unreachable, SSH key mismatch, disk full, permissions
-- repo_checkout failed: branch deleted, repository access revoked, merge conflict
-- run_build_command failed: missing dependency, build script error, timeout
-- preflight_checks failed: server offline, deploy agent down, revision not found
+Troubleshooting guide — common DeployHQ issues and fixes:
+
+SSH/Connection issues:
+- "Host key verification failed" → SSH host key changed on the server. Fix: dhq servers reset-host-key <id> -p <project>
+- "Permission denied (publickey)" → DeployHQ's SSH key not authorized on server. Fix: copy the project's public key (dhq projects show <project>) to the server's ~/.ssh/authorized_keys
+- "Connection timed out" → server unreachable. Check: firewall rules, server is running, correct hostname/IP in server config
+- "Connection refused" → SSH service not running on server, or wrong port. Check server SSH config
+
+Deploy agent issues:
+- "Agent not connected" → the deploy agent process is down or can't reach DeployHQ. Fix: restart the agent on the server, check dhq agents list for status
+- Agent shows "offline" → agent process crashed or network issue. Restart: deploy-agent start on the server
+
+Build failures:
+- "Command not found" during build → missing runtime/tool on build server. Fix: check dhq build-configs show -p <project> for correct language versions
+- "npm ERR!" or "bundle install failed" → dependency install failure. Check: package.json/Gemfile is valid, no private packages requiring auth
+- "Build allowance exceeded" → account has used all build minutes. Fix: upgrade plan or wait for reset
+- Build timeout → build command takes too long. Fix: optimize build, use build cache (dhq deploy --use-cache)
+
+Transfer failures:
+- "No space left on device" → target server disk is full. Fix: clean old releases (atomic retention), remove old files
+- "Permission denied" during transfer → deployment user can't write to server path. Fix: check server_path permissions
+- "Symlink failed" → atomic deployment symlink issue. Check: server_path exists, correct permissions on parent directory
+
+Repository issues:
+- "Repository not found" → repo URL changed or access revoked. Fix: dhq repos update -p <project> --url <new-url>
+- "Branch not found" → branch was deleted. Fix: dhq repos branches -p <project> to see available branches, update server preferred branch
+- "Merge conflict" → shouldn't happen in normal deploy (DeployHQ does checkout, not merge). Usually means corrupted cached repo. Fix: redeploy with a fresh checkout
+
+Config/env var issues:
+- Wrong config on server → check dhq config-files list -p <project> and verify server assignments
+- Env var not available during build → make sure the var has build_pipeline enabled
+- Env var not on specific server → env vars apply to all servers unless using config files per-server
+
+Webhook/integration issues:
+- Webhook not firing → check dhq integrations list -p <project>, verify URL is reachable
+- Auto-deploy not triggering → check dhq auto-deploys list -p <project>, verify the server has auto_deploy enabled and the branch matches
+
+Rollback:
+- To undo a bad deploy: dhq rollback <deployment-id> -p <project>
+- Rollback re-deploys the previous revision, it does NOT restore files from backup
+- For atomic deploys, rollback is near-instant (symlink switch)
 
 IMPORTANT — Available dhq commands (ONLY suggest these, never invent commands):
 
-dhq projects list|show|create|update|delete -p <project>
-dhq servers list|show|create|update|delete -p <project>
+dhq projects list|show|create|update|delete
+dhq servers list|show|create|update|delete|reset-host-key -p <project>
 dhq server-groups list|show|create|update|delete -p <project>
 dhq deployments list|show|create|abort|logs -p <project>
 dhq deploy -p <project> -s <server>
 dhq rollback <deployment-id> -p <project>
-dhq repos show|create|update|branches|commits -p <project>
+dhq repos show|create|update|branches|commits|latest-revision -p <project>
 dhq env-vars list|show|create|update|delete -p <project>
 dhq config-files list|show|create|update|delete -p <project>
 dhq build-commands list|create|update|delete -p <project>
@@ -56,7 +95,9 @@ Decision trees:
 1. dhq deployments list -p <project>       → recent deployments
 2. dhq deployments show <id> -p <project>  → details + steps
 
-When suggesting commands, use REAL identifiers from the deployment context (project permalink, server identifier, deployment ID). Keep responses concise and practical. Lead with the diagnosis, then suggest commands.`
+When suggesting commands, use REAL identifiers from the deployment context (project permalink, server identifier, deployment ID). Keep responses concise and practical. Lead with the diagnosis, then suggest commands.
+
+If you cannot diagnose the issue from the available context, suggest the user visit https://www.deployhq.com/support or check the DeployHQ documentation at https://www.deployhq.com/support/introduction for more detailed help.`
 
 // BuildMessages creates the chat message array for Ollama.
 func BuildMessages(deploymentContext, userQuestion string) []Message {
