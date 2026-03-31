@@ -157,6 +157,21 @@ func parseAPIError(resp *http.Response) error {
 		return apiErr
 	}
 
+	// Try validation errors: {"field": ["message", ...]} shape (422)
+	var validationMap map[string][]string
+	if json.Unmarshal(body, &validationMap) == nil && len(validationMap) > 0 {
+		var msgs []string
+		for field, errs := range validationMap {
+			for _, msg := range errs {
+				msgs = append(msgs, fmt.Sprintf("%s %s", field, msg))
+			}
+		}
+		if len(msgs) > 0 {
+			apiErr.Errors = msgs
+			return apiErr
+		}
+	}
+
 	// Fall back to raw body as message
 	apiErr.Message = strings.TrimSpace(string(body))
 	return apiErr

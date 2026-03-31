@@ -145,10 +145,14 @@ func NewRootCmd(version string) *cobra.Command {
 		newURLCmd(),
 		newSetupCmd(),
 		newMCPCmd(),
+		newCompletionCmd(),
 		newDoctorCmd(),
 		newUpdateCmd(version),
 		newVersionCmd(version),
 	)
+
+	// Register dynamic completions for --project flag
+	root.RegisterFlagCompletionFunc("project", completeProjectNames) //nolint:errcheck
 
 	// Install --help --agent JSON help on all commands
 	installAgentHelp(root)

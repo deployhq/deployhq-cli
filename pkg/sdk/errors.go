@@ -16,8 +16,15 @@ func (e *APIError) Error() string {
 	if e.Message != "" {
 		return fmt.Sprintf("deployhq api: %d %s", e.StatusCode, e.Message)
 	}
-	if len(e.Errors) > 0 {
-		return fmt.Sprintf("deployhq api: %d %v", e.StatusCode, e.Errors)
+	if len(e.Errors) == 1 {
+		return fmt.Sprintf("deployhq api: %d %s", e.StatusCode, e.Errors[0])
+	}
+	if len(e.Errors) > 1 {
+		msg := fmt.Sprintf("deployhq api: %d validation failed", e.StatusCode)
+		for _, err := range e.Errors {
+			msg += "\n  - " + err
+		}
+		return msg
 	}
 	return fmt.Sprintf("deployhq api: %d %s", e.StatusCode, http.StatusText(e.StatusCode))
 }

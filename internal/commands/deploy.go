@@ -5,6 +5,7 @@ import (
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
+	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
 
@@ -29,20 +30,34 @@ func newDeployCmd() *cobra.Command {
 
 			env := cliCtx.Envelope
 
-			// Auto-select server if not specified and project has exactly one
+			// Auto-select server if not specified
 			if server == "" {
 				servers, err := client.ListServers(cliCtx.Background(), projectID)
 				if err == nil && len(servers) == 1 {
 					server = servers[0].Identifier
 					env.Status("Auto-selected server: %s", servers[0].Name)
 				} else if err == nil && len(servers) > 1 {
-					env.Status("Available servers:")
-					for _, s := range servers {
-						env.Status("  %s (%s)", s.Name, s.Identifier)
-					}
-					return &output.UserError{
-						Message: "Multiple servers found — specify which one",
-						Hint:    fmt.Sprintf("Use --server <identifier>, e.g. dhq deploy -p %s -s %s", projectID, servers[0].Identifier),
+					if env.IsTTY {
+						// Interactive picker
+						items := make([]string, len(servers))
+						for i, s := range servers {
+							items[i] = fmt.Sprintf("%s (%s)", s.Name, s.ProtocolType)
+						}
+						prompt := promptui.Select{
+							Label: "Select server",
+							Items: items,
+						}
+						idx, _, err := prompt.Run()
+						if err != nil {
+							return &output.UserError{Message: "Server selection cancelled"}
+						}
+						server = servers[idx].Identifier
+						env.Status("Selected server: %s", servers[idx].Name)
+					} else {
+						return &output.UserError{
+							Message: "Multiple servers found — specify which one",
+							Hint:    fmt.Sprintf("Use --server <identifier>, e.g. dhq deploy -p %s -s %s", projectID, servers[0].Identifier),
+						}
 					}
 				}
 			}

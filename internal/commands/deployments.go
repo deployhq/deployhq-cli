@@ -67,7 +67,7 @@ func newDeploymentsListCmd() *cobra.Command {
 				if d.Timestamps != nil {
 					queued = d.Timestamps.QueuedAt
 				}
-				rows[i] = []string{d.Identifier, d.Status, d.Branch, deployer, queued}
+				rows[i] = []string{d.Identifier, output.ColorStatus(d.Status), d.Branch, deployer, queued}
 			}
 			env.WriteTable(columns, rows)
 
@@ -123,7 +123,7 @@ func newDeploymentsShowCmd() *cobra.Command {
 
 			rows := [][]string{
 				{"Identifier", dep.Identifier},
-				{"Status", dep.Status},
+				{"Status", output.ColorStatus(dep.Status)},
 				{"Branch", dep.Branch},
 				{"Deployer", deployer},
 			}
@@ -149,7 +149,7 @@ func newDeploymentsShowCmd() *cobra.Command {
 				stepCols := []string{"Step", "Stage", "Status", "Description"}
 				stepRows := make([][]string, len(dep.Steps))
 				for i, s := range dep.Steps {
-					stepRows[i] = []string{s.Step, s.Stage, s.Status, s.Description}
+					stepRows[i] = []string{s.Step, s.Stage, output.ColorStatus(s.Status), s.Description}
 				}
 				env.WriteTable(stepCols, stepRows)
 			}

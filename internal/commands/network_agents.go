@@ -35,7 +35,7 @@ func newAgentsCmd() *cobra.Command {
 					if a.Online {
 						online = "online"
 					}
-					rows[i] = []string{a.Name, a.Identifier, online}
+					rows[i] = []string{a.Name, a.Identifier, output.ColorStatus(online)}
 				}
 				env.WriteTable([]string{"Name", "Identifier", "Status"}, rows)
 				return nil

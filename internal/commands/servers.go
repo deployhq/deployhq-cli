@@ -116,7 +116,7 @@ func newServersShowCmd() *cobra.Command {
 				{"Path", server.ServerPath},
 				{"Branch", server.Branch},
 				{"Environment", server.Environment},
-				{"Enabled", enabled},
+				{"Enabled", output.ColorStatus(enabled)},
 				{"Last Revision", server.LastRevision},
 			})
 

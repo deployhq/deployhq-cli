@@ -117,6 +117,7 @@ dhq global-servers list | show | create | update | delete | copy-to-project
 dhq global-env-vars list | show | create | update | delete
 dhq auto-deploys list | enable
 dhq scheduled-deploys list | show | delete
+dhq completion    bash | zsh | fish | powershell
 dhq doctor        (health check)
 dhq update        (self-update to latest version)
 dhq setup         claude | codex (install agent plugins)

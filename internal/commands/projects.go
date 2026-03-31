@@ -73,9 +73,10 @@ func newProjectsListCmd() *cobra.Command {
 
 func newProjectsShowCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show [permalink]",
-		Short: "Show project details",
-		Args:  cobra.MaximumNArgs(1),
+		Use:               "show [permalink]",
+		Short:             "Show project details",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := resolveProjectArg(args)
 			if err != nil {

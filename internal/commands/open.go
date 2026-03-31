@@ -11,10 +11,11 @@ import (
 
 func newOpenCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "open [project]",
-		Short: "Open DeployHQ in the browser",
-		Long:  "Open the DeployHQ dashboard in your default browser. Optionally specify a project to open directly.",
-		Args:  cobra.MaximumNArgs(1),
+		Use:               "open [project]",
+		Short:             "Open DeployHQ in the browser",
+		Long:              "Open the DeployHQ dashboard in your default browser. Optionally specify a project to open directly.",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cliCtx.Client()
 			if err != nil {

@@ -8,7 +8,17 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/fatih/color"
 	"golang.org/x/term"
+)
+
+// Color helpers for TTY output (no-op when piped).
+var (
+	ColorGreen  = color.New(color.FgGreen)
+	ColorRed    = color.New(color.FgRed)
+	ColorYellow = color.New(color.FgYellow)
+	ColorCyan   = color.New(color.FgCyan)
+	ColorDim    = color.New(color.Faint)
 )
 
 // Envelope is the output engine that routes data to stdout and messages to stderr.
@@ -63,7 +73,12 @@ func (e *Envelope) Status(format string, args ...interface{}) {
 
 // Warn writes a warning message to stderr.
 func (e *Envelope) Warn(format string, args ...interface{}) {
-	fmt.Fprintf(e.Stderr, "Warning: "+format+"\n", args...) //nolint:errcheck // best-effort stderr
+	msg := fmt.Sprintf(format, args...)
+	if e.IsTTY {
+		ColorYellow.Fprintf(e.Stderr, "Warning: %s\n", msg) //nolint:errcheck
+	} else {
+		fmt.Fprintf(e.Stderr, "Warning: %s\n", msg) //nolint:errcheck
+	}
 }
 
 // Error writes an error message to stderr and logs debug info.
@@ -74,21 +89,54 @@ func (e *Envelope) Error(err error) {
 
 	e.Logger.Write("ERROR: %v", err)
 
+	errorLabel := "Error: "
+	if e.IsTTY {
+		errorLabel = ColorRed.Sprint("Error: ")
+	}
+
 	switch typedErr := err.(type) {
 	case *UserError:
-		fmt.Fprintln(e.Stderr, typedErr.Error()) //nolint:errcheck // best-effort stderr
+		fmt.Fprint(e.Stderr, errorLabel+typedErr.Message+"\n") //nolint:errcheck
+		if typedErr.Hint != "" {
+			if e.IsTTY {
+				ColorDim.Fprintf(e.Stderr, "\nHint: %s\n", typedErr.Hint) //nolint:errcheck
+			} else {
+				fmt.Fprintf(e.Stderr, "\nHint: %s\n", typedErr.Hint) //nolint:errcheck
+			}
+		}
 	case *AuthError:
-		fmt.Fprintln(e.Stderr, typedErr.Error()) //nolint:errcheck // best-effort stderr
+		fmt.Fprint(e.Stderr, errorLabel+typedErr.Message+"\n") //nolint:errcheck
+		if typedErr.Hint != "" {
+			if e.IsTTY {
+				ColorDim.Fprintf(e.Stderr, "\nHint: %s\n", typedErr.Hint) //nolint:errcheck
+			} else {
+				fmt.Fprintf(e.Stderr, "\nHint: %s\n", typedErr.Hint) //nolint:errcheck
+			}
+		}
 	case *InternalError:
-		fmt.Fprintf(e.Stderr, "Internal error: %s\n", typedErr.Message) //nolint:errcheck // best-effort stderr
+		fmt.Fprintf(e.Stderr, "%sInternal error: %s\n", errorLabel, typedErr.Message) //nolint:errcheck
 		if e.Logger.Path != "" {
-			fmt.Fprintf(e.Stderr, "Debug log: %s\n", e.Logger.Path) //nolint:errcheck // best-effort stderr
+			fmt.Fprintf(e.Stderr, "Debug log: %s\n", e.Logger.Path) //nolint:errcheck
 		}
 	default:
-		fmt.Fprintf(e.Stderr, "Error: %v\n", err) //nolint:errcheck // best-effort stderr
+		fmt.Fprintf(e.Stderr, "%s%v\n", errorLabel, err) //nolint:errcheck
 		if e.Logger.Path != "" {
-			fmt.Fprintf(e.Stderr, "Debug log: %s\n", e.Logger.Path) //nolint:errcheck // best-effort stderr
+			fmt.Fprintf(e.Stderr, "Debug log: %s\n", e.Logger.Path) //nolint:errcheck
 		}
+	}
+}
+
+// ColorStatus returns a colorized status string for TTY output.
+func ColorStatus(status string) string {
+	switch status {
+	case "completed", "online", "enabled", "yes":
+		return ColorGreen.Sprint(status)
+	case "failed", "error", "offline", "disabled", "no":
+		return ColorRed.Sprint(status)
+	case "running", "pending", "queued", "building", "transferring":
+		return ColorYellow.Sprint(status)
+	default:
+		return status
 	}
 }
 
