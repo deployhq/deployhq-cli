@@ -15,6 +15,59 @@ func isUUID(s string) bool {
 	return len(s) >= 32 && strings.ContainsRune(s, '-')
 }
 
+// resolveServerName matches a user-provided server name to a server identifier.
+// Returns the identifier if a single match is found, or empty string + candidates for picker.
+func resolveServerName(input string, servers []sdk.Server) (string, []sdk.Server) {
+	normalized := normalize(input)
+
+	// Exact case-insensitive match
+	for _, s := range servers {
+		if strings.EqualFold(s.Name, input) {
+			return s.Identifier, nil
+		}
+	}
+
+	// Normalized match (e.g. "DO-FEDORA" matches "DO - FEDORA")
+	var normalizedMatches []sdk.Server
+	for _, s := range servers {
+		if normalize(s.Name) == normalized {
+			normalizedMatches = append(normalizedMatches, s)
+		}
+	}
+	if len(normalizedMatches) == 1 {
+		return normalizedMatches[0].Identifier, nil
+	}
+
+	// Contains match (e.g. "fedora" matches "DO - FEDORA")
+	lower := strings.ToLower(input)
+	var containsMatches []sdk.Server
+	for _, s := range servers {
+		if strings.Contains(strings.ToLower(s.Name), lower) {
+			containsMatches = append(containsMatches, s)
+		}
+	}
+	if len(containsMatches) == 1 {
+		return containsMatches[0].Identifier, nil
+	}
+	if len(containsMatches) > 1 {
+		return "", containsMatches
+	}
+
+	// No matches — return all servers as candidates
+	return "", servers
+}
+
+// normalize lowercases and collapses all non-alphanumeric chars.
+func normalize(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func newDeployCmd() *cobra.Command {
 	var branch, server, revision string
 	var useLatest, wait bool
@@ -72,10 +125,27 @@ func newDeployCmd() *cobra.Command {
 			if server != "" && !isUUID(server) {
 				servers, err := client.ListServers(cliCtx.Background(), projectID)
 				if err == nil {
-					for _, s := range servers {
-						if strings.EqualFold(s.Name, server) {
-							server = s.Identifier
-							break
+					resolved, candidates := resolveServerName(server, servers)
+					if resolved != "" {
+						server = resolved
+					} else if len(candidates) > 0 && env.IsTTY {
+						items := make([]string, len(candidates))
+						for i, s := range candidates {
+							items[i] = fmt.Sprintf("%s (%s)", s.Name, s.ProtocolType)
+						}
+						prompt := promptui.Select{
+							Label: fmt.Sprintf("Multiple servers match %q", server),
+							Items: items,
+						}
+						idx, _, err := prompt.Run()
+						if err != nil {
+							return &output.UserError{Message: "Server selection cancelled"}
+						}
+						server = candidates[idx].Identifier
+					} else if len(candidates) > 0 {
+						return &output.UserError{
+							Message: fmt.Sprintf("Multiple servers match %q — specify which one", server),
+							Hint:    fmt.Sprintf("Use the full identifier, e.g. dhq deploy -p %s -s %s", projectID, candidates[0].Identifier),
 						}
 					}
 				}
