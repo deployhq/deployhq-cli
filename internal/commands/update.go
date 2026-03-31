@@ -45,9 +45,7 @@ func newUpdateCmd(currentVersion string) *cobra.Command {
 
 			// Fall back to install script
 			env.Status("Downloading v%s...", info.Latest)
-			script := fmt.Sprintf(
-				"curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh",
-			)
+			script := "curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh"
 
 			c := exec.Command("sh", "-c", script)
 			c.Stdout = os.Stdout
