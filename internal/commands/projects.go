@@ -109,6 +109,20 @@ func newProjectsShowCmd() *cobra.Command {
 				{"Zone", project.Zone},
 				{"Auto Deploy URL", project.AutoDeployURL},
 			})
+
+			servers, err := client.ListServers(cliCtx.Background(), project.Permalink)
+			if err != nil {
+				return nil // non-fatal: just skip server listing
+			}
+			if len(servers) > 0 {
+				env.Status("\nServers:")
+				srvCols := []string{"Name", "Identifier", "Protocol", "Branch"}
+				srvRows := make([][]string, len(servers))
+				for i, s := range servers {
+					srvRows[i] = []string{s.Name, s.Identifier, s.ProtocolType, s.PreferredBranch}
+				}
+				env.WriteTable(srvCols, srvRows)
+			}
 			return nil
 		},
 	}

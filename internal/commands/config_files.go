@@ -17,6 +17,7 @@ func newConfigFilesCmd() *cobra.Command {
 		newConfigFilesListCmd(),
 		newConfigFilesShowCmd(),
 		newConfigFilesCreateCmd(),
+		newConfigFilesUpdateCmd(),
 		newConfigFilesDeleteCmd(),
 	)
 	return cmd
@@ -111,6 +112,35 @@ func newConfigFilesCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&path, "path", "", "File path (required)")
 	cmd.Flags().StringVar(&body, "body", "", "File content (required)")
+	cmd.Flags().StringVar(&description, "description", "", "Description")
+	return cmd
+}
+
+func newConfigFilesUpdateCmd() *cobra.Command {
+	var path, body, description string
+	cmd := &cobra.Command{
+		Use: "update <id>", Short: "Update a config file", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			f, err := client.UpdateConfigFile(cliCtx.Background(), projectID, args[0], sdk.ConfigFileCreateRequest{
+				Path: path, Body: body, Description: description,
+			})
+			if err != nil {
+				return err
+			}
+			cliCtx.Envelope.Status("Updated config file: %s", f.Path)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&path, "path", "", "File path")
+	cmd.Flags().StringVar(&body, "body", "", "File content")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
 	return cmd
 }

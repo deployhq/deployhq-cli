@@ -41,7 +41,26 @@ func newExcludedFilesCmd() *cobra.Command {
 				return nil
 			},
 		},
+		&cobra.Command{
+			Use: "show <id>", Short: "Show an excluded file", Args: cobra.ExactArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				projectID, err := cliCtx.RequireProject()
+				if err != nil {
+					return err
+				}
+				client, err := cliCtx.Client()
+				if err != nil {
+					return err
+				}
+				f, err := client.GetExcludedFile(cliCtx.Background(), projectID, args[0])
+				if err != nil {
+					return err
+				}
+				return cliCtx.Envelope.WriteJSON(output.NewResponse(f, f.Path))
+			},
+		},
 		newExcludedFilesCreateCmd(),
+		newExcludedFilesUpdateCmd(),
 		&cobra.Command{
 			Use: "delete <id>", Short: "Delete an excluded file", Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -61,6 +80,34 @@ func newExcludedFilesCmd() *cobra.Command {
 			},
 		},
 	)
+	return cmd
+}
+
+func newExcludedFilesUpdateCmd() *cobra.Command {
+	var path string
+	cmd := &cobra.Command{
+		Use: "update <id>", Short: "Update an excluded file pattern", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if path == "" {
+				return &output.UserError{Message: "--path is required"}
+			}
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			f, err := client.UpdateExcludedFile(cliCtx.Background(), projectID, args[0], sdk.ExcludedFileCreateRequest{Path: path})
+			if err != nil {
+				return err
+			}
+			cliCtx.Envelope.Status("Updated excluded file: %s", f.Path)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&path, "path", "", "File pattern (required)")
 	return cmd
 }
 

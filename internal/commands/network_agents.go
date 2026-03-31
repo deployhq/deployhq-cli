@@ -42,6 +42,7 @@ func newAgentsCmd() *cobra.Command {
 			},
 		},
 		newAgentsCreateCmd(),
+		newAgentsUpdateCmd(),
 		&cobra.Command{
 			Use: "delete <id>", Short: "Delete an agent", Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,6 +72,30 @@ func newAgentsCmd() *cobra.Command {
 			},
 		},
 	)
+	return cmd
+}
+
+func newAgentsUpdateCmd() *cobra.Command {
+	var name string
+	cmd := &cobra.Command{
+		Use: "update <id>", Short: "Update an agent", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if name == "" {
+				return &output.UserError{Message: "--name is required"}
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			a, err := client.UpdateAgent(cliCtx.Background(), args[0], name)
+			if err != nil {
+				return err
+			}
+			cliCtx.Envelope.Status("Updated agent: %s (%s)", a.Name, a.Identifier)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "Agent name (required)")
 	return cmd
 }
 

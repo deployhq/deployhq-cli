@@ -46,6 +46,7 @@ func newBuildCommandsCmd() *cobra.Command {
 			},
 		},
 		newBuildCommandsCreateCmd(),
+		newBuildCommandsUpdateCmd(),
 		&cobra.Command{
 			Use: "delete <id>", Short: "Delete a build command", Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -65,6 +66,34 @@ func newBuildCommandsCmd() *cobra.Command {
 			},
 		},
 	)
+	return cmd
+}
+
+func newBuildCommandsUpdateCmd() *cobra.Command {
+	var command, description string
+	cmd := &cobra.Command{
+		Use: "update <id>", Short: "Update a build command", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			c, err := client.UpdateBuildCommand(cliCtx.Background(), projectID, args[0], sdk.BuildCommandCreateRequest{
+				Command: command, Description: description,
+			})
+			if err != nil {
+				return err
+			}
+			cliCtx.Envelope.Status("Updated build command: %s", c.Identifier)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&command, "command", "", "Build command")
+	cmd.Flags().StringVar(&description, "description", "", "Description")
 	return cmd
 }
 

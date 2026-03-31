@@ -32,7 +32,7 @@ internal/harness/   Agent detection (DEPLOYHQ_AGENT, CLAUDE_CODE, CI)
 
 internal/cli/       Command execution pipeline, lazy SDK client
 
-internal/commands/  All CLI commands (27 top-level, 98 total)
+internal/commands/  All CLI commands (30 top-level, 127 total)
 
 internal/version/   Update checker (GitHub releases API)
 ```

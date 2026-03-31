@@ -89,7 +89,7 @@ dhq projects      list | show | create | update | delete | star | insights
 dhq servers       list | show | create | update | delete | reset-host-key
 dhq server-groups list | show | create | update | delete
 dhq deployments   list | show | create | abort | rollback | logs
-dhq repos         show | update | branches | commits | latest-revision
+dhq repos         show | create | update | branches | commits | latest-revision
 dhq deploy        (shortcut for deployments create)
 dhq rollback      (shortcut for deployments rollback)
 dhq api           GET|POST|PUT|PATCH|DELETE <path> (escape hatch)
@@ -98,16 +98,16 @@ dhq config        show | init | set | unset
 dhq commands      (full catalog as JSON for agents)
 dhq show <url>    (show any DeployHQ resource by URL)
 dhq env-vars      list | show | create | update | delete
-dhq config-files  list | show | create | delete
-dhq build-commands list | create | delete
-dhq build-configs list | show | default | delete
-dhq ssh-commands  list | show | create | delete
-dhq excluded-files list | create | delete
-dhq integrations list | show | delete
-dhq agents        list | create | delete | revoke
-dhq global-servers list | show | delete | copy-to-project
-dhq global-env-vars list | show | delete
-dhq auto-deploys list
+dhq config-files  list | show | create | update | delete
+dhq build-commands list | create | update | delete
+dhq build-configs list | show | default | create | update | delete
+dhq ssh-commands  list | show | create | update | delete
+dhq excluded-files list | show | create | update | delete
+dhq integrations list | show | create | update | delete
+dhq agents        list | create | update | delete | revoke
+dhq global-servers list | show | create | update | delete | copy-to-project
+dhq global-env-vars list | show | create | update | delete
+dhq auto-deploys list | enable
 dhq scheduled-deploys list | show | delete
 dhq doctor        (health check)
 dhq update        (self-update to latest version)

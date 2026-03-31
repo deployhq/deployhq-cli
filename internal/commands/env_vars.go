@@ -206,6 +206,8 @@ func newGlobalEnvVarsCmd() *cobra.Command {
 				return cliCtx.Envelope.WriteJSON(output.NewResponse(v, v.Name))
 			},
 		},
+		newGlobalEnvVarsCreateCmd(),
+		newGlobalEnvVarsUpdateCmd(),
 		&cobra.Command{
 			Use: "delete <id>", Short: "Delete a global environment variable", Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -221,5 +223,56 @@ func newGlobalEnvVarsCmd() *cobra.Command {
 			},
 		},
 	)
+	return cmd
+}
+
+func newGlobalEnvVarsCreateCmd() *cobra.Command {
+	var name, value string
+	cmd := &cobra.Command{
+		Use: "create", Short: "Create a global environment variable",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if name == "" || value == "" {
+				return &output.UserError{Message: "Both --name and --value are required"}
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			v, err := client.CreateGlobalEnvVar(cliCtx.Background(), sdk.EnvVarCreateRequest{Name: name, Value: value})
+			if err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			if env.JSONMode || !env.IsTTY {
+				return env.WriteJSON(output.NewResponse(v, fmt.Sprintf("Created: %s", v.Name)))
+			}
+			env.Status("Created global env var: %s", v.Name)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "Variable name (required)")
+	cmd.Flags().StringVar(&value, "value", "", "Variable value (required)")
+	return cmd
+}
+
+func newGlobalEnvVarsUpdateCmd() *cobra.Command {
+	var name, value string
+	cmd := &cobra.Command{
+		Use: "update <id>", Short: "Update a global environment variable", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			v, err := client.UpdateGlobalEnvVar(cliCtx.Background(), args[0], sdk.EnvVarCreateRequest{Name: name, Value: value})
+			if err != nil {
+				return err
+			}
+			cliCtx.Envelope.Status("Updated global env var: %s", v.Name)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "Variable name")
+	cmd.Flags().StringVar(&value, "value", "", "Variable value")
 	return cmd
 }

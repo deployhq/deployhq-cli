@@ -17,6 +17,7 @@ func newReposCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		newReposShowCmd(),
+		newReposCreateCmd(),
 		newReposUpdateCmd(),
 		newReposBranchesCmd(),
 		newReposCommitsCmd(),
@@ -73,6 +74,47 @@ func newReposShowCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newReposCreateCmd() *cobra.Command {
+	var scmType, url, branch string
+
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create repository configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if scmType == "" || url == "" {
+				return &output.UserError{Message: "Both --scm-type and --url are required"}
+			}
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			req := sdk.RepositoryCreateRequest{ScmType: scmType, URL: url, Branch: branch}
+			repo, err := client.CreateRepository(cliCtx.Background(), projectID, req)
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.JSONMode || !env.IsTTY {
+				return env.WriteJSON(output.NewResponse(repo, fmt.Sprintf("Repository created: %s", repo.URL)))
+			}
+			env.Status("Repository created: %s (%s)", repo.URL, repo.ScmType)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&scmType, "scm-type", "", "SCM type: git, mercurial, subversion (required)")
+	cmd.Flags().StringVar(&url, "url", "", "Repository URL (required)")
+	cmd.Flags().StringVar(&branch, "branch", "", "Default branch")
+	return cmd
 }
 
 func newReposUpdateCmd() *cobra.Command {

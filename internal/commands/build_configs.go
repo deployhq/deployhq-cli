@@ -1,9 +1,11 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -80,6 +82,8 @@ func newBuildConfigsCmd() *cobra.Command {
 				return cliCtx.Envelope.WriteJSON(output.NewResponse(config, "Default build config"))
 			},
 		},
+		newBuildConfigsCreateCmd(),
+		newBuildConfigsUpdateCmd(),
 		&cobra.Command{
 			Use: "delete <id>", Short: "Delete a build configuration", Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -99,5 +103,71 @@ func newBuildConfigsCmd() *cobra.Command {
 			},
 		},
 	)
+	return cmd
+}
+
+func newBuildConfigsCreateCmd() *cobra.Command {
+	var packages string
+	cmd := &cobra.Command{
+		Use: "create", Short: "Create a build configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			req := sdk.BuildConfigCreateRequest{}
+			if packages != "" {
+				if err := json.Unmarshal([]byte(packages), &req.Packages); err != nil {
+					return &output.UserError{Message: "Invalid --packages JSON", Hint: `Use format: '{"ruby":"3.2","node":"18"}'`}
+				}
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			config, err := client.CreateBuildConfig(cliCtx.Background(), projectID, req)
+			if err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			if env.JSONMode || !env.IsTTY {
+				return env.WriteJSON(output.NewResponse(config, fmt.Sprintf("Created: %s", config.Identifier)))
+			}
+			env.Status("Created build config: %s", config.Identifier)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&packages, "packages", "", `Packages JSON, e.g. '{"ruby":"3.2","node":"18"}'`)
+	return cmd
+}
+
+func newBuildConfigsUpdateCmd() *cobra.Command {
+	var packages string
+	cmd := &cobra.Command{
+		Use: "update <id>", Short: "Update a build configuration", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			req := sdk.BuildConfigCreateRequest{}
+			if packages != "" {
+				if err := json.Unmarshal([]byte(packages), &req.Packages); err != nil {
+					return &output.UserError{Message: "Invalid --packages JSON", Hint: `Use format: '{"ruby":"3.2","node":"18"}'`}
+				}
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			config, err := client.UpdateBuildConfig(cliCtx.Background(), projectID, args[0], req)
+			if err != nil {
+				return err
+			}
+			cliCtx.Envelope.Status("Updated build config: %s", config.Identifier)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&packages, "packages", "", `Packages JSON, e.g. '{"ruby":"3.2","node":"18"}'`)
 	return cmd
 }

@@ -60,6 +60,7 @@ func newSSHCommandsCmd() *cobra.Command {
 			},
 		},
 		newSSHCommandsCreateCmd(),
+		newSSHCommandsUpdateCmd(),
 		&cobra.Command{
 			Use: "delete <id>", Short: "Delete an SSH command", Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -79,6 +80,35 @@ func newSSHCommandsCmd() *cobra.Command {
 			},
 		},
 	)
+	return cmd
+}
+
+func newSSHCommandsUpdateCmd() *cobra.Command {
+	var command, description, timing string
+	cmd := &cobra.Command{
+		Use: "update <id>", Short: "Update an SSH command", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			c, err := client.UpdateSSHCommand(cliCtx.Background(), projectID, args[0], sdk.SSHCommandCreateRequest{
+				Command: command, Description: description, Timing: timing,
+			})
+			if err != nil {
+				return err
+			}
+			cliCtx.Envelope.Status("Updated SSH command: %s", c.Identifier)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&command, "command", "", "SSH command")
+	cmd.Flags().StringVar(&description, "description", "", "Description")
+	cmd.Flags().StringVar(&timing, "timing", "", "Timing: before or after")
 	return cmd
 }
 
