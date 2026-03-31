@@ -27,6 +27,20 @@ func newDeployCmd() *cobra.Command {
 				return err
 			}
 
+			// Auto-fetch latest revision if none specified
+			if revision == "" && !useLatest {
+				env := cliCtx.Envelope
+				env.Status("Fetching latest revision...")
+				rev, err := client.GetLatestRevision(cliCtx.Background(), projectID)
+				if err != nil {
+					return &output.UserError{
+						Message: "Could not fetch latest revision",
+						Hint:    "Specify --revision or --use-latest",
+					}
+				}
+				revision = rev
+			}
+
 			req := sdk.DeploymentCreateRequest{
 				Branch:           branch,
 				EndRevision:      revision,
