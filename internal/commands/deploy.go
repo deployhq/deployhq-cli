@@ -17,7 +17,7 @@ func isUUID(s string) bool {
 
 func newDeployCmd() *cobra.Command {
 	var branch, server, revision string
-	var useLatest bool
+	var useLatest, wait bool
 
 	cmd := &cobra.Command{
 		Use:   "deploy",
@@ -117,7 +117,14 @@ func newDeployCmd() *cobra.Command {
 				))
 			}
 
-			env.Status("Deployment %s queued (status: %s)", dep.Identifier, dep.Status)
+			if wait {
+				env.Status("🚀 Deployment %s queued", dep.Identifier)
+				env.Status("")
+				return watchDeployment(cliCtx.Background(), client, env, projectID, dep.Identifier)
+			}
+
+			env.Status("Deployment %s queued (status: %s)", dep.Identifier, output.ColorStatus(dep.Status))
+
 			env.Status("\nNext:")
 			env.Status("  dhq deployments show %s -p %s", dep.Identifier, projectID)
 			env.Status("  dhq deployments logs %s -p %s", dep.Identifier, projectID)
@@ -129,6 +136,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&server, "server", "s", "", "Server or group identifier")
 	cmd.Flags().StringVarP(&revision, "revision", "r", "", "End revision")
 	cmd.Flags().BoolVar(&useLatest, "use-latest", false, "Deploy latest revision")
+	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete")
 	return cmd
 }
 

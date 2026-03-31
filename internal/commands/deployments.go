@@ -22,6 +22,7 @@ func newDeploymentsCmd() *cobra.Command {
 		newDeploymentsAbortCmd(),
 		newDeploymentsRollbackCmd(),
 		newDeploymentsLogsCmd(),
+		newDeploymentsWatchCmd(),
 	)
 
 	return cmd
@@ -360,4 +361,25 @@ func newDeploymentsLogsCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&stepID, "step", "", "Specific step identifier")
 	return cmd
+}
+
+func newDeploymentsWatchCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "watch <deployment-id>",
+		Short: "Watch a deployment in real-time",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			env.Status("Watching deployment %s...\n", args[0])
+			return watchDeployment(cliCtx.Background(), client, env, projectID, args[0])
+		},
+	}
 }
