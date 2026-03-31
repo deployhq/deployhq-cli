@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -32,8 +33,9 @@ type AgentFlagSchema struct {
 	Global      bool   `json:"global,omitempty"`
 }
 
-// installAgentHelp adds a --agent flag to every command and overrides
-// the help function to emit JSON when both --help and --agent are set.
+// installAgentHelp adds a --agent flag to every command. When --agent is set
+// (with or without --help), structured JSON help is emitted instead of running
+// the command.
 func installAgentHelp(root *cobra.Command) {
 	// Add --agent as a persistent flag on root
 	root.PersistentFlags().Bool("agent", false, "Output help as structured JSON for agent discovery")
@@ -44,17 +46,35 @@ func installAgentHelp(root *cobra.Command) {
 		cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 			agentFlag, _ := c.Flags().GetBool("agent")
 			if agentFlag {
-				schema := buildHelpSchema(c)
-				enc := json.NewEncoder(c.OutOrStdout())
-				enc.SetIndent("", "  ")
-				if err := enc.Encode(schema); err != nil {
-					fmt.Fprintf(c.ErrOrStderr(), "Error encoding agent help: %v\n", err) //nolint:errcheck // best-effort stderr
-				}
+				emitAgentHelp(c)
 				return
 			}
 			original(c, args)
 		})
 	})
+
+	// Intercept --agent without --help at the root level
+	existing := root.PersistentPreRunE
+	root.PersistentPreRunE = func(c *cobra.Command, args []string) error {
+		agentFlag, _ := c.Flags().GetBool("agent")
+		if agentFlag {
+			emitAgentHelp(c)
+			os.Exit(0)
+		}
+		if existing != nil {
+			return existing(c, args)
+		}
+		return nil
+	}
+}
+
+func emitAgentHelp(c *cobra.Command) {
+	schema := buildHelpSchema(c)
+	enc := json.NewEncoder(c.OutOrStdout())
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(schema); err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "Error encoding agent help: %v\n", err) //nolint:errcheck // best-effort stderr
+	}
 }
 
 func walkCommands(cmd *cobra.Command, fn func(*cobra.Command)) {

@@ -100,6 +100,7 @@ func NewRootCmd(version string) *cobra.Command {
 	pf.StringVar(&flagAPIKey, "api-key", "", "API key")
 	pf.StringVarP(&flagProject, "project", "p", "", "Project permalink or identifier")
 	pf.StringVar(&flagJSON, "json", "", "Output as JSON (optionally specify fields: --json name,status)")
+	pf.Lookup("json").NoOptDefVal = "true"
 	pf.StringVarP(&flagCwd, "cwd", "C", "", "Change working directory before running")
 
 	// Register subcommands
