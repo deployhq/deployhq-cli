@@ -61,6 +61,7 @@ The OpenAPI spec doesn't always match reality. Known divergences:
 - `DeploymentStep.server` is an int (server ID), not a string
 - `DeploymentStep.total_items`/`completed_items` are ints
 - `*.servers` arrays on ExcludedFile/ConfigFile/SSHCommand contain objects, not strings
+- `DeploymentStepLog.id` is an int, not a string
 
 All handled by `FlexString` or `[]interface{}`.
 
