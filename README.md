@@ -35,20 +35,21 @@ dhq update
 ## Quick Start
 
 ```bash
-# Login
+# Sign up (or login)
+dhq signup
 dhq auth login
 
-# List projects
-dhq projects list
+# Interactive setup (picks default project for this directory)
+dhq configure
 
-# Deploy
-dhq deploy -p my-app -s production --use-latest
+# Deploy and watch in real-time
+dhq deploy -p my-app --wait
 
-# Check status
-dhq deployments show <id> -p my-app
-
-# View logs
+# Check deployment logs
 dhq deployments logs <id> -p my-app
+
+# Open in browser
+dhq open my-app
 ```
 
 ## Authentication
@@ -80,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
-      - run: dhq deploy --server production --revision ${{ github.sha }} --json true
+      - run: dhq deploy --server production --revision ${{ github.sha }} --wait --json
 ```
 
 See `examples/github-actions/` for complete workflows:
@@ -94,10 +95,10 @@ See `examples/github-actions/` for complete workflows:
 dhq projects      list | show | create | update | delete | star | insights
 dhq servers       list | show | create | update | delete | reset-host-key
 dhq server-groups list | show | create | update | delete
-dhq deployments   list | show | create | abort | rollback | logs
+dhq deployments   list | show | create | abort | rollback | logs | watch
 dhq repos         show | create | update | branches | commits | latest-revision
-dhq deploy        (shortcut for deployments create)
-dhq rollback      (shortcut for deployments rollback)
+dhq deploy        [-p project] [-s server] [--wait] (deploy with live progress)
+dhq rollback      <deployment-id> -p <project>
 dhq open          [project] (open DeployHQ in browser)
 dhq api           GET|POST|PUT|PATCH|DELETE <path> (escape hatch)
 dhq auth          login | logout | status | token
@@ -121,13 +122,47 @@ dhq auto-deploys list | enable
 dhq scheduled-deploys list | show | delete
 dhq activity      list | stats (account activity — coming soon)
 dhq status        (quick dashboard across all projects — coming soon)
-dhq assist        (AI deployment assistant, requires Ollama)
+dhq assist        [question] (AI deployment assistant, requires Ollama)
 dhq completion    bash | zsh | fish | powershell
 dhq doctor        (health check)
 dhq update        (self-update to latest version)
 dhq setup         claude | codex (install agent plugins)
 dhq mcp           (start MCP server in stdio mode)
 ```
+
+## Deploy with Live Progress
+
+```bash
+# Deploy and watch steps in real-time (TUI in interactive terminals)
+dhq deploy -p my-app -s production --wait
+
+# Server names are fuzzy-matched
+dhq deploy -p my-app -s fedora --wait
+
+# Watch an existing deployment
+dhq deployments watch <id> -p my-app
+```
+
+On failure, logs are shown automatically with suggested next commands.
+
+## AI Assistant
+
+Get AI-powered help for your deployments using a local LLM. All data stays on your machine.
+
+```bash
+# One-time setup (installs Ollama + downloads model)
+dhq assist --setup
+
+# Ask questions about your deployments
+dhq assist "why did my deploy fail?" -p my-app
+dhq assist "what should I do?" -p my-app
+dhq assist "what does transfer_files do?"
+
+# Check status
+dhq assist --status
+```
+
+Requires [Ollama](https://ollama.com) running locally. Default model: `qwen2.5:3b` (~2GB).
 
 ## JSON Output
 
@@ -158,6 +193,21 @@ JSON responses include breadcrumbs with suggested next commands:
 }
 ```
 
+## Shell Completions
+
+```bash
+# Zsh (add to ~/.zshrc)
+source <(dhq completion zsh)
+
+# Bash (add to ~/.bashrc)
+source <(dhq completion bash)
+
+# Fish
+dhq completion fish | source
+```
+
+Completions include dynamic project name suggestions for `--project`, `show`, and `open`.
+
 ## Configuration
 
 4 layers (highest to lowest precedence):
@@ -168,13 +218,12 @@ JSON responses include breadcrumbs with suggested next commands:
 4. Global config (`~/.deployhq/config.toml`)
 
 ```bash
-# Create project config
+# Interactive setup (recommended)
+dhq configure
+
+# Or manual
 dhq config init
-
-# Set default project
 dhq config set project my-app
-
-# Show resolved config with sources
 dhq config show --resolved
 ```
 
