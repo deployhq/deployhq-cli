@@ -99,6 +99,10 @@ type Server struct {
 type ServerCreateRequest struct {
 	Name         string `json:"name"`
 	ProtocolType string `json:"protocol_type"`
+	Hostname     string `json:"hostname,omitempty"`
+	Port         *int   `json:"port,omitempty"`
+	Username     string `json:"username,omitempty"`
+	Password     string `json:"password,omitempty"`
 	ServerPath   string `json:"server_path,omitempty"`
 	Environment  string `json:"environment,omitempty"`
 	RootPath     string `json:"root_path,omitempty"`

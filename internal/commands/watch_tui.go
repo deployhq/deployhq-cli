@@ -72,6 +72,7 @@ type deploymentMsg struct {
 	dep *sdk.Deployment
 	err error
 }
+type abortMsg struct{ err error }
 
 type watchModel struct {
 	ctx          context.Context
@@ -83,6 +84,8 @@ type watchModel struct {
 	status       string
 	duration     string
 	done         bool
+	confirmAbort bool
+	aborted      bool
 }
 
 func (m *watchModel) Init() tea.Cmd {
@@ -92,10 +95,29 @@ func (m *watchModel) Init() tea.Cmd {
 func (m *watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" || msg.String() == "q" {
-			m.done = true
-			return m, tea.Quit
+		if m.confirmAbort {
+			switch msg.String() {
+			case "y", "Y":
+				m.aborted = true
+				m.done = true
+				return m, m.abortDeployment
+			default:
+				m.confirmAbort = false
+				return m, nil
+			}
 		}
+		if msg.String() == "ctrl+c" || msg.String() == "q" {
+			m.confirmAbort = true
+			return m, nil
+		}
+	case abortMsg:
+		m.done = true
+		if msg.err != nil {
+			m.status = "abort_failed"
+		} else {
+			m.status = "cancelled"
+		}
+		return m, tea.Quit
 	case deploymentMsg:
 		if msg.err != nil {
 			m.done = true
@@ -165,12 +187,24 @@ func (m *watchModel) View() string {
 	case "cancelled":
 		b.WriteString(styleRunning.Render("⚠️  Deployment cancelled"))
 		b.WriteString("\n")
+	case "abort_failed":
+		b.WriteString(styleError.Render("⚠️  Could not abort deployment"))
+		b.WriteString("\n")
 	default:
-		b.WriteString(styleDim.Render("Waiting for updates... (press q to quit)"))
+		if m.confirmAbort {
+			b.WriteString(styleRunning.Render("Abort this deployment? (y/n)"))
+		} else {
+			b.WriteString(styleDim.Render("Waiting for updates... (press q to abort)"))
+		}
 		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+func (m *watchModel) abortDeployment() tea.Msg {
+	err := m.client.AbortDeployment(m.ctx, m.projectID, m.deploymentID)
+	return abortMsg{err: err}
 }
 
 func (m *watchModel) fetchDeployment() tea.Msg {
