@@ -50,6 +50,15 @@ func (c *Client) RollbackDeployment(ctx context.Context, projectID, deploymentID
 	return &deployment, nil
 }
 
+// RetryDeployment retries a failed or completed deployment.
+func (c *Client) RetryDeployment(ctx context.Context, projectID, deploymentID string) (*Deployment, error) {
+	var deployment Deployment
+	if err := c.post(ctx, fmt.Sprintf("/projects/%s/deployments/%s/retry", projectID, deploymentID), nil, &deployment); err != nil {
+		return nil, err
+	}
+	return &deployment, nil
+}
+
 // GetDeploymentStepLogs returns logs for a specific deployment step.
 func (c *Client) GetDeploymentStepLogs(ctx context.Context, projectID, deploymentID, stepID string) ([]DeploymentStepLog, error) {
 	var logs []DeploymentStepLog

@@ -210,6 +210,37 @@ func newDeployCmd() *cobra.Command {
 	return cmd
 }
 
+func newRetryCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "retry <deployment-id>",
+		Short: "Retry a deployment (shortcut for deployments retry)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			dep, err := client.RetryDeployment(cliCtx.Background(), projectID, args[0])
+			if err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			if env.JSONMode || !env.IsTTY {
+				return env.WriteJSON(output.NewResponse(dep,
+					fmt.Sprintf("Retry deployment %s queued", dep.Identifier),
+					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
+				))
+			}
+			env.Status("Retry deployment %s queued (status: %s)", dep.Identifier, dep.Status)
+			return nil
+		},
+	}
+}
+
 func newRollbackCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "rollback <deployment-id>",

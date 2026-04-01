@@ -131,6 +131,7 @@ func NewRootCmd(version string) *cobra.Command {
 
 		// Shortcuts
 		newDeployCmd(),
+		newRetryCmd(),
 		newRollbackCmd(),
 		newOpenCmd(),
 		newInitCmd(),

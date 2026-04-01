@@ -20,6 +20,7 @@ func newDeploymentsCmd() *cobra.Command {
 		newDeploymentsShowCmd(),
 		newDeploymentsCreateCmd(),
 		newDeploymentsAbortCmd(),
+		newDeploymentsRetryCmd(),
 		newDeploymentsRollbackCmd(),
 		newDeploymentsLogsCmd(),
 		newDeploymentsWatchCmd(),
@@ -235,6 +236,39 @@ func newDeploymentsCreateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&useCache, "use-cache", true, "Use build cache")
 	cmd.Flags().BoolVar(&useLatest, "use-latest", false, "Deploy latest revision")
 	return cmd
+}
+
+func newDeploymentsRetryCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "retry <identifier>",
+		Short: "Retry a failed or completed deployment",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			dep, err := client.RetryDeployment(cliCtx.Background(), projectID, args[0])
+			if err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			if env.JSONMode || !env.IsTTY {
+				return env.WriteJSON(output.NewResponse(dep,
+					fmt.Sprintf("Retry deployment %s queued", dep.Identifier),
+					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", dep.Identifier, projectID)},
+				))
+			}
+			env.Status("Retry deployment %s queued (status: %s)", dep.Identifier, dep.Status)
+			env.Status("\nNext: dhq deployments show %s -p %s", dep.Identifier, projectID)
+			return nil
+		},
+	}
 }
 
 func newDeploymentsAbortCmd() *cobra.Command {
