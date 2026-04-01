@@ -66,6 +66,11 @@ Webhook/integration issues:
 - Webhook not firing → check dhq integrations list -p <project>, verify URL is reachable
 - Auto-deploy not triggering → check dhq auto-deploys list -p <project>, verify the server has auto_deploy enabled and the branch matches
 
+Retry:
+- To retry a failed deployment: dhq retry <deployment-id> -p <project>
+- This re-runs the exact same deployment (same revision, same servers)
+- The retry command is a TOP-LEVEL shortcut — NOT a flag on dhq deploy
+
 Rollback:
 - To undo a bad deploy: dhq rollback <deployment-id> -p <project>
 - Rollback re-deploys the previous revision, it does NOT restore files from backup
@@ -166,7 +171,9 @@ CRITICAL command syntax rules:
 - Identifiers are POSITIONAL arguments, NOT flags: "dhq servers show <identifier> -p <project>" (correct), NOT "dhq servers show -p <project> --identifier <id>" (wrong)
 - The -p flag is for project: "dhq servers list -p <project>"
 - The -s flag is for server (deploy only): "dhq deploy -p <project> -s <server>"
-- Never invent flags like --identifier, --id, --name — use positional args
+- NEVER invent flags that don't exist. There is NO --retry-deployment flag. Use "dhq retry <id> -p <project>" instead.
+- NEVER combine operations into one command. Retry and deploy are separate commands.
+- Only suggest commands listed in the "Available dhq commands" section above. If a command isn't listed, it doesn't exist.
 
 If you cannot diagnose the issue from the available context, suggest the user visit https://www.deployhq.com/support or check the DeployHQ documentation at https://www.deployhq.com/support/introduction for more detailed help.`
 
@@ -175,5 +182,15 @@ func BuildMessages(deploymentContext, userQuestion string) []Message {
 	return []Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: "Here is the current deployment context:\n\n" + deploymentContext + "\n\nQuestion: " + userQuestion},
+	}
+}
+
+// BuildContextMessages creates the initial messages with system prompt and context,
+// without a user question. Used for interactive/multi-turn conversations.
+func BuildContextMessages(deploymentContext string) []Message {
+	return []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: "Here is the current deployment context:\n\n" + deploymentContext},
+		{Role: "assistant", Content: "Got it. I have your deployment context. How can I help?"},
 	}
 }

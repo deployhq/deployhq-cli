@@ -1,8 +1,10 @@
 package commands
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -13,7 +15,7 @@ import (
 
 func newAssistCmd() *cobra.Command {
 	var model string
-	var setup, status, noStream bool
+	var setup, status, noStream, interactive bool
 
 	cmd := &cobra.Command{
 		Use:   "assist [question]",
@@ -40,15 +42,6 @@ All data stays on your machine — nothing is sent to external services.`,
 				return runAssistStatus(env, ollama)
 			}
 
-			// Need a question
-			question := strings.Join(args, " ")
-			if question == "" {
-				return &output.UserError{
-					Message: "Please ask a question",
-					Hint:    `Example: dhq assist "why did my deploy fail?" -p <project>`,
-				}
-			}
-
 			// Check Ollama is available
 			if !ollama.IsAvailable(cliCtx.Background()) {
 				return &output.UserError{
@@ -73,6 +66,20 @@ All data stays on your machine — nothing is sent to external services.`,
 
 			if contextStr == "" {
 				contextStr = "No project context available. Answer based on general DeployHQ knowledge."
+			}
+
+			// Interactive mode
+			question := strings.Join(args, " ")
+			if interactive || (question == "" && env.IsTTY) {
+				return runAssistInteractive(env, ollama, contextStr, question)
+			}
+
+			// Need a question for single-shot mode
+			if question == "" {
+				return &output.UserError{
+					Message: "Please ask a question",
+					Hint:    `Example: dhq assist "why did my deploy fail?" -p <project>`,
+				}
 			}
 
 			messages := assist.BuildMessages(contextStr, question)
@@ -104,8 +111,59 @@ All data stays on your machine — nothing is sent to external services.`,
 	cmd.Flags().StringVar(&model, "model", "", fmt.Sprintf("Ollama model (default: %s)", assist.DefaultModelName()))
 	cmd.Flags().BoolVar(&setup, "setup", false, "Set up Ollama and download the model")
 	cmd.Flags().BoolVar(&status, "status", false, "Check Ollama status")
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Interactive chat mode (multi-turn conversation)")
 	cmd.Flags().BoolVar(&noStream, "no-stream", false, "Disable streaming output")
 	return cmd
+}
+
+func runAssistInteractive(env *output.Envelope, ollama *assist.OllamaClient, contextStr, firstQuestion string) error {
+	reader := bufio.NewReader(os.Stdin)
+	messages := assist.BuildContextMessages(contextStr)
+
+	env.Status("DeployHQ Assistant (interactive mode)")
+	env.Status("Type your questions. Press Ctrl+C or type 'exit' to quit.\n")
+
+	// If a question was passed as args, handle it first
+	if firstQuestion != "" {
+		fmt.Fprintf(env.Stderr, "You: %s\n\n", firstQuestion) //nolint:errcheck
+		messages = append(messages, assist.Message{Role: "user", Content: firstQuestion})
+		fmt.Fprint(env.Stderr, "✨ ") //nolint:errcheck
+		response, err := ollama.ChatStreamCapture(cliCtx.Background(), messages, env.Stderr)
+		if err != nil {
+			return err
+		}
+		messages = append(messages, assist.Message{Role: "assistant", Content: response})
+		fmt.Fprintln(env.Stderr) //nolint:errcheck
+	}
+
+	for {
+		fmt.Fprint(env.Stderr, "You: ") //nolint:errcheck
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			// EOF (Ctrl+D)
+			fmt.Fprintln(env.Stderr) //nolint:errcheck
+			return nil
+		}
+
+		input = strings.TrimSpace(input)
+		if input == "" {
+			continue
+		}
+		if input == "exit" || input == "quit" {
+			return nil
+		}
+
+		messages = append(messages, assist.Message{Role: "user", Content: input})
+
+		fmt.Fprintf(env.Stderr, "\n✨ ") //nolint:errcheck
+		response, err := ollama.ChatStreamCapture(cliCtx.Background(), messages, env.Stderr)
+		if err != nil {
+			env.Status("Error: %v", err)
+			continue
+		}
+		messages = append(messages, assist.Message{Role: "assistant", Content: response})
+		fmt.Fprintln(env.Stderr) //nolint:errcheck
+	}
 }
 
 func runAssistSetup(env *output.Envelope, ollama *assist.OllamaClient) error {

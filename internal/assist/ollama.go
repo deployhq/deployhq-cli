@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -190,4 +191,51 @@ func (c *OllamaClient) ChatStream(ctx context.Context, messages []Message, w io.
 	}
 	fmt.Fprintln(w) //nolint:errcheck
 	return scanner.Err()
+}
+
+// ChatStreamCapture streams tokens to the writer and returns the full response text.
+func (c *OllamaClient) ChatStreamCapture(ctx context.Context, messages []Message, w io.Writer) (string, error) {
+	body, err := json.Marshal(chatRequest{
+		Model:    c.Model,
+		Messages: messages,
+		Stream:   true,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ollama request failed: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(b))
+	}
+
+	var full strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		var chunk chatResponse
+		if err := json.Unmarshal(scanner.Bytes(), &chunk); err != nil {
+			continue
+		}
+		if chunk.Message.Content != "" {
+			fmt.Fprint(w, chunk.Message.Content) //nolint:errcheck
+			full.WriteString(chunk.Message.Content)
+		}
+		if chunk.Done {
+			break
+		}
+	}
+	fmt.Fprintln(w) //nolint:errcheck
+	return full.String(), scanner.Err()
 }
