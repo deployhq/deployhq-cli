@@ -117,6 +117,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newConfigFilesCmd(),
 		newBuildCommandsCmd(),
 		newBuildConfigsCmd(),
+		newLanguageVersionsCmd(),
 		newSSHCommandsCmd(),
 		newExcludedFilesCmd(),
 		newIntegrationsCmd(),
@@ -126,6 +127,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newGlobalEnvVarsCmd(),
 		newAutoDeploysCmd(),
 		newScheduledDeploysCmd(),
+		newZonesCmd(),
 
 		// Shortcuts
 		newDeployCmd(),
