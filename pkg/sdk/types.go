@@ -56,7 +56,15 @@ type ProjectCreateRequest struct {
 
 // ProjectUpdateRequest is the payload for updating a project.
 type ProjectUpdateRequest struct {
-	Name string `json:"name,omitempty"`
+	Name                   string `json:"name,omitempty"`
+	Permalink              string `json:"permalink,omitempty"`
+	ZoneID                 string `json:"zone_id,omitempty"`
+	EmailNotifyOn          string `json:"email_notify_on,omitempty"`
+	NotificationEmail      string `json:"notification_email,omitempty"`
+	NotifyPusher           *bool  `json:"notify_pusher,omitempty"`
+	CustomPrivateKey       string `json:"custom_private_key,omitempty"`
+	CheckUndeployedChanges string `json:"check_undeployed_changes,omitempty"`
+	StoreArtifactsEnabled  string `json:"store_artifacts_enabled,omitempty"`
 }
 
 // Server represents a deployment server.

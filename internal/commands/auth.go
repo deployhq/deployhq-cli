@@ -143,17 +143,24 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 }
 
 func newAuthLogoutCmd() *cobra.Command {
-	return &cobra.Command{
+	var account string
+	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Remove stored credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := auth.Delete(); err != nil {
+			if err := auth.DeleteByAccount(account); err != nil {
 				return &output.InternalError{Message: "remove credentials", Cause: err}
 			}
-			cliCtx.Envelope.Status("Logged out")
+			if account != "" {
+				cliCtx.Envelope.Status("Logged out of %s", account)
+			} else {
+				cliCtx.Envelope.Status("Logged out")
+			}
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&account, "account", "", "Account profile to remove (default: default profile)")
+	return cmd
 }
 
 func newAuthStatusCmd() *cobra.Command {
@@ -163,7 +170,9 @@ func newAuthStatusCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
-			creds, err := auth.Load()
+			// If an account is specified via flag/env/config, show that profile
+			account := cliCtx.Config.Account
+			creds, err := auth.LoadByAccount(account)
 			if err != nil {
 				env.Status("Not logged in")
 				return nil

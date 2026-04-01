@@ -188,7 +188,16 @@ func newProjectsCreateCmd() *cobra.Command {
 }
 
 func newProjectsUpdateCmd() *cobra.Command {
-	var name string
+	var (
+		name                   string
+		permalink              string
+		zone                   string
+		emailNotifyOn          string
+		notificationEmail      string
+		notifyPusher           bool
+		checkUndeployedChanges string
+		storeArtifactsEnabled  string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "update [permalink]",
@@ -205,7 +214,33 @@ func newProjectsUpdateCmd() *cobra.Command {
 				return err
 			}
 
-			project, err := client.UpdateProject(cliCtx.Background(), projectID, sdk.ProjectUpdateRequest{Name: name})
+			req := sdk.ProjectUpdateRequest{}
+			if cmd.Flags().Changed("name") {
+				req.Name = name
+			}
+			if cmd.Flags().Changed("permalink") {
+				req.Permalink = permalink
+			}
+			if cmd.Flags().Changed("zone") {
+				req.ZoneID = zone
+			}
+			if cmd.Flags().Changed("email-notify-on") {
+				req.EmailNotifyOn = emailNotifyOn
+			}
+			if cmd.Flags().Changed("notification-email") {
+				req.NotificationEmail = notificationEmail
+			}
+			if cmd.Flags().Changed("notify-pusher") {
+				req.NotifyPusher = &notifyPusher
+			}
+			if cmd.Flags().Changed("check-undeployed-changes") {
+				req.CheckUndeployedChanges = checkUndeployedChanges
+			}
+			if cmd.Flags().Changed("store-artifacts") {
+				req.StoreArtifactsEnabled = storeArtifactsEnabled
+			}
+
+			project, err := client.UpdateProject(cliCtx.Background(), projectID, req)
 			if err != nil {
 				return err
 			}
@@ -219,7 +254,14 @@ func newProjectsUpdateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "New project name")
+	cmd.Flags().StringVar(&name, "name", "", "Project name")
+	cmd.Flags().StringVar(&permalink, "permalink", "", "Project permalink")
+	cmd.Flags().StringVar(&zone, "zone", "", "Project zone ID")
+	cmd.Flags().StringVar(&emailNotifyOn, "email-notify-on", "", "When to send notifications (always, only_failures, never)")
+	cmd.Flags().StringVar(&notificationEmail, "notification-email", "", "Custom notification email address")
+	cmd.Flags().BoolVar(&notifyPusher, "notify-pusher", false, "Notify commit pusher on auto deploys")
+	cmd.Flags().StringVar(&checkUndeployedChanges, "check-undeployed-changes", "", "Nightly scan for undeployed changes (true/false)")
+	cmd.Flags().StringVar(&storeArtifactsEnabled, "store-artifacts", "", "Store .tar files for each deployment (true/false)")
 	return cmd
 }
 

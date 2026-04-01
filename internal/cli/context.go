@@ -43,9 +43,9 @@ func (c *Context) Client() (*sdk.Client, error) {
 	email := c.Config.Email
 	apiKey := c.Config.APIKey
 
-	// Fill gaps from auth store
+	// Fill gaps from auth store (look up by account name if known)
 	if account == "" || email == "" || apiKey == "" {
-		creds, err := auth.Load()
+		creds, err := auth.LoadByAccount(account)
 		if err != nil {
 			return nil, &output.AuthError{
 				Message: "Not logged in",

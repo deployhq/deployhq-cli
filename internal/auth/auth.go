@@ -1,8 +1,12 @@
 // Package auth provides credential storage with keyring + file fallback.
 //
-// Credentials are stored as:
+// Credentials are stored per account profile:
 //   - Primary: OS keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
 //   - Fallback: ~/.deployhq/credentials.json (mode 0600) when keyring is unavailable
+//
+// Profile resolution:
+//   - Named profile: keyring user = account name (e.g. "sg", "sg.staging")
+//   - Default profile: keyring user = "default" (used when no account is specified)
 package auth
 
 import (
@@ -16,7 +20,7 @@ import (
 
 const (
 	keyringService = "deployhq-cli"
-	keyringUser    = "default"
+	defaultProfile = "default"
 )
 
 // Credentials holds the authentication data for an account.
@@ -27,22 +31,81 @@ type Credentials struct {
 }
 
 // Store saves credentials to the OS keyring, falling back to file.
+// If creds.Account is set, it is stored under that profile name.
+// Otherwise it is stored as the default profile.
 func Store(creds *Credentials) error {
+	profile := profileName(creds.Account)
+
 	data, err := json.Marshal(creds)
 	if err != nil {
 		return fmt.Errorf("auth: marshal credentials: %w", err)
 	}
 
-	if err := keyring.Set(keyringService, keyringUser, string(data)); err != nil {
+	if err := keyring.Set(keyringService, profile, string(data)); err != nil {
 		// Keyring unavailable, fall back to file
-		return storeToFile(creds)
+		return storeToFile(profile, creds)
 	}
 	return nil
 }
 
-// Load retrieves credentials from the OS keyring, falling back to file.
+// Load retrieves the default profile credentials.
 func Load() (*Credentials, error) {
-	data, err := keyring.Get(keyringService, keyringUser)
+	return LoadByAccount("")
+}
+
+// LoadByAccount retrieves credentials for a specific account profile.
+// If account is empty, loads the default profile.
+// If no named profile is found, falls back to the default profile.
+func LoadByAccount(account string) (*Credentials, error) {
+	profile := profileName(account)
+
+	// Try the named profile first
+	creds, err := loadProfile(profile)
+	if err == nil {
+		return creds, nil
+	}
+
+	// If we asked for a named profile and it wasn't found,
+	// try the default profile (it may match the requested account)
+	if profile != defaultProfile {
+		creds, err = loadProfile(defaultProfile)
+		if err == nil && (account == "" || creds.Account == account) {
+			return creds, nil
+		}
+	}
+
+	return nil, fmt.Errorf("auth: not logged in (run 'dhq auth login')")
+}
+
+// Delete removes stored credentials for the default profile.
+func Delete() error {
+	return DeleteByAccount("")
+}
+
+// DeleteByAccount removes stored credentials for a specific account profile.
+func DeleteByAccount(account string) error {
+	profile := profileName(account)
+	_ = keyring.Delete(keyringService, profile)
+	_ = deleteFileProfile(profile)
+	return nil
+}
+
+// HasCredentials returns true if default credentials are stored.
+func HasCredentials() bool {
+	creds, err := Load()
+	return err == nil && creds != nil && creds.APIKey != ""
+}
+
+func profileName(account string) string {
+	if account == "" {
+		return defaultProfile
+	}
+	return account
+}
+
+func loadProfile(profile string) (*Credentials, error) {
+	// Try keyring
+	data, err := keyring.Get(keyringService, profile)
 	if err == nil {
 		var creds Credentials
 		if err := json.Unmarshal([]byte(data), &creds); err != nil {
@@ -52,32 +115,30 @@ func Load() (*Credentials, error) {
 	}
 
 	// Fall back to file
-	return loadFromFile()
+	return loadFromFile(profile)
 }
 
-// Delete removes stored credentials from both keyring and file.
-func Delete() error {
-	_ = keyring.Delete(keyringService, keyringUser) // ignore error
-	_ = deleteFile()                                 // ignore error
-	return nil
-}
-
-// HasCredentials returns true if credentials are stored.
-func HasCredentials() bool {
-	creds, err := Load()
-	return err == nil && creds != nil && creds.APIKey != ""
-}
-
-func credentialsPath() string {
+func credentialsDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".deployhq", "credentials.json")
+	return filepath.Join(home, ".deployhq")
 }
 
-func storeToFile(creds *Credentials) error {
-	path := credentialsPath()
+func credentialsPath(profile string) string {
+	dir := credentialsDir()
+	if dir == "" {
+		return ""
+	}
+	if profile == defaultProfile {
+		return filepath.Join(dir, "credentials.json")
+	}
+	return filepath.Join(dir, fmt.Sprintf("credentials-%s.json", profile))
+}
+
+func storeToFile(profile string, creds *Credentials) error {
+	path := credentialsPath(profile)
 	if path == "" {
 		return fmt.Errorf("auth: cannot determine home directory")
 	}
@@ -98,8 +159,8 @@ func storeToFile(creds *Credentials) error {
 	return nil
 }
 
-func loadFromFile() (*Credentials, error) {
-	path := credentialsPath()
+func loadFromFile(profile string) (*Credentials, error) {
+	path := credentialsPath(profile)
 	if path == "" {
 		return nil, fmt.Errorf("auth: not logged in")
 	}
@@ -107,7 +168,7 @@ func loadFromFile() (*Credentials, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("auth: not logged in (run 'dhq auth login')")
+			return nil, fmt.Errorf("auth: no credentials for profile %q", profile)
 		}
 		return nil, fmt.Errorf("auth: read credentials: %w", err)
 	}
@@ -119,8 +180,8 @@ func loadFromFile() (*Credentials, error) {
 	return &creds, nil
 }
 
-func deleteFile() error {
-	path := credentialsPath()
+func deleteFileProfile(profile string) error {
+	path := credentialsPath(profile)
 	if path == "" {
 		return nil
 	}
