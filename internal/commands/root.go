@@ -31,7 +31,10 @@ func NewRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "dhq",
 		Short:   "DeployHQ CLI — deploy from your terminal",
-		Long:    `The official DeployHQ command-line interface for managing projects, servers, and deployments.`,
+		Long: `The official DeployHQ command-line interface for managing projects, servers, and deployments.
+
+Feedback & feature requests: https://changelog.deployhq.com
+Support: support@deployhq.com`,
 		Version: version,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Handle --cwd
@@ -159,6 +162,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newSetupCmd(),
 		newMCPCmd(),
 		newCompletionCmd(),
+		newFeedbackCmd(),
 		newDoctorCmd(),
 		newUpdateCmd(version),
 		newVersionCmd(version),
