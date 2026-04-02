@@ -70,3 +70,23 @@ func (c *Client) GetProjectInsights(ctx context.Context, id string) (map[string]
 	}
 	return result, nil
 }
+
+// UploadProjectKey uploads a custom public key for a project.
+func (c *Client) UploadProjectKey(ctx context.Context, id, publicKey string) (*Project, error) {
+	body := struct {
+		Project struct {
+			PublicKey string `json:"public_key"`
+		} `json:"project"`
+	}{}
+	body.Project.PublicKey = publicKey
+	var project Project
+	if err := c.patch(ctx, fmt.Sprintf("/projects/%s/upload_key", id), body, &project); err != nil {
+		return nil, err
+	}
+	return &project, nil
+}
+
+// GetStatusBadge returns the SVG deployment status badge for a project.
+func (c *Client) GetStatusBadge(ctx context.Context, id string) ([]byte, error) {
+	return c.doRaw(ctx, "GET", fmt.Sprintf("/%s/status_badge.svg", id))
+}

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -24,6 +25,8 @@ func newProjectsCmd() *cobra.Command {
 		newProjectsDeleteCmd(),
 		newProjectsStarCmd(),
 		newProjectsInsightsCmd(),
+		newProjectsUploadKeyCmd(),
+		newProjectsBadgeCmd(),
 	)
 
 	return cmd
@@ -357,6 +360,89 @@ func newProjectsInsightsCmd() *cobra.Command {
 
 			return cliCtx.Envelope.WriteJSON(output.NewResponse(insights,
 				fmt.Sprintf("Insights for project: %s", projectID)))
+		},
+	}
+}
+
+func newProjectsUploadKeyCmd() *cobra.Command {
+	var keyFile string
+
+	cmd := &cobra.Command{
+		Use:               "upload-key [permalink]",
+		Short:             "Upload a custom public key for a project",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := resolveProjectArg(args)
+			if err != nil {
+				return err
+			}
+
+			if keyFile == "" {
+				return &output.UserError{Message: "Public key file is required", Hint: "Use --key-file flag"}
+			}
+
+			keyData, err := os.ReadFile(keyFile)
+			if err != nil {
+				return fmt.Errorf("read key file: %w", err)
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			project, err := client.UploadProjectKey(cliCtx.Background(), projectID, string(keyData))
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.JSONMode || !env.IsTTY {
+				return env.WriteJSON(output.NewResponse(project, fmt.Sprintf("Uploaded key for project: %s", project.Name)))
+			}
+			env.Status("Uploaded custom key for project: %s", project.Name)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&keyFile, "key-file", "", "Path to public key file (required)")
+	return cmd
+}
+
+func newProjectsBadgeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "badge [permalink]",
+		Short:             "Get deployment status badge URL",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := resolveProjectArg(args)
+			if err != nil {
+				return err
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			badge, err := client.GetStatusBadge(cliCtx.Background(), projectID)
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.JSONMode || !env.IsTTY {
+				return env.WriteJSON(output.NewResponse(
+					map[string]string{"svg": string(badge)},
+					fmt.Sprintf("Status badge for project: %s", projectID),
+				))
+			}
+
+			// Write SVG to stdout for piping (e.g., dhq projects badge my-proj > badge.svg)
+			fmt.Fprint(cmd.OutOrStdout(), string(badge))
+			return nil
 		},
 	}
 }

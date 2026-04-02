@@ -80,6 +80,35 @@ func New(account, email, apiKey string, opts ...Option) (*Client, error) {
 	return c, nil
 }
 
+// doRaw executes an HTTP request and returns the raw response body.
+func (c *Client) doRaw(ctx context.Context, method, path string) ([]byte, error) {
+	rel, err := url.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("deployhq: invalid path %q: %w", path, err)
+	}
+	u := c.baseURL.ResolveReference(rel)
+
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("deployhq: create request: %w", err)
+	}
+
+	req.SetBasicAuth(c.email, c.apiKey)
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("deployhq: request failed: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode >= 400 {
+		return nil, parseAPIError(resp)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
 // do executes an HTTP request and decodes the JSON response into v.
 // If v is nil, the response body is discarded.
 func (c *Client) do(ctx context.Context, method, path string, body, v interface{}) error {
@@ -190,6 +219,11 @@ func (c *Client) post(ctx context.Context, path string, body, v interface{}) err
 // put performs a PUT request.
 func (c *Client) put(ctx context.Context, path string, body, v interface{}) error {
 	return c.do(ctx, http.MethodPut, path, body, v)
+}
+
+// patch performs a PATCH request.
+func (c *Client) patch(ctx context.Context, path string, body, v interface{}) error {
+	return c.do(ctx, http.MethodPatch, path, body, v)
 }
 
 // delete performs a DELETE request.
