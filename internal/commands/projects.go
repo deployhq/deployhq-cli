@@ -441,8 +441,8 @@ func newProjectsBadgeCmd() *cobra.Command {
 			}
 
 			// Write SVG to stdout for piping (e.g., dhq projects badge my-proj > badge.svg)
-			fmt.Fprint(cmd.OutOrStdout(), string(badge))
-			return nil
+			_, err = fmt.Fprint(cmd.OutOrStdout(), string(badge))
+			return err
 		},
 	}
 }
