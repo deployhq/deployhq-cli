@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -31,7 +32,7 @@ func newProjectsCmd() *cobra.Command {
 func newProjectsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List all projects",
+		Short: "List all projects (starred first)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := cliCtx.Client()
 			if err != nil {
@@ -43,28 +44,42 @@ func newProjectsListCmd() *cobra.Command {
 				return err
 			}
 
+			// Sort: starred projects first, then alphabetically by name within each group
+			sort.SliceStable(projects, func(i, j int) bool {
+				if projects[i].Starred != projects[j].Starred {
+					return projects[i].Starred
+				}
+				return projects[i].Name < projects[j].Name
+			})
+
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(projects,
 					fmt.Sprintf("%d projects", len(projects)),
 					output.Breadcrumb{Action: "show", Cmd: "dhq projects show <permalink>"},
 					output.Breadcrumb{Action: "create", Cmd: "dhq projects create --name <name>"},
+					output.Breadcrumb{Action: "star", Cmd: "dhq projects star <permalink>"},
 				))
 			}
 
-			columns := []string{"Name", "Permalink", "Zone", "Last Deployed"}
+			columns := []string{"*", "Name", "Permalink", "Zone", "Last Deployed"}
 			rows := make([][]string, len(projects))
 			for i, p := range projects {
+				star := " "
+				if p.Starred {
+					star = "*"
+				}
 				lastDeploy := "-"
 				if p.LastDeployedAt != nil {
 					lastDeploy = *p.LastDeployedAt
 				}
-				rows[i] = []string{p.Name, p.Permalink, p.Zone, lastDeploy}
+				rows[i] = []string{star, p.Name, p.Permalink, p.Zone, lastDeploy}
 			}
 			env.WriteTable(columns, rows)
 
 			if len(projects) > 0 {
 				env.Status("\nTip: dhq projects show %s", projects[0].Permalink)
+				env.Status("     dhq projects star <permalink>  (toggle favourite)")
 			}
 			return nil
 		},
@@ -293,9 +308,11 @@ func newProjectsDeleteCmd() *cobra.Command {
 
 func newProjectsStarCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "star [permalink]",
-		Short: "Toggle project starred status",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "star [permalink]",
+		Aliases: []string{"fav", "unfav", "favourite", "unfavourite"},
+		Short:   "Toggle project starred/favourite status",
+		Args:    cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := resolveProjectArg(args)
 			if err != nil {
@@ -311,7 +328,7 @@ func newProjectsStarCmd() *cobra.Command {
 				return err
 			}
 
-			cliCtx.Envelope.Status("Toggled star on project: %s", projectID)
+			cliCtx.Envelope.Status("Toggled favourite on project: %s", projectID)
 			return nil
 		},
 	}
