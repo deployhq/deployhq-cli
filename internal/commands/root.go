@@ -130,6 +130,7 @@ Support: support@deployhq.com`,
 		newGlobalEnvVarsCmd(),
 		newAutoDeploysCmd(),
 		newScheduledDeploysCmd(),
+		newTemplatesCmd(),
 		newZonesCmd(),
 
 		// Shortcuts
