@@ -70,6 +70,35 @@ func TestEnvelope_WriteJSON_ArrayFieldSelection(t *testing.T) {
 	assert.Nil(t, result[0]["id"])
 }
 
+func TestEnvelope_WriteJSON_ResponseEnvelopeFieldSelection(t *testing.T) {
+	var stdout bytes.Buffer
+	env := &Envelope{
+		Stdout:     &stdout,
+		Stderr:     os.Stderr,
+		Logger:     &Logger{},
+		JSONMode:   true,
+		JSONFields: []string{"name", "permalink"},
+	}
+
+	projects := []map[string]interface{}{
+		{"name": "App 1", "permalink": "app-1", "id": 1, "status": "active"},
+		{"name": "App 2", "permalink": "app-2", "id": 2, "status": "paused"},
+	}
+	resp := NewResponse(projects, "2 projects",
+		Breadcrumb{Action: "show", Cmd: "dhq projects show <permalink>"},
+	)
+	err := env.WriteJSON(resp)
+	require.NoError(t, err)
+
+	var result []map[string]interface{}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
+	assert.Len(t, result, 2)
+	assert.Equal(t, "App 1", result[0]["name"])
+	assert.Equal(t, "app-1", result[0]["permalink"])
+	assert.Nil(t, result[0]["id"], "id should be filtered out")
+	assert.Nil(t, result[0]["status"], "status should be filtered out")
+}
+
 func TestEnvelope_WriteTable(t *testing.T) {
 	var stdout bytes.Buffer
 	env := &Envelope{Stdout: &stdout, Stderr: os.Stderr, Logger: &Logger{}}

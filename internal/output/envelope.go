@@ -236,7 +236,13 @@ func (e *Envelope) WriteData(data interface{}, columns []string, toRow func(inte
 }
 
 // filterFields extracts only the specified fields from a JSON-serializable value.
+// If the value is a Response envelope, it unwraps and filters the Data field.
 func filterFields(data interface{}, fields []string) interface{} {
+	// Unwrap Response envelope — filter the inner Data, not the wrapper
+	if resp, ok := data.(*Response); ok {
+		return filterFields(resp.Data, fields)
+	}
+
 	// Marshal to map, then pick fields
 	b, err := json.Marshal(data)
 	if err != nil {
