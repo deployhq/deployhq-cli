@@ -19,6 +19,9 @@ type BuildCommand struct {
 	UpdatedAt    string  `json:"updated_at"`
 }
 
+func (b BuildCommand) NumericID() int { return b.ID }
+func (b BuildCommand) UUID() string   { return b.Identifier }
+
 // BuildCommandCreateRequest is the payload for creating/updating a build command.
 type BuildCommandCreateRequest struct {
 	Description string `json:"description,omitempty"`
