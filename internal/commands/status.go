@@ -23,7 +23,10 @@ func newStatusCmd() *cobra.Command {
 			}
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
-				return env.WriteJSON(output.NewResponse(result, "Account status"))
+				return env.WriteJSON(output.NewResponse(result, "Account status",
+					output.Breadcrumb{Action: "activity", Cmd: "dhq activity list"},
+					output.Breadcrumb{Action: "projects", Cmd: "dhq projects list"},
+				))
 			}
 			s := result.Stats
 			env.Status("Deploy Stats (this week)")

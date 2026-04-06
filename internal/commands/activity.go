@@ -38,7 +38,9 @@ func newActivityListCmd() *cobra.Command {
 			}
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
-				return env.WriteJSON(output.NewResponse(events, fmt.Sprintf("%d events", len(events))))
+				return env.WriteJSON(output.NewResponse(events, fmt.Sprintf("%d events", len(events)),
+					output.Breadcrumb{Action: "stats", Cmd: "dhq activity stats"},
+				))
 			}
 			if len(events) == 0 {
 				env.Status("No recent activity")
@@ -75,7 +77,9 @@ func newActivityStatsCmd() *cobra.Command {
 			}
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
-				return env.WriteJSON(output.NewResponse(result, "Account activity with stats"))
+				return env.WriteJSON(output.NewResponse(result, "Account activity with stats",
+					output.Breadcrumb{Action: "events", Cmd: "dhq activity list"},
+				))
 			}
 			s := result.Stats
 			env.WriteTable([]string{"Metric", "Value"}, [][]string{

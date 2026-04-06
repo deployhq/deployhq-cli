@@ -142,7 +142,10 @@ func newReposUpdateCmd() *cobra.Command {
 
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
-				return env.WriteJSON(output.NewResponse(repo, "Repository updated"))
+				return env.WriteJSON(output.NewResponse(repo, "Repository updated",
+					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq repos show -p %s", projectID)},
+					output.Breadcrumb{Action: "branches", Cmd: fmt.Sprintf("dhq repos branches -p %s", projectID)},
+				))
 			}
 			env.Status("Repository updated: %s", repo.URL)
 			return nil
@@ -262,7 +265,9 @@ func newReposLatestRevisionCmd() *cobra.Command {
 
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
-				return env.WriteJSON(output.NewResponse(map[string]string{"ref": rev}, rev))
+				return env.WriteJSON(output.NewResponse(map[string]string{"ref": rev}, rev,
+					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s --revision %s", projectID, rev)},
+				))
 			}
 
 			fmt.Fprintln(env.Stdout, rev) //nolint:errcheck

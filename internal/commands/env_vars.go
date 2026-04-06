@@ -93,7 +93,11 @@ func newEnvVarsShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cliCtx.Envelope.WriteJSON(output.NewResponse(v, v.Name))
+			return cliCtx.Envelope.WriteJSON(output.NewResponse(v, v.Name,
+				output.Breadcrumb{Action: "list", Cmd: fmt.Sprintf("dhq env-vars list -p %s", projectID)},
+				output.Breadcrumb{Action: "update", Cmd: fmt.Sprintf("dhq env-vars update %s -p %s --value <value>", args[0], projectID)},
+				output.Breadcrumb{Action: "delete", Cmd: fmt.Sprintf("dhq env-vars delete %s -p %s", args[0], projectID)},
+			))
 		},
 	}
 }
@@ -242,7 +246,11 @@ func newGlobalEnvVarsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return cliCtx.Envelope.WriteJSON(output.NewResponse(v, v.Name))
+				return cliCtx.Envelope.WriteJSON(output.NewResponse(v, v.Name,
+					output.Breadcrumb{Action: "list", Cmd: "dhq global-env-vars list"},
+					output.Breadcrumb{Action: "update", Cmd: fmt.Sprintf("dhq global-env-vars update %s --value <value>", args[0])},
+					output.Breadcrumb{Action: "delete", Cmd: fmt.Sprintf("dhq global-env-vars delete %s", args[0])},
+				))
 			},
 		},
 		newGlobalEnvVarsCreateCmd(),

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -18,8 +19,16 @@ func main() {
 		if exitCode == 0 {
 			exitCode = 1
 		}
-		// Error already printed by command's RunE via envelope
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+
+		// In JSON mode, write structured error to stdout for agents
+		if commands.IsJSONMode() {
+			errResp := output.ErrorResponseFromErr(err)
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(errResp)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
 		os.Exit(exitCode)
 	}
 }

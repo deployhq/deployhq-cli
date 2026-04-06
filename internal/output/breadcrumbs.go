@@ -36,3 +36,30 @@ func ErrorResponse(code, message, suggestion, docURL string) *Response {
 		},
 	}
 }
+
+// ErrorResponseFromErr creates a structured error response from a Go error.
+func ErrorResponseFromErr(err error) *Response {
+	if err == nil {
+		return &Response{OK: true}
+	}
+
+	code := "error"
+	message := err.Error()
+	hint := ""
+
+	switch e := err.(type) {
+	case *UserError:
+		code = "user_error"
+		message = e.Message
+		hint = e.Hint
+	case *AuthError:
+		code = "auth_error"
+		message = e.Message
+		hint = e.Hint
+	case *InternalError:
+		code = "internal_error"
+		message = e.Message
+	}
+
+	return ErrorResponse(code, message, hint, "")
+}

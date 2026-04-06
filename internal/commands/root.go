@@ -184,6 +184,14 @@ Support: support@deployhq.com`,
 	return root
 }
 
+// IsJSONMode returns true if --json was passed or output is piped (non-TTY).
+func IsJSONMode() bool {
+	if cliCtx != nil {
+		return cliCtx.Envelope.JSONMode || !cliCtx.Envelope.IsTTY
+	}
+	return flagJSON != ""
+}
+
 // cliUserAgent returns a User-Agent string like "DeployHQ-CLI/1.2.3"
 // or "DeployHQ-CLI/1.2.3 (agent:claude-code)" when an agent is detected.
 func cliUserAgent() string {
