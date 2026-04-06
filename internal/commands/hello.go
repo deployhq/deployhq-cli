@@ -114,7 +114,6 @@ func newHelloCmd() *cobra.Command {
 					return &output.InternalError{Message: "save config", Cause: err}
 				}
 
-				defaultProject = project.Permalink
 				env.Status("")
 				output.ColorGreen.Fprintf(env.Stderr, "Saved to %s\n", path) //nolint:errcheck
 			}
