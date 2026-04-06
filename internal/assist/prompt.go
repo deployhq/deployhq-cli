@@ -99,7 +99,7 @@ dhq retry <deployment-id> -p <project>
 dhq rollback <deployment-id> -p <project>
 
 Repository:
-dhq repos show|create|update|branches|commits|latest-revision -p <project>
+dhq repos show|create|update|branches|commits|commit-info|latest-revision -p <project>
 
 Configuration:
 dhq env-vars list|show|create|update|delete -p <project>
@@ -121,9 +121,12 @@ dhq integrations list|show|create|update|delete -p <project>
 dhq auto-deploys list|enable -p <project>
 dhq scheduled-deploys list|show|create|update|delete -p <project>
 
+Templates:
+dhq templates list|show|public|create|update|delete
+
 Account Resources:
 dhq agents list|create|update|delete|revoke
-dhq global-servers list|show|create|update|delete|copy
+dhq global-servers list|show|create|update|delete|copy-to-project
 dhq zones list
 
 Dashboard & Activity:
@@ -133,7 +136,7 @@ dhq activity list|stats                — Account-wide activity feed and deploy
 Utilities:
 dhq open [project]
 dhq doctor                             — Run diagnostics
-dhq api GET|POST|PUT|DELETE <path>     — Raw API access
+dhq api GET|POST|PUT|PATCH|DELETE <path> — Raw API access
 
 Decision trees:
 

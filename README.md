@@ -93,12 +93,13 @@ See `examples/github-actions/` for complete workflows:
 ## Commands
 
 ```
-dhq projects      list | show | create | update | delete | star | insights
+dhq projects      list | show | create | update | delete | star | insights | upload-key | badge
 dhq servers       list | show | create | update | delete | reset-host-key
 dhq server-groups list | show | create | update | delete
 dhq deployments   list | show | create | abort | rollback | logs | watch
-dhq repos         show | create | update | branches | commits | latest-revision
+dhq repos         show | create | update | branches | commits | commit-info | latest-revision
 dhq deploy        [-p project] [-s server] [--wait] (deploy with live progress)
+dhq retry         <deployment-id> -p <project>
 dhq rollback      <deployment-id> -p <project>
 dhq open          [project] (open DeployHQ in browser)
 dhq hello         (guided onboarding: login/signup + project setup)
@@ -117,14 +118,15 @@ dhq build-configs list | show | default | create | update | delete
 dhq ssh-commands  list | show | create | update | delete
 dhq excluded-files list | show | create | update | delete
 dhq integrations list | show | create | update | delete
+dhq templates     list | show | public | create | update | delete
 dhq agents        list | create | update | delete | revoke
 dhq ssh-keys      list | create | delete
 dhq global-servers list | show | create | update | delete | copy-to-project
 dhq global-env-vars list | show | create | update | delete
 dhq auto-deploys list | enable
-dhq scheduled-deploys list | show | delete
-dhq activity      list | stats (account activity — coming soon)
-dhq status        (quick dashboard across all projects — coming soon)
+dhq scheduled-deploys list | show | create | update | delete
+dhq activity      list | stats
+dhq status        (quick dashboard across all projects)
 dhq assist        [question] (AI deployment assistant, requires Ollama)
 dhq completion    bash | zsh | fish | powershell
 dhq doctor        (health check)
@@ -209,7 +211,7 @@ source <(dhq completion bash)
 dhq completion fish | source
 ```
 
-Completions include dynamic project name suggestions for `--project`, `show`, and `open`.
+Completions include dynamic project and server name suggestions for `--project`, `show`, `open`, and server commands.
 
 ## Configuration
 

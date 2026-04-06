@@ -58,6 +58,15 @@ func (c *Client) GetPublicTemplate(ctx context.Context, templateID, publicID str
 	return &tmpl, nil
 }
 
+// GetTemplate returns a single template by permalink.
+func (c *Client) GetTemplate(ctx context.Context, id string) (*Template, error) {
+	var tmpl Template
+	if err := c.get(ctx, fmt.Sprintf("/templates/%s", id), &tmpl); err != nil {
+		return nil, err
+	}
+	return &tmpl, nil
+}
+
 // CreateTemplate creates a new template.
 func (c *Client) CreateTemplate(ctx context.Context, req TemplateCreateRequest) (*Template, error) {
 	body := struct {

@@ -77,9 +77,10 @@ func newServersListCmd() *cobra.Command {
 
 func newServersShowCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <identifier>",
-		Short: "Show server details",
-		Args:  cobra.ExactArgs(1),
+		Use:               "show <identifier>",
+		Short:             "Show server details",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeServerNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -183,9 +184,10 @@ func newServersUpdateCmd() *cobra.Command {
 	var name, serverPath, environment string
 
 	cmd := &cobra.Command{
-		Use:   "update <identifier>",
-		Short: "Update a server",
-		Args:  cobra.ExactArgs(1),
+		Use:               "update <identifier>",
+		Short:             "Update a server",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeServerNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -220,9 +222,10 @@ func newServersUpdateCmd() *cobra.Command {
 
 func newServersDeleteCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <identifier>",
-		Short: "Delete a server",
-		Args:  cobra.ExactArgs(1),
+		Use:               "delete <identifier>",
+		Short:             "Delete a server",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeServerNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -245,9 +248,10 @@ func newServersDeleteCmd() *cobra.Command {
 
 func newServersResetHostKeyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "reset-host-key <identifier>",
-		Short: "Reset SSH host key for a server",
-		Args:  cobra.ExactArgs(1),
+		Use:               "reset-host-key <identifier>",
+		Short:             "Reset SSH host key for a server",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeServerNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {

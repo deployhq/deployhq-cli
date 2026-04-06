@@ -17,6 +17,7 @@ func newTemplatesCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		newTemplatesListCmd(),
+		newTemplatesShowCmd(),
 		newTemplatesPublicCmd(),
 		newTemplatesCreateCmd(),
 		newTemplatesUpdateCmd(),
@@ -101,6 +102,31 @@ func newTemplatesPublicCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&frameworkType, "framework", "", "Filter by framework type (web_frameworks, cms, ecommerce, static_sites, all)")
 	return cmd
+}
+
+func newTemplatesShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show [permalink]",
+		Short: "Show template details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			tmpl, err := client.GetTemplate(cliCtx.Background(), args[0])
+			if err != nil {
+				return err
+			}
+
+			return cliCtx.Envelope.WriteJSON(output.NewResponse(tmpl,
+				fmt.Sprintf("Template: %s", tmpl.Name),
+				output.Breadcrumb{Action: "update", Cmd: fmt.Sprintf("dhq templates update %s --name <name>", tmpl.Permalink)},
+				output.Breadcrumb{Action: "delete", Cmd: fmt.Sprintf("dhq templates delete %s", tmpl.Permalink)},
+			))
+		},
+	}
 }
 
 func newTemplatesCreateCmd() *cobra.Command {

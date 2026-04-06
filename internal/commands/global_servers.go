@@ -137,7 +137,7 @@ func newGlobalServersCopyCmd() *cobra.Command {
 		Use: "copy-to-project <server-id>", Short: "Copy a global server to a project", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if projectID == "" {
-				return &output.UserError{Message: "--project is required", Hint: "Specify which project to copy the server to"}
+				return &output.UserError{Message: "--to-project is required", Hint: "Specify which project to copy the server to"}
 			}
 			client, err := cliCtx.Client()
 			if err != nil {

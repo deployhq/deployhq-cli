@@ -57,7 +57,7 @@ func buildCatalog(cmd *cobra.Command) []CommandInfo {
 			Aliases:     child.Aliases,
 		}
 
-		// Collect flags
+		// Collect local flags
 		child.Flags().VisitAll(func(f *pflag.Flag) {
 			if f.Hidden {
 				return
@@ -66,6 +66,26 @@ func buildCatalog(cmd *cobra.Command) []CommandInfo {
 				Name:        f.Name,
 				Shorthand:   f.Shorthand,
 				Description: f.Usage,
+				Default:     f.DefValue,
+			}
+			// Mark required flags
+			if ann := child.Flags().Lookup(f.Name); ann != nil {
+				if _, ok := ann.Annotations[cobra.BashCompOneRequiredFlag]; ok {
+					fi.Required = true
+				}
+			}
+			info.Flags = append(info.Flags, fi)
+		})
+
+		// Collect inherited flags (e.g. --project, --json)
+		child.InheritedFlags().VisitAll(func(f *pflag.Flag) {
+			if f.Hidden {
+				return
+			}
+			fi := FlagInfo{
+				Name:        f.Name,
+				Shorthand:   f.Shorthand,
+				Description: f.Usage + " (inherited)",
 				Default:     f.DefValue,
 			}
 			info.Flags = append(info.Flags, fi)

@@ -21,6 +21,7 @@ func newReposCmd() *cobra.Command {
 		newReposUpdateCmd(),
 		newReposBranchesCmd(),
 		newReposCommitsCmd(),
+		newReposCommitInfoCmd(),
 		newReposLatestRevisionCmd(),
 	)
 
@@ -238,6 +239,53 @@ func newReposCommitsCmd() *cobra.Command {
 				rows[i] = []string{ref, c.Author, msg}
 			}
 			env.WriteTable(columns, rows)
+			return nil
+		},
+	}
+}
+
+func newReposCommitInfoCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "commit-info <ref>",
+		Short: "Show details for a specific commit",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			commit, err := client.GetCommitInfo(cliCtx.Background(), projectID, args[0])
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.JSONMode || !env.IsTTY {
+				return env.WriteJSON(output.NewResponse(commit,
+					fmt.Sprintf("Commit: %s", commit.Ref),
+					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s --revision %s", projectID, commit.Ref)},
+				))
+			}
+
+			ref := commit.Ref
+			if len(ref) > 8 {
+				ref = ref[:8]
+			}
+			rows := [][]string{
+				{"Ref", ref},
+				{"Author", commit.Author},
+				{"Message", commit.Message},
+			}
+			if !commit.Timestamp.IsZero() {
+				rows = append(rows, []string{"Date", commit.Timestamp.Format("2006-01-02 15:04:05")})
+			}
+			env.WriteTable([]string{"Field", "Value"}, rows)
 			return nil
 		},
 	}
