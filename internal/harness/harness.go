@@ -46,7 +46,7 @@ func Detect() AgentInfo {
 
 // UserAgent returns a User-Agent string incorporating agent info.
 func UserAgent(version string, agent AgentInfo) string {
-	ua := "dhq/" + version
+	ua := "DeployHQ-CLI/" + version
 	if agent.Detected {
 		ua += " (agent:" + agent.Name + ")"
 	}

@@ -57,6 +57,6 @@ func TestDetect_None(t *testing.T) {
 }
 
 func TestUserAgent(t *testing.T) {
-	assert.Equal(t, "dhq/1.0.0", UserAgent("1.0.0", AgentInfo{}))
-	assert.Equal(t, "dhq/1.0.0 (agent:claude-code)", UserAgent("1.0.0", AgentInfo{Detected: true, Name: "claude-code"}))
+	assert.Equal(t, "DeployHQ-CLI/1.0.0", UserAgent("1.0.0", AgentInfo{}))
+	assert.Equal(t, "DeployHQ-CLI/1.0.0 (agent:claude-code)", UserAgent("1.0.0", AgentInfo{Detected: true, Name: "claude-code"}))
 }

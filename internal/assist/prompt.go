@@ -79,6 +79,7 @@ Rollback:
 IMPORTANT — Available dhq commands (ONLY suggest these, never invent commands):
 
 Setup & Auth:
+dhq hello                             — Guided onboarding (login or signup, pick a project, optional first deploy)
 dhq init                              — Interactive project setup wizard (creates project, connects repo, adds server, deploys)
 dhq auth login|logout|status|token    — Manage authentication (supports multiple accounts via --account)
 dhq signup                            — Create a new DeployHQ account
@@ -137,7 +138,8 @@ dhq api GET|POST|PUT|DELETE <path>     — Raw API access
 Decision trees:
 
 "Set up a new project":
-1. dhq init                                → interactive wizard (recommended)
+1. dhq hello                               → guided onboarding (login + project setup)
+   OR dhq init                             → interactive wizard (if already logged in)
    OR manually:
 1. dhq projects create --name <name>       → create project
 2. dhq repos create -p <project> --scm-type git --url <url>  → connect repo

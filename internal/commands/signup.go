@@ -61,15 +61,16 @@ func newSignupCmd() *cobra.Command {
 
 			env.Status("Creating account...")
 
+			ua := cliUserAgent()
 			req := sdk.SignupRequest{
 				Email:       email,
 				Password:    password,
 				AccountName: accountName,
 				FullName:    fullName,
-				Client:      "dhq-cli",
+				Client:      ua,
 			}
 
-			result, err := sdk.Signup(req)
+			result, err := sdk.Signup(req, ua)
 			if err != nil {
 				return err
 			}

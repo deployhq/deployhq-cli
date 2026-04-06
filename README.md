@@ -35,11 +35,12 @@ dhq update
 ## Quick Start
 
 ```bash
-# Sign up (or login)
+# Guided setup (login or signup, pick a project, optional first deploy)
+dhq hello
+
+# Or step-by-step
 dhq signup
 dhq auth login
-
-# Interactive setup (picks default project for this directory)
 dhq configure
 
 # Deploy and watch in real-time
@@ -100,6 +101,7 @@ dhq repos         show | create | update | branches | commits | latest-revision
 dhq deploy        [-p project] [-s server] [--wait] (deploy with live progress)
 dhq rollback      <deployment-id> -p <project>
 dhq open          [project] (open DeployHQ in browser)
+dhq hello         (guided onboarding: login/signup + project setup)
 dhq init          (interactive project setup wizard)
 dhq api           GET|POST|PUT|PATCH|DELETE <path> (escape hatch)
 dhq auth          login | logout | status | token
@@ -231,6 +233,8 @@ dhq config show --resolved
 ## Agent Integration
 
 The CLI is designed for AI agents that can run shell commands.
+
+Agent skill guides are available at `.claude/SKILL.md`, `.codex/SKILL.md`, and `docs/SKILL.md`.
 
 ```bash
 # Install agent plugin

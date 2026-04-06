@@ -24,10 +24,14 @@ var (
 
 	// Shared context
 	cliCtx *cli.Context
+
+	// cliVersion is the build version, set by NewRootCmd.
+	cliVersion string
 )
 
 // NewRootCmd creates the root command with all subcommands.
 func NewRootCmd(version string) *cobra.Command {
+	cliVersion = version
 	root := &cobra.Command{
 		Use:     "dhq",
 		Short:   "DeployHQ CLI — deploy from your terminal",
@@ -73,6 +77,7 @@ Support: support@deployhq.com`,
 
 			cliCtx = cli.NewContext(cfg, env, logger)
 			cliCtx.IsAgent = agent.Detected
+			cliCtx.Version = version
 
 			return nil
 		},
@@ -139,6 +144,7 @@ Support: support@deployhq.com`,
 		newRollbackCmd(),
 		newOpenCmd(),
 		newInitCmd(),
+		newHelloCmd(),
 
 		// Escape hatch
 		newAPICmd(),
@@ -176,4 +182,14 @@ Support: support@deployhq.com`,
 	installAgentHelp(root)
 
 	return root
+}
+
+// cliUserAgent returns a User-Agent string like "DeployHQ-CLI/1.2.3"
+// or "DeployHQ-CLI/1.2.3 (agent:claude-code)" when an agent is detected.
+func cliUserAgent() string {
+	v := cliVersion
+	if v == "" {
+		v = "dev"
+	}
+	return harness.UserAgent(v, harness.Detect())
 }

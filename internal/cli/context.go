@@ -7,6 +7,7 @@ import (
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
 	"github.com/deployhq/deployhq-cli/internal/config"
+	"github.com/deployhq/deployhq-cli/internal/harness"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
@@ -17,7 +18,8 @@ type Context struct {
 	Config   *config.Config
 	Envelope *output.Envelope
 	Logger   *output.Logger
-	IsAgent  bool // true when invoked by an AI agent
+	IsAgent bool // true when invoked by an AI agent
+	Version string
 
 	// Lazy-initialized API client (only when a command needs it)
 	client *sdk.Client
@@ -71,11 +73,15 @@ func (c *Context) Client() (*sdk.Client, error) {
 	}
 
 	opts := []sdk.Option{}
-	ua := "dhq"
+	agent := harness.AgentInfo{}
 	if c.IsAgent {
-		ua = "dhq (agent)"
+		agent = harness.Detect()
 	}
-	opts = append(opts, sdk.WithUserAgent(ua))
+	v := c.Version
+	if v == "" {
+		v = "dev"
+	}
+	opts = append(opts, sdk.WithUserAgent(harness.UserAgent(v, agent)))
 
 	client, err := sdk.New(account, email, apiKey, opts...)
 	if err != nil {
