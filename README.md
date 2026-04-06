@@ -118,7 +118,7 @@ dhq build-configs list | show | default | create | update | delete
 dhq ssh-commands  list | show | create | update | delete
 dhq excluded-files list | show | create | update | delete
 dhq integrations list | show | create | update | delete
-dhq templates     list | show | public | create | update | delete
+dhq templates     list | show | public | public-show | create | update | delete
 dhq agents        list | create | update | delete | revoke
 dhq ssh-keys      list | create | delete
 dhq global-servers list | show | create | update | delete | copy-to-project

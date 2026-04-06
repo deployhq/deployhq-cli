@@ -122,7 +122,7 @@ dhq auto-deploys list|enable -p <project>
 dhq scheduled-deploys list|show|create|update|delete -p <project>
 
 Templates:
-dhq templates list|show|public|create|update|delete
+dhq templates list|show|public|public-show|create|update|delete
 
 Account Resources:
 dhq agents list|create|update|delete|revoke

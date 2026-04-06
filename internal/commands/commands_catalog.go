@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"strings"
+
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -68,11 +70,14 @@ func buildCatalog(cmd *cobra.Command) []CommandInfo {
 				Description: f.Usage,
 				Default:     f.DefValue,
 			}
-			// Mark required flags
+			// Mark required flags: check Cobra annotation and description convention
 			if ann := child.Flags().Lookup(f.Name); ann != nil {
 				if _, ok := ann.Annotations[cobra.BashCompOneRequiredFlag]; ok {
 					fi.Required = true
 				}
+			}
+			if strings.Contains(f.Usage, "(required)") {
+				fi.Required = true
 			}
 			info.Flags = append(info.Flags, fi)
 		})

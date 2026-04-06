@@ -19,6 +19,7 @@ func newTemplatesCmd() *cobra.Command {
 		newTemplatesListCmd(),
 		newTemplatesShowCmd(),
 		newTemplatesPublicCmd(),
+		newTemplatesPublicShowCmd(),
 		newTemplatesCreateCmd(),
 		newTemplatesUpdateCmd(),
 		newTemplatesDeleteCmd(),
@@ -124,6 +125,29 @@ func newTemplatesShowCmd() *cobra.Command {
 				fmt.Sprintf("Template: %s", tmpl.Name),
 				output.Breadcrumb{Action: "update", Cmd: fmt.Sprintf("dhq templates update %s --name <name>", tmpl.Permalink)},
 				output.Breadcrumb{Action: "delete", Cmd: fmt.Sprintf("dhq templates delete %s", tmpl.Permalink)},
+			))
+		},
+	}
+}
+
+func newTemplatesPublicShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "public-show <template-id> <public-id>",
+		Short: "Show a public template detail",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			tmpl, err := client.GetPublicTemplate(cliCtx.Background(), args[0], args[1])
+			if err != nil {
+				return err
+			}
+
+			return cliCtx.Envelope.WriteJSON(output.NewResponse(tmpl,
+				fmt.Sprintf("Public template: %s", tmpl.Name),
 			))
 		},
 	}

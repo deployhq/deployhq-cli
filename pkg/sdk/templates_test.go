@@ -61,6 +61,22 @@ func TestListPublicTemplates(t *testing.T) {
 	assert.Equal(t, "WordPress", templates[0].Name)
 }
 
+func TestGetPublicTemplate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/templates/my-tmpl/public/pub-123", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(Template{
+			Name: "Public Rails", Permalink: "public-rails", Description: "Public Rails template",
+		})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	tmpl, err := c.GetPublicTemplate(context.Background(), "my-tmpl", "pub-123")
+	require.NoError(t, err)
+	assert.Equal(t, "Public Rails", tmpl.Name)
+	assert.Equal(t, "public-rails", tmpl.Permalink)
+}
+
 func TestListPublicTemplates_WithFilter(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/templates/public_templates", r.URL.Path)

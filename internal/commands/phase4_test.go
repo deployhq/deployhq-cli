@@ -8,6 +8,62 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCommandsCatalog_RequiredFlags(t *testing.T) {
+	root := NewRootCmd("test")
+	catalog := buildCatalog(root)
+
+	// Find "servers" → "create" which has --name (required) and --protocol-type (required)
+	var serversCreate *CommandInfo
+	for i := range catalog {
+		if catalog[i].Name == "servers" {
+			for j := range catalog[i].Subcommands {
+				if catalog[i].Subcommands[j].Name == "create" {
+					serversCreate = &catalog[i].Subcommands[j]
+					break
+				}
+			}
+		}
+	}
+
+	require.NotNil(t, serversCreate, "servers create command should exist in catalog")
+
+	requiredFlags := map[string]bool{}
+	for _, f := range serversCreate.Flags {
+		if f.Required {
+			requiredFlags[f.Name] = true
+		}
+	}
+	assert.True(t, requiredFlags["name"], "--name should be marked required")
+	assert.True(t, requiredFlags["protocol-type"], "--protocol-type should be marked required")
+}
+
+func TestCommandsCatalog_InheritedFlags(t *testing.T) {
+	root := NewRootCmd("test")
+	catalog := buildCatalog(root)
+
+	// Find "servers" → "list" which should inherit --project and --json
+	var serversList *CommandInfo
+	for i := range catalog {
+		if catalog[i].Name == "servers" {
+			for j := range catalog[i].Subcommands {
+				if catalog[i].Subcommands[j].Name == "list" {
+					serversList = &catalog[i].Subcommands[j]
+					break
+				}
+			}
+		}
+	}
+
+	require.NotNil(t, serversList, "servers list command should exist in catalog")
+
+	flagNames := map[string]bool{}
+	for _, f := range serversList.Flags {
+		flagNames[f.Name] = true
+	}
+	assert.True(t, flagNames["project"], "--project should appear as inherited flag")
+	assert.True(t, flagNames["json"], "--json should appear as inherited flag")
+}
+
 func TestCommandsCatalog_Registered(t *testing.T) {
 	cmd := NewRootCmd("test")
 	var stdout bytes.Buffer
