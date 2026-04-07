@@ -200,7 +200,8 @@ func newAuthTokenCmd() *cobra.Command {
 		Short: "Print the stored API key to stdout",
 		Long:  "Print the API key to stdout for use in scripts and pipelines.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			creds, err := auth.Load()
+			account := cliCtx.Config.Account
+			creds, err := auth.LoadByAccount(account)
 			if err != nil {
 				return &output.AuthError{
 					Message: "Not logged in",

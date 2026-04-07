@@ -31,8 +31,9 @@ type Credentials struct {
 }
 
 // Store saves credentials to the OS keyring, falling back to file.
-// If creds.Account is set, it is stored under that profile name.
-// Otherwise it is stored as the default profile.
+// If creds.Account is set, it is stored under both the named profile
+// and the default profile so that commands without --account find
+// the most recently logged-in credentials.
 func Store(creds *Credentials) error {
 	profile := profileName(creds.Account)
 
@@ -43,7 +44,16 @@ func Store(creds *Credentials) error {
 
 	if err := keyring.Set(keyringService, profile, string(data)); err != nil {
 		// Keyring unavailable, fall back to file
-		return storeToFile(profile, creds)
+		if err := storeToFile(profile, creds); err != nil {
+			return err
+		}
+	}
+
+	// Also store as the default profile so bare "dhq auth status" works.
+	if profile != defaultProfile {
+		if err := keyring.Set(keyringService, defaultProfile, string(data)); err != nil {
+			return storeToFile(defaultProfile, creds)
+		}
 	}
 	return nil
 }
@@ -83,10 +93,20 @@ func Delete() error {
 }
 
 // DeleteByAccount removes stored credentials for a specific account profile.
+// If a named account is deleted and the default profile points to that same
+// account, the default profile is also removed.
 func DeleteByAccount(account string) error {
 	profile := profileName(account)
 	_ = keyring.Delete(keyringService, profile)
 	_ = deleteFileProfile(profile)
+
+	// Clean up default profile if it points to the same account
+	if profile != defaultProfile && account != "" {
+		if creds, err := loadProfile(defaultProfile); err == nil && creds.Account == account {
+			_ = keyring.Delete(keyringService, defaultProfile)
+			_ = deleteFileProfile(defaultProfile)
+		}
+	}
 	return nil
 }
 
