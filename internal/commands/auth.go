@@ -187,7 +187,7 @@ func newAuthLogoutCmd() *cobra.Command {
 			if !env.IsTTY {
 				return &output.UserError{
 					Message: "Multiple accounts logged in — specify which one",
-					Hint:    fmt.Sprintf("Use --account <name> or --all"),
+					Hint:    "Use --account <name> or --all",
 				}
 			}
 
