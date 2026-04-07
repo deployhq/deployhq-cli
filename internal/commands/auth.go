@@ -147,7 +147,11 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 	// Update global config so all commands use the new account
 	_ = config.Set(config.GlobalConfigPath(), "account", opts.Account)
 
-	env.Status("Logged in as %s on %s.deployhq.com", opts.Email, opts.Account)
+	host := "deployhq.com"
+	if cliCtx.Config.Host != "" {
+		host = cliCtx.Config.Host
+	}
+	env.Status("Logged in as %s on %s.%s", opts.Email, opts.Account, host)
 	return nil
 }
 
@@ -251,7 +255,11 @@ func newAuthStatusCmd() *cobra.Command {
 				})
 			}
 
-			env.Status("Account: %s.deployhq.com", creds.Account)
+			host := "deployhq.com"
+			if cliCtx.Config.Host != "" {
+				host = cliCtx.Config.Host
+			}
+			env.Status("Account: %s.%s", creds.Account, host)
 			env.Status("Email:   %s", creds.Email)
 			env.Status("Status:  authenticated")
 			return nil

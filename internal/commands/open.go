@@ -22,7 +22,11 @@ func newOpenCmd() *cobra.Command {
 				return err
 			}
 
-			base := fmt.Sprintf("https://%s.deployhq.com", client.Account())
+			host := "deployhq.com"
+			if cliCtx.Config.Host != "" {
+				host = cliCtx.Config.Host
+			}
+			base := fmt.Sprintf("https://%s.%s", client.Account(), host)
 
 			url := base
 			if len(args) > 0 {

@@ -26,10 +26,14 @@ func newDoctorCmd() *cobra.Command {
 			}
 
 			// Check 2: Account configured
+			host := "deployhq.com"
+			if cliCtx.Config.Host != "" {
+				host = cliCtx.Config.Host
+			}
 			if cliCtx.Config.Account != "" {
-				checks = append(checks, doctorCheck{"Account", "ok", cliCtx.Config.Account + ".deployhq.com"})
+				checks = append(checks, doctorCheck{"Account", "ok", cliCtx.Config.Account + "." + host})
 			} else if creds != nil && creds.Account != "" {
-				checks = append(checks, doctorCheck{"Account", "ok", creds.Account + ".deployhq.com (from auth store)"})
+				checks = append(checks, doctorCheck{"Account", "ok", creds.Account + "." + host + " (from auth store)"})
 			} else {
 				checks = append(checks, doctorCheck{"Account", "fail", "No account configured. Set DEPLOYHQ_ACCOUNT or run 'dhq config set account <name>'."})
 			}

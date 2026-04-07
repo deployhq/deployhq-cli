@@ -29,7 +29,11 @@ type Client struct {
 
 // Account returns the account subdomain this client is configured for.
 func (c *Client) Account() string {
-	return strings.TrimSuffix(c.baseURL.Hostname(), ".deployhq.com")
+	host := c.baseURL.Hostname()
+	if i := strings.Index(host, "."); i > 0 {
+		return host[:i]
+	}
+	return host
 }
 
 // Option configures the Client.

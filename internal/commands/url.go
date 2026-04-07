@@ -184,14 +184,18 @@ func parseDeployHQURL(rawURL string) (*ParsedURL, error) {
 	}
 
 	host := u.Hostname()
-	if !strings.HasSuffix(host, ".deployhq.com") {
+	suffix := ".deployhq.com"
+	if cliCtx != nil && cliCtx.Config.Host != "" {
+		suffix = "." + cliCtx.Config.Host
+	}
+	if !strings.HasSuffix(host, suffix) {
 		return nil, &output.UserError{
 			Message: fmt.Sprintf("Not a DeployHQ URL: %s", host),
-			Hint:    "URL must be *.deployhq.com",
+			Hint:    fmt.Sprintf("URL must be *%s", suffix),
 		}
 	}
 
-	account := strings.TrimSuffix(host, ".deployhq.com")
+	account := strings.TrimSuffix(host, suffix)
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 
 	parsed := &ParsedURL{
