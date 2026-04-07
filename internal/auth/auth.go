@@ -93,34 +93,51 @@ func Delete() error {
 }
 
 // DeleteByAccount removes stored credentials for a specific account profile.
-// When deleting the default profile, also removes the named profile it points
-// to (since Store writes both). When deleting a named profile, also cleans up
-// the default profile if it points to the same account.
+// Since Store writes both a named profile and the default profile, logout
+// must clean up both. We read before deleting to discover the paired profile,
+// then aggressively clear all storage backends (keyring + file) for both.
 func DeleteByAccount(account string) error {
 	profile := profileName(account)
 
+	// Discover the paired profile before we delete anything.
+	// Bare logout (default profile) → find the named profile.
+	// Named logout → find the default profile if it matches.
+	var pairedProfiles []string
+
 	if profile == defaultProfile {
-		// Bare "logout" — read the default profile first to find the named profile
+		// Read the default to discover which named account it points to
 		if creds, err := loadProfile(defaultProfile); err == nil && creds.Account != "" {
 			named := profileName(creds.Account)
 			if named != defaultProfile {
-				_ = keyring.Delete(keyringService, named)
-				_ = deleteFileProfile(named)
+				pairedProfiles = append(pairedProfiles, named)
 			}
 		}
-	}
-
-	_ = keyring.Delete(keyringService, profile)
-	_ = deleteFileProfile(profile)
-
-	// Named logout — also clean up default if it points to the same account
-	if profile != defaultProfile && account != "" {
+	} else {
+		// Named logout — also remove default if it points to same account
 		if creds, err := loadProfile(defaultProfile); err == nil && creds.Account == account {
-			_ = keyring.Delete(keyringService, defaultProfile)
-			_ = deleteFileProfile(defaultProfile)
+			pairedProfiles = append(pairedProfiles, defaultProfile)
 		}
 	}
+
+	// Delete the primary profile from ALL backends
+	deleteAllBackends(profile)
+
+	// Delete paired profiles from ALL backends
+	for _, p := range pairedProfiles {
+		deleteAllBackends(p)
+	}
+
 	return nil
+}
+
+// deleteAllBackends removes a profile from both keyring and file storage.
+// Errors are intentionally ignored — we want best-effort cleanup.
+// On macOS Keychain, Delete can silently fail, so we overwrite with a
+// tombstone value first, then delete.
+func deleteAllBackends(profile string) {
+	_ = keyring.Set(keyringService, profile, "{}")
+	_ = keyring.Delete(keyringService, profile)
+	_ = deleteFileProfile(profile)
 }
 
 // HasCredentials returns true if default credentials are stored.
@@ -143,6 +160,10 @@ func loadProfile(profile string) (*Credentials, error) {
 		var creds Credentials
 		if err := json.Unmarshal([]byte(data), &creds); err != nil {
 			return nil, fmt.Errorf("auth: unmarshal keyring data: %w", err)
+		}
+		// Reject empty/tombstone entries (left over from failed deletes)
+		if creds.APIKey == "" {
+			return nil, fmt.Errorf("auth: empty credentials for profile %q", profile)
 		}
 		return &creds, nil
 	}
