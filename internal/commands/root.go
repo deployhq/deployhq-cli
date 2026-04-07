@@ -138,6 +138,9 @@ Support: support@deployhq.com`,
 		newTemplatesCmd(),
 		newZonesCmd(),
 
+		// Operations
+		newTestAccessCmd(),
+
 		// Shortcuts
 		newDeployCmd(),
 		newRetryCmd(),
