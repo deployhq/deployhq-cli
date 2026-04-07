@@ -9,6 +9,7 @@ import (
 	"github.com/deployhq/deployhq-cli/internal/auth"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
+	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -144,22 +145,74 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 
 func newAuthLogoutCmd() *cobra.Command {
 	var account string
+	var all bool
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Remove stored credentials",
+		Long:  "Remove stored credentials. Shows a picker when multiple accounts are logged in.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := auth.DeleteByAccount(account); err != nil {
+			env := cliCtx.Envelope
+
+			if all {
+				auth.DeleteAll()
+				env.Status("Logged out of all accounts")
+				return nil
+			}
+
+			if account != "" {
+				if err := auth.DeleteByAccount(account); err != nil {
+					return &output.InternalError{Message: "remove credentials", Cause: err}
+				}
+				env.Status("Logged out of %s", account)
+				return nil
+			}
+
+			// No --account flag — check how many profiles exist
+			profiles := auth.ListProfiles()
+
+			if len(profiles) == 0 {
+				env.Status("Not logged in")
+				return nil
+			}
+
+			if len(profiles) == 1 {
+				if err := auth.DeleteByAccount(profiles[0].Account); err != nil {
+					return &output.InternalError{Message: "remove credentials", Cause: err}
+				}
+				env.Status("Logged out of %s", profiles[0].Account)
+				return nil
+			}
+
+			// Multiple accounts — show picker in TTY, error in non-TTY
+			if !env.IsTTY {
+				return &output.UserError{
+					Message: "Multiple accounts logged in — specify which one",
+					Hint:    fmt.Sprintf("Use --account <name> or --all"),
+				}
+			}
+
+			items := make([]string, len(profiles))
+			for i, p := range profiles {
+				items[i] = fmt.Sprintf("%s (%s)", p.Account, p.Email)
+			}
+			prompt := promptui.Select{
+				Label: "Select account to log out",
+				Items: items,
+			}
+			idx, _, err := prompt.Run()
+			if err != nil {
+				return &output.UserError{Message: "Logout cancelled"}
+			}
+			selected := profiles[idx]
+			if err := auth.DeleteByAccount(selected.Account); err != nil {
 				return &output.InternalError{Message: "remove credentials", Cause: err}
 			}
-			if account != "" {
-				cliCtx.Envelope.Status("Logged out of %s", account)
-			} else {
-				cliCtx.Envelope.Status("Logged out")
-			}
+			env.Status("Logged out of %s", selected.Account)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&account, "account", "", "Account profile to remove (default: default profile)")
+	cmd.Flags().StringVar(&account, "account", "", "Account profile to remove")
+	cmd.Flags().BoolVar(&all, "all", false, "Log out of all accounts")
 	return cmd
 }
 

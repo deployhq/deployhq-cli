@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/zalando/go-keyring"
 )
@@ -55,6 +56,10 @@ func Store(creds *Credentials) error {
 			return storeToFile(defaultProfile, creds)
 		}
 	}
+
+	// Track this account in the profile index for enumeration
+	addToProfileIndex(creds.Account)
+
 	return nil
 }
 
@@ -127,6 +132,16 @@ func DeleteByAccount(account string) error {
 		deleteAllBackends(p)
 	}
 
+	// Clean up the profile index
+	if account != "" {
+		removeFromProfileIndex(account)
+	} else {
+		// Bare logout — remove whichever account the default pointed to
+		for _, p := range pairedProfiles {
+			removeFromProfileIndex(p)
+		}
+	}
+
 	return nil
 }
 
@@ -144,6 +159,113 @@ func deleteAllBackends(profile string) {
 func HasCredentials() bool {
 	creds, err := Load()
 	return err == nil && creds != nil && creds.APIKey != ""
+}
+
+// ListProfiles returns all stored credential profiles that are still valid.
+// It uses a local index file (~/.deployhq/profiles) to track known accounts
+// since the keyring API doesn't support enumeration.
+func ListProfiles() []*Credentials {
+	accounts := readProfileIndex()
+	// Always check the default profile too
+	accounts = append(accounts, "")
+
+	seen := make(map[string]bool)
+	var result []*Credentials
+	for _, account := range accounts {
+		creds, err := LoadByAccount(account)
+		if err != nil || creds.APIKey == "" {
+			continue
+		}
+		if seen[creds.Account] {
+			continue
+		}
+		seen[creds.Account] = true
+		result = append(result, creds)
+	}
+	return result
+}
+
+// DeleteAll removes all known credential profiles.
+func DeleteAll() {
+	for _, account := range readProfileIndex() {
+		deleteAllBackends(profileName(account))
+	}
+	deleteAllBackends(defaultProfile)
+	_ = os.Remove(profileIndexPath())
+}
+
+// profileIndexPath returns the path to the profile index file.
+func profileIndexPath() string {
+	dir := credentialsDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "profiles")
+}
+
+// addToProfileIndex records an account name in the index.
+func addToProfileIndex(account string) {
+	if account == "" {
+		return
+	}
+	path := profileIndexPath()
+	if path == "" {
+		return
+	}
+	accounts := readProfileIndex()
+	for _, a := range accounts {
+		if a == account {
+			return // already tracked
+		}
+	}
+	accounts = append(accounts, account)
+
+	dir := filepath.Dir(path)
+	_ = os.MkdirAll(dir, 0700)
+	_ = os.WriteFile(path, []byte(strings.Join(accounts, "\n")+"\n"), 0600)
+}
+
+// removeFromProfileIndex removes an account from the index.
+func removeFromProfileIndex(account string) {
+	if account == "" {
+		return
+	}
+	path := profileIndexPath()
+	if path == "" {
+		return
+	}
+	accounts := readProfileIndex()
+	var remaining []string
+	for _, a := range accounts {
+		if a != account {
+			remaining = append(remaining, a)
+		}
+	}
+	if len(remaining) == 0 {
+		_ = os.Remove(path)
+		return
+	}
+	_ = os.WriteFile(path, []byte(strings.Join(remaining, "\n")+"\n"), 0600)
+}
+
+// readProfileIndex reads known account names from the index file.
+func readProfileIndex() []string {
+	path := profileIndexPath()
+	if path == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var accounts []string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			accounts = append(accounts, line)
+		}
+	}
+	return accounts
 }
 
 func profileName(account string) string {
