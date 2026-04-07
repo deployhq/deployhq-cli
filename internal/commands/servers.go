@@ -1,7 +1,10 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -133,6 +136,9 @@ func newServersShowCmd() *cobra.Command {
 
 func newServersCreateCmd() *cobra.Command {
 	var name, protocolType, serverPath, environment string
+	var hostname, username, password, globalKeyPairID string
+	var port int
+	var useSSHKeys bool
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -142,7 +148,7 @@ func newServersCreateCmd() *cobra.Command {
 				return &output.UserError{Message: "Server name is required", Hint: "Use --name flag"}
 			}
 			if protocolType == "" {
-				return &output.UserError{Message: "Protocol type is required", Hint: "Use --protocol-type (ssh, ftp, sftp, s3, etc.)"}
+				return &output.UserError{Message: "Protocol type is required", Hint: "Use --protocol-type (ssh, ftp, s3, etc.)"}
 			}
 
 			projectID, err := cliCtx.RequireProject()
@@ -156,15 +162,71 @@ func newServersCreateCmd() *cobra.Command {
 			}
 
 			req := sdk.ServerCreateRequest{
-				Name: name, ProtocolType: protocolType,
-				ServerPath: serverPath, Environment: environment,
+				Name:         name,
+				ProtocolType: protocolType,
+				ServerPath:   serverPath,
+				Environment:  environment,
+				Hostname:     hostname,
+				Username:     username,
+				Password:     password,
 			}
-			server, err := client.CreateServer(cliCtx.Background(), projectID, req)
-			if err != nil {
-				return err
+			if cmd.Flags().Changed("port") {
+				req.Port = &port
+			}
+			if cmd.Flags().Changed("use-ssh-keys") {
+				req.UseSSHKeys = &useSSHKeys
+			}
+			if globalKeyPairID != "" {
+				req.GlobalKeyPairID = globalKeyPairID
 			}
 
 			env := cliCtx.Envelope
+
+			var server *sdk.Server
+			for {
+				var err error
+				server, err = client.CreateServer(cliCtx.Background(), projectID, req)
+				if err == nil {
+					break
+				}
+
+				// Retry on SSH auth failure in interactive mode
+				isAuthError := strings.Contains(strings.ToLower(err.Error()), "authentication failed")
+				if !isAuthError || !useSSHKeys || !env.IsTTY || env.JSONMode {
+					return err
+				}
+
+				// Show the SSH public key to help the user
+				var publicKey string
+				if globalKeyPairID != "" {
+					keys, kerr := client.ListSSHKeys(cliCtx.Background())
+					if kerr == nil {
+						for _, k := range keys {
+							if k.Identifier == globalKeyPairID {
+								publicKey = k.PublicKey
+								break
+							}
+						}
+					}
+				}
+
+				env.Warn("SSH authentication failed.")
+				if publicKey != "" {
+					env.Status("")
+					env.Status("Make sure this key is in your server's ~/.ssh/authorized_keys:")
+					env.Status("")
+					env.Status("  %s", publicKey)
+				}
+				env.Status("")
+				fmt.Fprint(env.Stderr, "Retry? (Y/n): ") //nolint:errcheck
+				reader := bufio.NewReader(os.Stdin)
+				answer, _ := reader.ReadString('\n')
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer == "n" || answer == "no" {
+					return err
+				}
+			}
+
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Created server: %s", server.Name)))
 			}
@@ -174,9 +236,15 @@ func newServersCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Server name (required)")
-	cmd.Flags().StringVar(&protocolType, "protocol-type", "", "Protocol: ssh, ftp, sftp, s3, etc. (required)")
+	cmd.Flags().StringVar(&protocolType, "protocol-type", "", "Protocol: ssh, ftp, s3, etc. (required)")
 	cmd.Flags().StringVar(&serverPath, "path", "", "Server path")
 	cmd.Flags().StringVar(&environment, "environment", "", "Environment name")
+	cmd.Flags().StringVar(&hostname, "hostname", "", "Server hostname or IP address")
+	cmd.Flags().StringVar(&username, "username", "", "Server username")
+	cmd.Flags().StringVar(&password, "password", "", "Server password")
+	cmd.Flags().IntVar(&port, "port", 0, "Server port (default: 22 for SSH, 21 for FTP)")
+	cmd.Flags().BoolVar(&useSSHKeys, "use-ssh-keys", false, "Use SSH key authentication instead of password")
+	cmd.Flags().StringVar(&globalKeyPairID, "global-key-pair-id", "", "Global SSH key pair identifier")
 	return cmd
 }
 

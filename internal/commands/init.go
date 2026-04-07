@@ -36,6 +36,8 @@ const (
 	stepServerName
 	stepHostname
 	stepUsername
+	stepAuthMethod
+	stepSSHKeySelect
 	stepPassword
 	stepServerPath
 	stepDeployConfirm
@@ -67,6 +69,12 @@ type initModel struct {
 	project *sdk.Project
 	server  *sdk.Server
 	repoOK  bool
+
+	// SSH key auth
+	useSSHKeys      bool
+	sshKeys         []sdk.SSHKey
+	selectedKeyID   string
+	selectedKeyName string
 
 	// Detected
 	detectedRemote string
@@ -120,6 +128,15 @@ var protocolAPIType = map[string]string{
 func protocolNeedsHost(proto string) bool {
 	switch proto {
 	case "ssh", "ftp", "ftps", "rsync":
+		return true
+	}
+	return false
+}
+
+// protocolSupportsSSHKeys returns true if the protocol supports SSH key authentication.
+func protocolSupportsSSHKeys(proto string) bool {
+	switch proto {
+	case "ssh", "rsync":
 		return true
 	}
 	return false
@@ -224,12 +241,27 @@ type createResultMsg struct {
 	step    int
 }
 
+type sshKeysResultMsg struct {
+	keys []sdk.SSHKey
+	err  error
+}
+
 func (m *initModel) Init() tea.Cmd {
 	return nil
 }
 
 func (m *initModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case sshKeysResultMsg:
+		m.creating = false
+		if msg.err != nil {
+			m.err = msg.err.Error()
+			m.sshKeys = []sdk.SSHKey{}
+			return m, nil
+		}
+		m.sshKeys = msg.keys
+		m.cursor = 0
+		return m, nil
 	case createResultMsg:
 		m.creating = false
 		if msg.err != nil {
@@ -355,6 +387,63 @@ func (m *initModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleTextInput(key, "back")
 	case stepUsername:
 		return m.handleTextInput(key, "back")
+	case stepAuthMethod:
+		authOptions := []string{"Use SSH key (no password needed)", "Use password"}
+		switch key {
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(authOptions)-1 {
+				m.cursor++
+			}
+		case "enter":
+			if m.cursor == 0 {
+				m.useSSHKeys = true
+				m.sshKeys = nil
+				m.creating = true
+				m.step = stepSSHKeySelect
+				return m, m.fetchSSHKeys
+			}
+			m.useSSHKeys = false
+			m.input = ""
+			m.step = stepPassword
+		case "backspace", "left":
+			m.step = stepUsername
+			m.cursor = 0
+			m.input = ""
+		}
+		return m, nil
+	case stepSSHKeySelect:
+		if m.sshKeys == nil {
+			// Keys are being fetched
+			return m, nil
+		}
+		if len(m.sshKeys) == 0 {
+			// No keys available, fall back to password
+			switch key {
+			case "enter":
+				m.useSSHKeys = false
+				m.input = ""
+				m.step = stepPassword
+			case "backspace", "left":
+				m.step = stepAuthMethod
+				m.cursor = 0
+			}
+			return m, nil
+		}
+		keyNames := make([]string, len(m.sshKeys))
+		for i, k := range m.sshKeys {
+			keyNames[i] = fmt.Sprintf("%s (%s)", k.Title, k.KeyType)
+		}
+		return m.handleSelect(key, keyNames, stepAuthMethod, func() {
+			selected := m.sshKeys[m.cursor]
+			m.selectedKeyID = selected.Identifier
+			m.selectedKeyName = selected.Title
+			m.input = ""
+			m.step = stepServerPath
+		})
 	case stepPassword:
 		return m.handleTextInput(key, "back")
 	case stepServerPath:
@@ -478,7 +567,12 @@ func (m *initModel) submitTextStep() (tea.Model, tea.Cmd) {
 	case stepUsername:
 		m.username = m.input
 		m.input = ""
-		m.step = stepPassword
+		if protocolSupportsSSHKeys(m.protocol) {
+			m.cursor = 0
+			m.step = stepAuthMethod
+		} else {
+			m.step = stepPassword
+		}
 	case stepPassword:
 		m.password = m.input
 		m.input = ""
@@ -507,16 +601,32 @@ func (m *initModel) createRepo() tea.Msg {
 	return createResultMsg{repoOK: err == nil, err: err, step: stepRepoURL}
 }
 
+func (m *initModel) fetchSSHKeys() tea.Msg {
+	ctx := context.Background()
+	keys, err := m.client.ListSSHKeys(ctx)
+	if err != nil {
+		return sshKeysResultMsg{keys: nil, err: err}
+	}
+	return sshKeysResultMsg{keys: keys}
+}
+
 func (m *initModel) createServer() tea.Msg {
 	ctx := context.Background()
-	server, err := m.client.CreateServer(ctx, m.project.Permalink, sdk.ServerCreateRequest{
+	req := sdk.ServerCreateRequest{
 		Name:         m.serverName,
 		ProtocolType: m.protocol,
 		Hostname:     m.hostname,
 		Username:     m.username,
 		Password:     m.password,
 		ServerPath:   m.serverPath,
-	})
+	}
+	if m.useSSHKeys {
+		useKeys := true
+		req.UseSSHKeys = &useKeys
+		req.GlobalKeyPairID = m.selectedKeyID
+		req.Password = ""
+	}
+	server, err := m.client.CreateServer(ctx, m.project.Permalink, req)
 	return createResultMsg{server: server, err: err, step: stepServerName}
 }
 
@@ -663,6 +773,41 @@ func (m *initModel) View() string {
 		b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s | Host: %s", m.protocol, m.serverName, m.hostname)))
 		b.WriteString("\n")
 		m.viewTextPrompt(&b, "Username", m.input)
+	case stepAuthMethod:
+		m.viewCompletedSteps(&b)
+		m.viewStepHeader(&b, "3/4", "Server")
+		b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s | Host: %s | User: %s", m.protocol, m.serverName, m.hostname, m.username)))
+		b.WriteString("\n")
+		m.viewSelect(&b, "Authentication method", []string{"Use SSH key (no password needed)", "Use password"})
+	case stepSSHKeySelect:
+		m.viewCompletedSteps(&b)
+		m.viewStepHeader(&b, "3/4", "Server")
+		b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s | Host: %s | User: %s", m.protocol, m.serverName, m.hostname, m.username)))
+		b.WriteString("\n")
+		if m.sshKeys == nil {
+			b.WriteString(initDim.Render("  Loading SSH keys..."))
+			b.WriteString("\n")
+		} else if len(m.sshKeys) == 0 {
+			b.WriteString(initError.Render("  No SSH keys found in your account."))
+			b.WriteString("\n")
+			b.WriteString(initDim.Render("  Create one with: dhq ssh-keys create --title my-key"))
+			b.WriteString("\n")
+			b.WriteString(initDim.Render("  Press Enter to use password instead, or backspace to go back."))
+			b.WriteString("\n")
+		} else {
+			keyNames := make([]string, len(m.sshKeys))
+			for i, k := range m.sshKeys {
+				keyNames[i] = fmt.Sprintf("%s (%s)", k.Title, k.KeyType)
+			}
+			m.viewSelect(&b, "Select SSH key", keyNames)
+			b.WriteString("\n")
+			if m.cursor < len(m.sshKeys) {
+				b.WriteString(initHighlight.Render("  Add this key to your server's ~/.ssh/authorized_keys:"))
+				b.WriteString("\n\n")
+				b.WriteString(initDim.Render(fmt.Sprintf("  %s", m.sshKeys[m.cursor].PublicKey)))
+				b.WriteString("\n")
+			}
+		}
 	case stepPassword:
 		m.viewCompletedSteps(&b)
 		m.viewStepHeader(&b, "3/4", "Server")
