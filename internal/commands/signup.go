@@ -27,7 +27,10 @@ func newSignupCmd() *cobra.Command {
 			// Interactive prompts for missing fields
 			if email == "" {
 				if !env.IsTTY {
-					return &output.UserError{Message: "--email is required in non-interactive mode"}
+					return &output.UserError{
+					Message: "--email is required in non-interactive mode",
+					Hint:    "Usage: dhq signup --email user@example.com --password <pass> [--account-name <name>] [--full-name <name>]",
+				}
 				}
 				fmt.Fprint(env.Stderr, "Email: ") //nolint:errcheck
 				input, _ := reader.ReadString('\n')
@@ -39,7 +42,10 @@ func newSignupCmd() *cobra.Command {
 
 			if password == "" {
 				if !env.IsTTY {
-					return &output.UserError{Message: "--password is required in non-interactive mode"}
+					return &output.UserError{
+					Message: "--password is required in non-interactive mode",
+					Hint:    "Usage: dhq signup --email user@example.com --password <pass> [--account-name <name>] [--full-name <name>]",
+				}
 				}
 				fmt.Fprint(env.Stderr, "Password: ") //nolint:errcheck
 				pw, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -70,7 +76,7 @@ func newSignupCmd() *cobra.Command {
 				Client:      ua,
 			}
 
-			result, err := sdk.Signup(req, ua)
+			result, err := sdk.Signup(req, ua, cliCtx.Config.SignupURL())
 			if err != nil {
 				return err
 			}
@@ -96,7 +102,11 @@ func newSignupCmd() *cobra.Command {
 			env.Status("")
 			output.ColorGreen.Fprintf(env.Stderr, "Account created!\n") //nolint:errcheck
 			env.Status("")
-			env.Status("  Account:     %s.deployhq.com", result.Account.Subdomain)
+			host := "deployhq.com"
+			if cliCtx.Config.Host != "" {
+				host = cliCtx.Config.Host
+			}
+			env.Status("  Account:     %s.%s", result.Account.Subdomain, host)
 			env.Status("  Email:       %s", email)
 			env.Status("  SSH Key:     %s", result.SSHPublicKey.Fingerprint)
 			env.Status("")

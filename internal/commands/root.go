@@ -21,6 +21,7 @@ var (
 	flagProject string
 	flagJSON    string
 	flagCwd     string
+	flagHost    string
 
 	// Shared context
 	cliCtx *cli.Context
@@ -58,7 +59,7 @@ Support: support@deployhq.com`,
 			}
 
 			// Apply flag overrides (Layer 1)
-			cfg.ApplyFlags(flagAccount, flagEmail, flagAPIKey, flagProject, "")
+			cfg.ApplyFlags(flagAccount, flagEmail, flagAPIKey, flagProject, "", flagHost)
 
 			// Setup output
 			logger := output.NewLogger()
@@ -112,6 +113,8 @@ Support: support@deployhq.com`,
 	pf.StringVar(&flagJSON, "json", "", "Output as JSON (optionally specify fields: --json name,status)")
 	pf.Lookup("json").NoOptDefVal = "true"
 	pf.StringVarP(&flagCwd, "cwd", "C", "", "Change working directory before running")
+	pf.StringVar(&flagHost, "host", "", "API host override (e.g. deployhq.dev for staging)")
+	_ = pf.MarkHidden("host")
 
 	// Register subcommands
 	root.AddCommand(

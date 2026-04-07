@@ -83,6 +83,10 @@ func (c *Context) Client() (*sdk.Client, error) {
 	}
 	opts = append(opts, sdk.WithUserAgent(harness.UserAgent(v, agent)))
 
+	if baseURL := c.Config.BaseURL(account); baseURL != "" {
+		opts = append(opts, sdk.WithBaseURL(baseURL))
+	}
+
 	client, err := sdk.New(account, email, apiKey, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create api client: %w", err)

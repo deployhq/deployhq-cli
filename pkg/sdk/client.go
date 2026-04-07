@@ -45,6 +45,17 @@ func WithUserAgent(ua string) Option {
 	return func(cl *Client) { cl.userAgent = ua }
 }
 
+// WithBaseURL overrides the default base URL for all API requests.
+// Use this to point the client at staging or dev environments.
+// The URL must include the scheme (e.g. "https://myco.deployhq.dev").
+func WithBaseURL(rawURL string) Option {
+	return func(cl *Client) {
+		if u, err := url.Parse(rawURL); err == nil {
+			cl.baseURL = u
+		}
+	}
+}
+
 // New creates a new DeployHQ API client.
 //
 // account is the subdomain (e.g. "mycompany" for mycompany.deployhq.com).

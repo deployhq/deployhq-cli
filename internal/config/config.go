@@ -23,13 +23,14 @@ type Config struct {
 	APIKey    string `mapstructure:"api_key"   json:"api_key,omitempty"`
 	Project   string `mapstructure:"project"   json:"project,omitempty"`
 	OutputFmt string `mapstructure:"format"    json:"format,omitempty"`
+	Host      string `mapstructure:"host"      json:"host,omitempty"`
 
 	// Resolved metadata (not persisted)
 	Sources map[string]string `json:"sources,omitempty"` // field -> source layer
 }
 
 // Keys is the list of all config keys.
-var Keys = []string{"account", "email", "api_key", "project", "format"}
+var Keys = []string{"account", "email", "api_key", "project", "format", "host"}
 
 // Load reads config from all 4 layers and returns the resolved Config.
 func Load() (*Config, error) {
@@ -79,7 +80,7 @@ func Load() (*Config, error) {
 }
 
 // ApplyFlags applies CLI flag overrides to the config.
-func (cfg *Config) ApplyFlags(account, email, apiKey, project, format string) {
+func (cfg *Config) ApplyFlags(account, email, apiKey, project, format, host string) {
 	if account != "" {
 		cfg.Account = account
 		cfg.Sources["account"] = "flag"
@@ -100,6 +101,10 @@ func (cfg *Config) ApplyFlags(account, email, apiKey, project, format string) {
 		cfg.OutputFmt = format
 		cfg.Sources["format"] = "flag"
 	}
+	if host != "" {
+		cfg.Host = host
+		cfg.Sources["host"] = "flag"
+	}
 }
 
 func (cfg *Config) resolveSources(v *viper.Viper) {
@@ -112,6 +117,26 @@ func (cfg *Config) resolveSources(v *viper.Viper) {
 			cfg.Sources[key] = "default"
 		}
 	}
+}
+
+// BaseURL returns the API base URL for the given account.
+// When Host is set (e.g. "deployhq.dev"), the URL becomes https://{account}.{host}.
+// Otherwise it returns empty string (SDK will use its default).
+func (cfg *Config) BaseURL(account string) string {
+	if cfg.Host == "" {
+		return ""
+	}
+	return fmt.Sprintf("https://%s.%s", account, cfg.Host)
+}
+
+// SignupURL returns the signup endpoint URL.
+// When Host is set, the URL becomes https://api.{host}/api/v1/signup.
+// Otherwise it returns empty string (SDK will use its default).
+func (cfg *Config) SignupURL() string {
+	if cfg.Host == "" {
+		return ""
+	}
+	return fmt.Sprintf("https://api.%s/api/v1/signup", cfg.Host)
 }
 
 // GlobalConfigPath returns the path to the global config file.

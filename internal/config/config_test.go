@@ -11,7 +11,7 @@ import (
 
 func TestLoad_Defaults(t *testing.T) {
 	// Clear env vars to test defaults
-	for _, key := range []string{"DEPLOYHQ_ACCOUNT", "DEPLOYHQ_EMAIL", "DEPLOYHQ_API_KEY", "DEPLOYHQ_PROJECT", "DEPLOYHQ_FORMAT"} {
+	for _, key := range []string{"DEPLOYHQ_ACCOUNT", "DEPLOYHQ_EMAIL", "DEPLOYHQ_API_KEY", "DEPLOYHQ_PROJECT", "DEPLOYHQ_FORMAT", "DEPLOYHQ_HOST"} {
 		t.Setenv(key, "")
 	}
 
@@ -38,7 +38,7 @@ func TestApplyFlags(t *testing.T) {
 	cfg.Account = "from-env"
 	cfg.Sources["account"] = "env"
 
-	cfg.ApplyFlags("from-flag", "", "", "proj", "")
+	cfg.ApplyFlags("from-flag", "", "", "proj", "", "")
 
 	assert.Equal(t, "from-flag", cfg.Account)
 	assert.Equal(t, "flag", cfg.Sources["account"])

@@ -114,7 +114,11 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 
 	// Validate by making a test API call
 	env.Status("Validating credentials...")
-	client, err := sdk.New(opts.Account, opts.Email, opts.APIKey)
+	var sdkOpts []sdk.Option
+	if baseURL := cliCtx.Config.BaseURL(opts.Account); baseURL != "" {
+		sdkOpts = append(sdkOpts, sdk.WithBaseURL(baseURL))
+	}
+	client, err := sdk.New(opts.Account, opts.Email, opts.APIKey, sdkOpts...)
 	if err != nil {
 		return &output.UserError{Message: err.Error()}
 	}

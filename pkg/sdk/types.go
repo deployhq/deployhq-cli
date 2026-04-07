@@ -105,17 +105,19 @@ type Server struct {
 
 // ServerCreateRequest is the payload for creating a server.
 type ServerCreateRequest struct {
-	Name         string `json:"name"`
-	ProtocolType string `json:"protocol_type"`
-	Hostname     string `json:"hostname,omitempty"`
-	Port         *int   `json:"port,omitempty"`
-	Username     string `json:"username,omitempty"`
-	Password     string `json:"password,omitempty"`
-	ServerPath   string `json:"server_path,omitempty"`
-	Environment  string `json:"environment,omitempty"`
-	RootPath     string `json:"root_path,omitempty"`
-	AgentID      string `json:"agent_id,omitempty"`
-	Enabled      *bool  `json:"enabled,omitempty"`
+	Name            string `json:"name"`
+	ProtocolType    string `json:"protocol_type"`
+	Hostname        string `json:"hostname,omitempty"`
+	Port            *int   `json:"port,omitempty"`
+	Username        string `json:"username,omitempty"`
+	Password        string `json:"password,omitempty"`
+	ServerPath      string `json:"server_path,omitempty"`
+	Environment     string `json:"environment,omitempty"`
+	RootPath        string `json:"root_path,omitempty"`
+	AgentID         string `json:"agent_id,omitempty"`
+	Enabled         *bool  `json:"enabled,omitempty"`
+	UseSSHKeys      *bool  `json:"use_ssh_keys,omitempty"`
+	GlobalKeyPairID string `json:"global_key_pair_id,omitempty"`
 }
 
 // ServerUpdateRequest is the payload for updating a server.

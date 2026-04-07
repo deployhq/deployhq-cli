@@ -43,11 +43,19 @@ func newHelloCmd() *cobra.Command {
 					return err
 				}
 			} else {
-				env.Status("Logged in as %s on %s.deployhq.com", creds.Email, creds.Account)
+				host := "deployhq.com"
+				if cliCtx.Config.Host != "" {
+					host = cliCtx.Config.Host
+				}
+				env.Status("Logged in as %s on %s.%s", creds.Email, creds.Account, host)
 			}
 
 			// Step 2: Fetch projects
-			client, err := sdk.New(creds.Account, creds.Email, creds.APIKey)
+			var sdkOpts []sdk.Option
+			if baseURL := cliCtx.Config.BaseURL(creds.Account); baseURL != "" {
+				sdkOpts = append(sdkOpts, sdk.WithBaseURL(baseURL))
+			}
+			client, err := sdk.New(creds.Account, creds.Email, creds.APIKey, sdkOpts...)
 			if err != nil {
 				return &output.InternalError{Message: "create client", Cause: err}
 			}
@@ -179,7 +187,11 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 	apiKey := strings.TrimSpace(string(key))
 
 	env.Status("Validating credentials...")
-	client, err := sdk.New(account, email, apiKey)
+	var sdkOpts []sdk.Option
+	if baseURL := cliCtx.Config.BaseURL(account); baseURL != "" {
+		sdkOpts = append(sdkOpts, sdk.WithBaseURL(baseURL))
+	}
+	client, err := sdk.New(account, email, apiKey, sdkOpts...)
 	if err != nil {
 		return nil, &output.UserError{Message: err.Error()}
 	}
@@ -202,8 +214,12 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 	// Save account to global config so subsequent commands find it
 	_ = config.Set(config.GlobalConfigPath(), "account", account)
 
+	host := "deployhq.com"
+	if cliCtx.Config.Host != "" {
+		host = cliCtx.Config.Host
+	}
 	env.Status("")
-	output.ColorGreen.Fprintf(env.Stderr, "Logged in as %s on %s.deployhq.com\n", email, account) //nolint:errcheck
+	output.ColorGreen.Fprintf(env.Stderr, "Logged in as %s on %s.%s\n", email, account, host) //nolint:errcheck
 	return creds, nil
 }
 
@@ -240,7 +256,7 @@ func helloSignup(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials,
 		Password:    password,
 		AccountName: accountName,
 		Client:      ua,
-	}, ua)
+	}, ua, cliCtx.Config.SignupURL())
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +273,11 @@ func helloSignup(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials,
 	// Save account to global config so subsequent commands find it
 	_ = config.Set(config.GlobalConfigPath(), "account", result.Account.Subdomain)
 
+	host := "deployhq.com"
+	if cliCtx.Config.Host != "" {
+		host = cliCtx.Config.Host
+	}
 	env.Status("")
-	output.ColorGreen.Fprintf(env.Stderr, "Account created: %s.deployhq.com\n", result.Account.Subdomain) //nolint:errcheck
+	output.ColorGreen.Fprintf(env.Stderr, "Account created: %s.%s\n", result.Account.Subdomain, host) //nolint:errcheck
 	return creds, nil
 }

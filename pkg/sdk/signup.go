@@ -36,7 +36,8 @@ type SignupResponse struct {
 
 // Signup creates a new DeployHQ account. This does not require authentication.
 // userAgent is optional; when empty it defaults to "deployhq-cli".
-func Signup(req SignupRequest, userAgent string) (*SignupResponse, error) {
+// signupURL is optional; when empty it defaults to "https://api.deployhq.com/api/v1/signup".
+func Signup(req SignupRequest, userAgent, signupURL string) (*SignupResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal signup request: %w", err)
@@ -45,8 +46,11 @@ func Signup(req SignupRequest, userAgent string) (*SignupResponse, error) {
 	if userAgent == "" {
 		userAgent = "deployhq-cli"
 	}
+	if signupURL == "" {
+		signupURL = "https://api.deployhq.com/api/v1/signup"
+	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, "https://api.deployhq.com/api/v1/signup", bytes.NewReader(body))
+	httpReq, err := http.NewRequest(http.MethodPost, signupURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create signup request: %w", err)
 	}
