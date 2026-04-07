@@ -22,10 +22,14 @@ case "$OS" in
     *) echo "Unsupported OS: $OS"; exit 1 ;;
 esac
 
-# Determine install directory (prefer user-writable location, no sudo)
+# Determine install directory
+# Priority: explicit env var > existing binary location > writable defaults
 if [ -n "$INSTALL_DIR" ]; then
     # Explicit override via env var
     :
+elif EXISTING=$(command -v "$BINARY" 2>/dev/null); then
+    # Update in place — install where the current binary lives
+    INSTALL_DIR=$(dirname "$EXISTING")
 elif [ -w "/usr/local/bin" ]; then
     INSTALL_DIR="/usr/local/bin"
 elif [ -d "$HOME/.local/bin" ] || mkdir -p "$HOME/.local/bin" 2>/dev/null; then
