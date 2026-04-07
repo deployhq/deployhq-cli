@@ -1,5 +1,7 @@
 package output
 
+import "strings"
+
 // Breadcrumb represents a suggested next action.
 type Breadcrumb struct {
 	Action string `json:"action"`
@@ -61,5 +63,26 @@ func ErrorResponseFromErr(err error) *Response {
 		message = e.Message
 	}
 
+	// Enrich API errors with actionable suggestions when no hint is set
+	if hint == "" {
+		hint = apiErrorHint(message)
+	}
+
 	return ErrorResponse(code, message, hint, "")
+}
+
+// apiErrorHint returns a suggestion for known API error patterns.
+func apiErrorHint(message string) string {
+	msg := strings.ToLower(message)
+	switch {
+	case strings.Contains(msg, "project_limit_reached"):
+		return "Your plan's project limit has been reached. Upgrade at Account Settings > Plan or delete unused projects with 'dhq projects delete <permalink>'"
+	case strings.Contains(msg, "server_limit_reached"):
+		return "Your plan's server limit has been reached. Upgrade at Account Settings > Plan or delete unused servers with 'dhq servers delete <project> <id>'"
+	case strings.Contains(msg, "not_found"):
+		return "The resource was not found. Check the identifier and try 'dhq projects list' or 'dhq servers list' to see available resources"
+	case strings.Contains(msg, "rate_limit"):
+		return "API rate limit exceeded. Wait a moment and retry"
+	}
+	return ""
 }
