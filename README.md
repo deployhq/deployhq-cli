@@ -101,6 +101,7 @@ dhq repos         show | create | update | branches | commits | commit-info | la
 dhq deploy        [-p project] [-s server] [--wait] (deploy with live progress)
 dhq retry         <deployment-id> -p <project>
 dhq rollback      <deployment-id> -p <project>
+dhq test-access   [-p project] [-s server] [--wait] (test repo + server connectivity)
 dhq open          [project] (open DeployHQ in browser)
 dhq hello         (guided onboarding: login/signup + project setup)
 dhq init          (interactive project setup wizard)
@@ -131,7 +132,7 @@ dhq assist        [question] (AI deployment assistant, requires Ollama)
 dhq completion    bash | zsh | fish | powershell
 dhq doctor        (health check)
 dhq update        (self-update to latest version)
-dhq setup         claude | codex (install agent plugins)
+dhq setup         claude | codex (install agent plugins, --project for project-level)
 dhq mcp           (start MCP server in stdio mode)
 ```
 

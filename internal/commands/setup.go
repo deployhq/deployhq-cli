@@ -214,6 +214,12 @@ dhq env-vars create --name KEY --value VALUE --locked -p <project>
 dhq global-env-vars create --name KEY --value VALUE
 ` + "```" + `
 
+#### Test repository and server connectivity
+` + "```" + `
+dhq test-access -p <project> --json
+dhq test-access -p <project> --server <server> --json
+` + "```" + `
+
 #### Escape hatch (any API endpoint)
 ` + "```" + `
 dhq api GET /projects/<id>/environment_variables
@@ -237,6 +243,10 @@ dhq api POST /projects/<id>/config_files --body '{"config_file":{...}}'
 2. ` + "`dhq rollback <id> -p <project> --json`" + ` → rollback if needed
 3. ` + "`dhq deployments abort <id> -p <project>`" + ` → abort if running
 
+### "Test connectivity"
+1. ` + "`dhq test-access -p <project> --json`" + ` → test all servers + repo
+2. ` + "`dhq test-access -p <project> --server <name> --json`" + ` → test single server
+
 ### "Manage project config"
 1. ` + "`dhq env-vars list -p <project> --json`" + ` → environment variables
 2. ` + "`dhq config-files list -p <project> --json`" + ` → config files
@@ -257,5 +267,6 @@ dhq api POST /projects/<id>/config_files --body '{"config_file":{...}}'
 - User mentions "server", "hosting" → server management
 - User mentions "rollback", "revert" → rollback workflow
 - User mentions "env var", "environment", "config" → configuration management
+- User mentions "test", "connectivity", "access" → test-access workflow
 - User mentions "DeployHQ", "deployhq" → general CLI usage
 `
