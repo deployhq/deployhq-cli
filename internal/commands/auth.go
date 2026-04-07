@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
+	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/manifoldco/promptui"
@@ -139,6 +140,9 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 		return &output.InternalError{Message: "store credentials", Cause: err}
 	}
 
+	// Update global config so all commands use the new account
+	_ = config.Set(config.GlobalConfigPath(), "account", opts.Account)
+
 	env.Status("Logged in as %s on %s.deployhq.com", opts.Email, opts.Account)
 	return nil
 }
@@ -223,9 +227,13 @@ func newAuthStatusCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
-			// If an account is specified via flag/env/config, show that profile
+			// Try configured account first, fall back to any stored credentials
 			account := cliCtx.Config.Account
 			creds, err := auth.LoadByAccount(account)
+			if err != nil && account != "" {
+				// Configured account not found — try default profile
+				creds, err = auth.LoadByAccount("")
+			}
 			if err != nil {
 				env.Status("Not logged in")
 				return nil
