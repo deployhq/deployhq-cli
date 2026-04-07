@@ -9,6 +9,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// agentSetup defines the configuration for an agent integration command.
+type agentSetup struct {
+	Use       string // cobra Use field (e.g. "claude")
+	Short     string // one-line description
+	Name      string // display name (e.g. "Claude Code")
+	DotDir    string // directory name (e.g. ".claude")
+	ExtraFile string // optional extra file to write (besides SKILL.md)
+}
+
+var agents = []agentSetup{
+	{
+		Use:       "claude",
+		Short:     "Install Claude Code integration",
+		Name:      "Claude Code",
+		DotDir:    ".claude",
+		ExtraFile: "deployhq-commands.md",
+	},
+	{
+		Use:    "codex",
+		Short:  "Install OpenAI Codex integration",
+		Name:   "Codex",
+		DotDir: ".codex",
+	},
+}
+
 func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -16,105 +41,110 @@ func newSetupCmd() *cobra.Command {
 		Long:  "Install DeployHQ agent integration files for AI coding assistants.",
 	}
 
-	cmd.AddCommand(
-		newSetupClaudeCmd(),
-		newSetupCodexCmd(),
-	)
+	for _, a := range agents {
+		cmd.AddCommand(newAgentSetupCmd(a))
+	}
 
 	return cmd
 }
 
-func newSetupClaudeCmd() *cobra.Command {
+func newAgentSetupCmd(a agentSetup) *cobra.Command {
 	var uninstall bool
+	var project bool
 
 	cmd := &cobra.Command{
-		Use:   "claude",
-		Short: "Install Claude Code integration",
-		Long:  "Install .claude/ plugin files for Claude Code agent integration.",
+		Use:   a.Use,
+		Short: a.Short,
+		Long: fmt.Sprintf(`Install %s agent integration files.
+
+By default, files are installed in ~/%s/ (user-level) so the skill
+is available in all sessions. Use --project to install in the current
+directory's %s/ instead.`, a.Name, a.DotDir, a.DotDir),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
-			dir := ".claude"
+
+			scope := "user"
+			dir := ""
+			if project {
+				dir = a.DotDir
+				scope = "project"
+			} else {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return &output.InternalError{Message: "find home directory", Cause: err}
+				}
+				dir = filepath.Join(home, a.DotDir)
+			}
+
+			// Collect the files this agent installs
+			files := installedFiles(a, dir)
 
 			if uninstall {
-				return removeSetup(dir, "Claude Code")
+				return removeSetupFiles(files, dir, a.Name)
 			}
 
 			if err := os.MkdirAll(dir, 0755); err != nil {
-				return &output.InternalError{Message: "create .claude directory", Cause: err}
+				return &output.InternalError{Message: fmt.Sprintf("create %s directory", a.DotDir), Cause: err}
 			}
 
 			// Write SKILL.md
-			skillPath := filepath.Join(dir, "SKILL.md")
-			if err := os.WriteFile(skillPath, []byte(skillMD), 0644); err != nil {
+			if err := os.WriteFile(files["SKILL.md"], []byte(skillMD), 0644); err != nil {
 				return &output.InternalError{Message: "write SKILL.md", Cause: err}
 			}
 
-			// Write commands.json reference
-			commandsRef := filepath.Join(dir, "deployhq-commands.md")
-			content := "# DeployHQ CLI Commands\n\nRun `dhq commands --json` to get the full command catalog.\n\nRun `dhq --help` for usage information.\n"
-			if err := os.WriteFile(commandsRef, []byte(content), 0644); err != nil {
-				return &output.InternalError{Message: "write commands reference", Cause: err}
+			// Write optional extra file
+			if a.ExtraFile != "" {
+				content := "# DeployHQ CLI Commands\n\nRun `dhq commands --json` to get the full command catalog.\n\nRun `dhq --help` for usage information.\n"
+				if err := os.WriteFile(files[a.ExtraFile], []byte(content), 0644); err != nil {
+					return &output.InternalError{Message: fmt.Sprintf("write %s", a.ExtraFile), Cause: err}
+				}
 			}
 
-			env.Status("Installed Claude Code integration:")
-			env.Status("  %s (agent workflow guide)", skillPath)
-			env.Status("  %s (commands reference)", commandsRef)
-			env.Status("\nTo uninstall: dhq setup claude --uninstall")
+			env.Status("Installed %s integration (%s-level):", a.Name, scope)
+			for _, p := range files {
+				env.Status("  %s", p)
+			}
+			uninstallFlag := ""
+			if project {
+				uninstallFlag = " --project"
+			}
+			env.Status("\nTo uninstall: dhq setup %s --uninstall%s", a.Use, uninstallFlag)
 			return nil
 		},
 	}
 
 	cmd.Flags().BoolVar(&uninstall, "uninstall", false, "Remove installed files")
+	cmd.Flags().BoolVar(&project, "project", false,
+		fmt.Sprintf("Install to %s/ (project-level) instead of ~/%s/ (user-level)", a.DotDir, a.DotDir))
 	return cmd
 }
 
-func newSetupCodexCmd() *cobra.Command {
-	var uninstall bool
+// installedFiles returns a map of logical name → file path for the files an agent installs.
+func installedFiles(a agentSetup, dir string) map[string]string {
+	files := map[string]string{
+		"SKILL.md": filepath.Join(dir, "SKILL.md"),
+	}
+	if a.ExtraFile != "" {
+		files[a.ExtraFile] = filepath.Join(dir, a.ExtraFile)
+	}
+	return files
+}
 
-	cmd := &cobra.Command{
-		Use:   "codex",
-		Short: "Install OpenAI Codex integration",
-		Long:  "Install codex agent integration files.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			env := cliCtx.Envelope
-			dir := ".codex"
-
-			if uninstall {
-				return removeSetup(dir, "Codex")
-			}
-
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return &output.InternalError{Message: "create .codex directory", Cause: err}
-			}
-
-			// Write SKILL.md
-			skillPath := filepath.Join(dir, "SKILL.md")
-			if err := os.WriteFile(skillPath, []byte(skillMD), 0644); err != nil {
-				return &output.InternalError{Message: "write SKILL.md", Cause: err}
-			}
-
-			env.Status("Installed Codex integration:")
-			env.Status("  %s (agent workflow guide)", skillPath)
-			env.Status("\nTo uninstall: dhq setup codex --uninstall")
-			return nil
-		},
+// removeSetupFiles removes only the files we installed, not the whole directory
+// (which may contain the user's own files like CLAUDE.md, memory, etc.).
+func removeSetupFiles(files map[string]string, dir, name string) error {
+	removed := 0
+	for _, f := range files {
+		if err := os.Remove(f); err == nil {
+			removed++
+		}
 	}
 
-	cmd.Flags().BoolVar(&uninstall, "uninstall", false, "Remove installed files")
-	return cmd
-}
-
-func removeSetup(dir, name string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	if removed == 0 {
 		cliCtx.Envelope.Status("%s integration not found at %s", name, dir)
-		return nil
+	} else {
+		cliCtx.Envelope.Status("Removed %s integration from %s (%d files)", name, dir, removed)
 	}
-
-	if err := os.RemoveAll(dir); err != nil {
-		return &output.InternalError{Message: fmt.Sprintf("remove %s directory", dir), Cause: err}
-	}
-
-	cliCtx.Envelope.Status("Removed %s integration from %s", name, dir)
 	return nil
 }
 
