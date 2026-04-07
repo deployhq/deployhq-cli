@@ -102,6 +102,6 @@ esac
 
 echo ""
 echo "Get started:"
-echo "  dhq auth login"
-echo "  dhq projects list"
+echo "  dhq hello          (guided onboarding)"
+echo "  dhq auth login     (or login directly)"
 echo "  dhq --help"
