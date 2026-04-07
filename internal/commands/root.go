@@ -87,7 +87,9 @@ Support: support@deployhq.com`,
 			}
 
 			// Version update check (Wrangler pattern: show on exit, non-blocking)
-			if version != "dev" && !cliCtx.IsAgent {
+			// Skip after "dhq update" — the running binary still has the old
+			// version baked in, so the check would show a stale notice.
+			if version != "dev" && !cliCtx.IsAgent && cmd.Name() != "update" {
 				info := versionpkg.Check(version)
 				if msg := versionpkg.FormatUpdateMessage(info); msg != "" {
 					cliCtx.Envelope.Status(msg)
