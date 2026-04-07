@@ -5,7 +5,6 @@ set -e
 
 REPO="deployhq/deployhq-cli"
 BINARY="dhq"
-INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and architecture
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -22,6 +21,18 @@ case "$OS" in
     mingw*|msys*|cygwin*) OS="windows" ;;
     *) echo "Unsupported OS: $OS"; exit 1 ;;
 esac
+
+# Determine install directory (prefer user-writable location, no sudo)
+if [ -n "$INSTALL_DIR" ]; then
+    # Explicit override via env var
+    :
+elif [ -w "/usr/local/bin" ]; then
+    INSTALL_DIR="/usr/local/bin"
+elif [ -d "$HOME/.local/bin" ] || mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+    INSTALL_DIR="$HOME/.local/bin"
+else
+    INSTALL_DIR="/usr/local/bin"
+fi
 
 # Get latest version
 echo "Fetching latest version..."
@@ -67,6 +78,24 @@ chmod +x "$INSTALL_DIR/$BINARY"
 
 echo ""
 echo "dhq v$VERSION installed to $INSTALL_DIR/$BINARY"
+
+# Check if install dir is in PATH
+case ":$PATH:" in
+    *":$INSTALL_DIR:"*) ;;
+    *)
+        echo ""
+        echo "NOTE: $INSTALL_DIR is not in your PATH."
+        echo "Add it by running:"
+        echo ""
+        if [ -f "$HOME/.zshrc" ]; then
+            echo "  echo 'export PATH=\"$INSTALL_DIR:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
+        else
+            echo "  echo 'export PATH=\"$INSTALL_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+        fi
+        echo ""
+        ;;
+esac
+
 echo ""
 echo "Get started:"
 echo "  dhq auth login"
