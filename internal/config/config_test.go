@@ -14,6 +14,8 @@ func TestLoad_Defaults(t *testing.T) {
 	for _, key := range []string{"DEPLOYHQ_ACCOUNT", "DEPLOYHQ_EMAIL", "DEPLOYHQ_API_KEY", "DEPLOYHQ_PROJECT", "DEPLOYHQ_FORMAT", "DEPLOYHQ_HOST"} {
 		t.Setenv(key, "")
 	}
+	// Use a temp HOME so we don't read the real ~/.deployhq/config.toml
+	t.Setenv("HOME", t.TempDir())
 
 	cfg, err := Load()
 	require.NoError(t, err)
