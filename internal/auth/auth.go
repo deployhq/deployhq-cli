@@ -93,14 +93,27 @@ func Delete() error {
 }
 
 // DeleteByAccount removes stored credentials for a specific account profile.
-// If a named account is deleted and the default profile points to that same
-// account, the default profile is also removed.
+// When deleting the default profile, also removes the named profile it points
+// to (since Store writes both). When deleting a named profile, also cleans up
+// the default profile if it points to the same account.
 func DeleteByAccount(account string) error {
 	profile := profileName(account)
+
+	if profile == defaultProfile {
+		// Bare "logout" — read the default profile first to find the named profile
+		if creds, err := loadProfile(defaultProfile); err == nil && creds.Account != "" {
+			named := profileName(creds.Account)
+			if named != defaultProfile {
+				_ = keyring.Delete(keyringService, named)
+				_ = deleteFileProfile(named)
+			}
+		}
+	}
+
 	_ = keyring.Delete(keyringService, profile)
 	_ = deleteFileProfile(profile)
 
-	// Clean up default profile if it points to the same account
+	// Named logout — also clean up default if it points to the same account
 	if profile != defaultProfile && account != "" {
 		if creds, err := loadProfile(defaultProfile); err == nil && creds.Account == account {
 			_ = keyring.Delete(keyringService, defaultProfile)
