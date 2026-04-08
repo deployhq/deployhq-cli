@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -103,11 +104,25 @@ func newReposCreateCmd() *cobra.Command {
 				return err
 			}
 
+			// Fetch project to get deploy key
+			project, projErr := client.GetProject(cliCtx.Background(), projectID)
+
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
-				return env.WriteJSON(output.NewResponse(repo, fmt.Sprintf("Repository created: %s", repo.URL)))
+				breadcrumbs := []output.Breadcrumb{}
+				if projErr == nil && project.PublicKey != "" {
+					breadcrumbs = append(breadcrumbs, deployKeyBreadcrumbs(url, project.PublicKey, projectID)...)
+				}
+				return env.WriteJSON(output.NewResponse(repo, fmt.Sprintf("Repository created: %s", repo.URL), breadcrumbs...))
 			}
+
 			env.Status("Repository created: %s (%s)", repo.URL, repo.ScmType)
+			if projErr == nil && project.PublicKey != "" {
+				env.Status("")
+				env.Status("Deploy key (add to your repo for DeployHQ to pull):")
+				env.Status("  %s", project.PublicKey)
+				printDeployKeyHint(env, url, project.PublicKey, projectID)
+			}
 			return nil
 		},
 	}
@@ -322,4 +337,75 @@ func newReposLatestRevisionCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// deployKeyBreadcrumbs returns breadcrumbs with CLI commands for adding a deploy key.
+func deployKeyBreadcrumbs(repoURL, publicKey, projectID string) []output.Breadcrumb {
+	crumbs := []output.Breadcrumb{}
+
+	if isGitHubURL(repoURL) {
+		repo := extractGitHubRepo(repoURL)
+		if repo != "" {
+			crumbs = append(crumbs, output.Breadcrumb{
+				Action: "add deploy key via GitHub CLI",
+				Cmd:    fmt.Sprintf("echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -", publicKey, repo),
+			})
+		}
+	} else if isGitLabURL(repoURL) {
+		crumbs = append(crumbs, output.Breadcrumb{
+			Action: "add deploy key via GitLab CLI",
+			Cmd:    fmt.Sprintf("glab ssh-key add --title DeployHQ --type deploy_key # paste key: %s", publicKey),
+		})
+	} else if isBitbucketURL(repoURL) {
+		crumbs = append(crumbs, output.Breadcrumb{
+			Action: "add deploy key",
+			Cmd:    "Add at Bitbucket repo > Settings > Access keys > Add key",
+		})
+	}
+
+	crumbs = append(crumbs, output.Breadcrumb{
+		Action: "view deploy key",
+		Cmd:    fmt.Sprintf("dhq repos show -p %s", projectID),
+	})
+
+	return crumbs
+}
+
+// printDeployKeyHint prints human-readable instructions for adding the deploy key.
+func printDeployKeyHint(env *output.Envelope, repoURL, publicKey, projectID string) {
+	if isGitHubURL(repoURL) {
+		repo := extractGitHubRepo(repoURL)
+		if repo != "" {
+			env.Status("")
+			env.Status("Add it with the GitHub CLI:")
+			env.Status("  echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -", publicKey, repo)
+			return
+		}
+	}
+	if isGitLabURL(repoURL) {
+		env.Status("")
+		env.Status("Add it with the GitLab CLI:")
+		env.Status("  glab ssh-key add --title DeployHQ --type deploy_key")
+		return
+	}
+	if isBitbucketURL(repoURL) {
+		env.Status("")
+		env.Status("Add it at Bitbucket:")
+		env.Status("  repo > Settings > Access keys > Add key")
+		return
+	}
+	env.Status("")
+	env.Status("Add it at your repo's Settings > Deploy keys")
+}
+
+func isGitHubURL(url string) bool {
+	return strings.Contains(url, "github.com")
+}
+
+func isGitLabURL(url string) bool {
+	return strings.Contains(url, "gitlab.com")
+}
+
+func isBitbucketURL(url string) bool {
+	return strings.Contains(url, "bitbucket.org")
 }
