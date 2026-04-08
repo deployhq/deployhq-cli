@@ -63,9 +63,12 @@ func ErrorResponseFromErr(err error) *Response {
 		message = e.Message
 	}
 
-	// Enrich API errors with actionable suggestions when no hint is set
+	// Enrich errors with actionable suggestions when no hint is set
 	if hint == "" {
 		hint = apiErrorHint(message)
+	}
+	if hint == "" {
+		hint = cobraArgHint(message)
 	}
 
 	return ErrorResponse(code, message, hint, "")
@@ -83,6 +86,16 @@ func apiErrorHint(message string) string {
 		return "The resource was not found. Check the identifier and try 'dhq projects list' or 'dhq servers list' to see available resources"
 	case strings.Contains(msg, "rate_limit"):
 		return "API rate limit exceeded. Wait a moment and retry"
+	}
+	return ""
+}
+
+// cobraArgHint detects cobra argument-count errors often caused by --json
+// field selection without using = syntax (e.g. --json status,steps instead
+// of --json=status,steps).
+func cobraArgHint(message string) string {
+	if strings.Contains(message, "arg(s), received") {
+		return "If you used --json with field names, use --json=field1,field2 (with '=') so the fields aren't treated as extra arguments"
 	}
 	return ""
 }
