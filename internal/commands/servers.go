@@ -138,7 +138,7 @@ func newServersCreateCmd() *cobra.Command {
 	var name, protocolType, serverPath, environment string
 	var hostname, username, password, globalKeyPairID string
 	var port int
-	var useSSHKeys bool
+	var useSSHKeys, installKey bool
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -190,13 +190,13 @@ func newServersCreateCmd() *cobra.Command {
 					break
 				}
 
-				// Retry on SSH auth failure in interactive mode
+				// Only handle SSH auth failures with key-based auth
 				isAuthError := strings.Contains(strings.ToLower(err.Error()), "authentication failed")
-				if !isAuthError || !useSSHKeys || !env.IsTTY || env.JSONMode {
+				if !isAuthError || !useSSHKeys {
 					return err
 				}
 
-				// Show the SSH public key to help the user
+				// Resolve the public key for display / installation
 				var publicKey string
 				if globalKeyPairID != "" {
 					keys, kerr := client.ListSSHKeys(cliCtx.Background())
@@ -210,6 +210,32 @@ func newServersCreateCmd() *cobra.Command {
 					}
 				}
 
+				// --install-key: attempt to install the key on the server automatically
+				if installKey && publicKey != "" && hostname != "" && username != "" {
+					sshPort := 22
+					if cmd.Flags().Changed("port") {
+						sshPort = port
+					}
+					env.Warn("SSH authentication failed — attempting to install the deploy key on the server...")
+					if ierr := installSSHKey(env, hostname, sshPort, username, publicKey); ierr == nil {
+						env.Status("Key installed successfully. Retrying server creation...")
+						continue // retry CreateServer
+					}
+					env.Warn("Could not install the key automatically.")
+				}
+
+				// Non-interactive: return error with actionable hint
+				if !env.IsTTY || env.JSONMode {
+					if publicKey != "" {
+						return &output.UserError{
+							Message: err.Error(),
+							Hint:    fmt.Sprintf("Add this key to %s@%s:~/.ssh/authorized_keys:\n  %s", username, hostname, publicKey),
+						}
+					}
+					return err
+				}
+
+				// Interactive fallback: show key and offer manual retry
 				env.Warn("SSH authentication failed.")
 				if publicKey != "" {
 					env.Status("")
@@ -245,6 +271,7 @@ func newServersCreateCmd() *cobra.Command {
 	cmd.Flags().IntVar(&port, "port", 0, "Server port (default: 22 for SSH, 21 for FTP)")
 	cmd.Flags().BoolVar(&useSSHKeys, "use-ssh-keys", false, "Use SSH key authentication instead of password")
 	cmd.Flags().StringVar(&globalKeyPairID, "global-key-pair-id", "", "Global SSH key pair identifier")
+	cmd.Flags().BoolVar(&installKey, "install-key", false, "Attempt to install the SSH key on the server via ssh-copy-id")
 	return cmd
 }
 
