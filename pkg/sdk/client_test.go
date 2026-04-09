@@ -69,7 +69,7 @@ func TestClient_BasicAuth(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	_, err := c.ListProjects(context.Background())
+	_, err := c.ListProjects(context.Background(), nil)
 	require.NoError(t, err)
 }
 
@@ -118,7 +118,7 @@ func TestClient_APIError_Unauthorized(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	_, err := c.ListProjects(context.Background())
+	_, err := c.ListProjects(context.Background(), nil)
 	require.Error(t, err)
 	assert.True(t, IsUnauthorized(err))
 }
@@ -133,8 +133,30 @@ func TestClient_UserAgent(t *testing.T) {
 
 	c := newTestClient(t, server)
 	c.userAgent = "my-agent"
-	_, err := c.ListProjects(context.Background())
+	_, err := c.ListProjects(context.Background(), nil)
 	require.NoError(t, err)
+}
+
+func TestAppendListParams(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		opts     *ListOptions
+		expected string
+	}{
+		{"nil opts", "/projects", nil, "/projects"},
+		{"page only", "/projects", &ListOptions{Page: 2}, "/projects?page=2"},
+		{"per_page only", "/projects", &ListOptions{PerPage: 10}, "/projects?per_page=10"},
+		{"both", "/projects", &ListOptions{Page: 3, PerPage: 25}, "/projects?page=3&per_page=25"},
+		{"zero values", "/projects", &ListOptions{}, "/projects"},
+		{"existing query string", "/templates/public?framework_type=rails", &ListOptions{Page: 2}, "/templates/public?framework_type=rails&page=2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := appendListParams(tt.path, tt.opts)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
 
 func TestClient_Do_EscapeHatch(t *testing.T) {

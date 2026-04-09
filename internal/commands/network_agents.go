@@ -21,7 +21,7 @@ func newAgentsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				agents, err := client.ListAgents(cliCtx.Background())
+				agents, err := client.ListAgents(cliCtx.Background(), nil)
 				if err != nil {
 					return err
 				}

@@ -53,7 +53,7 @@ func newEnvVarsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			vars, err := client.ListEnvVars(cliCtx.Background(), projectID)
+			vars, err := client.ListEnvVars(cliCtx.Background(), projectID, nil)
 			if err != nil {
 				return err
 			}
@@ -219,7 +219,7 @@ func newGlobalEnvVarsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				vars, err := client.ListGlobalEnvVars(cliCtx.Background())
+				vars, err := client.ListGlobalEnvVars(cliCtx.Background(), nil)
 				if err != nil {
 					return err
 				}

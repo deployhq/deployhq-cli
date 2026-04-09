@@ -26,9 +26,10 @@ type EnvVarCreateRequest struct {
 
 // Project-scoped env vars
 
-func (c *Client) ListEnvVars(ctx context.Context, projectID string) ([]EnvVar, error) {
+func (c *Client) ListEnvVars(ctx context.Context, projectID string, opts *ListOptions) ([]EnvVar, error) {
 	var vars []EnvVar
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/environment_variables", projectID), &vars); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/environment_variables", projectID), opts)
+	if err := c.get(ctx, path, &vars); err != nil {
 		return nil, err
 	}
 	return vars, nil
@@ -70,9 +71,10 @@ func (c *Client) DeleteEnvVar(ctx context.Context, projectID, varID string) erro
 
 // Global env vars
 
-func (c *Client) ListGlobalEnvVars(ctx context.Context) ([]EnvVar, error) {
+func (c *Client) ListGlobalEnvVars(ctx context.Context, opts *ListOptions) ([]EnvVar, error) {
 	var vars []EnvVar
-	if err := c.get(ctx, "/global_environment_variables", &vars); err != nil {
+	path := appendListParams("/global_environment_variables", opts)
+	if err := c.get(ctx, path, &vars); err != nil {
 		return nil, err
 	}
 	return vars, nil

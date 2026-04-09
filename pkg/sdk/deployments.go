@@ -7,9 +7,10 @@ import (
 
 // ListDeployments returns deployments for a project.
 // The API returns a paginated response with {pagination, records}.
-func (c *Client) ListDeployments(ctx context.Context, projectID string) (*PaginatedResponse[Deployment], error) {
+func (c *Client) ListDeployments(ctx context.Context, projectID string, opts *ListOptions) (*PaginatedResponse[Deployment], error) {
 	var result PaginatedResponse[Deployment]
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/deployments", projectID), &result); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/deployments", projectID), opts)
+	if err := c.get(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -34,6 +35,18 @@ func (c *Client) CreateDeployment(ctx context.Context, projectID string, req Dep
 		return nil, err
 	}
 	return &deployment, nil
+}
+
+// PreviewDeployment creates a preview deployment without executing.
+// Returns the preview status and identifier.
+func (c *Client) PreviewDeployment(ctx context.Context, projectID string, req DeploymentCreateRequest) (*DeploymentPreview, error) {
+	req.Mode = "preview"
+	body := struct {
+		Deployment DeploymentCreateRequest `json:"deployment"`
+	}{Deployment: req}
+	var preview DeploymentPreview
+	err := c.post(ctx, fmt.Sprintf("/projects/%s/deployments", projectID), body, &preview)
+	return &preview, err
 }
 
 // AbortDeployment aborts a running deployment.

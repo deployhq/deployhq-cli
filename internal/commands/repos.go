@@ -189,7 +189,7 @@ func newReposBranchesCmd() *cobra.Command {
 				return err
 			}
 
-			branches, err := client.ListBranches(cliCtx.Background(), projectID)
+			branches, err := client.ListBranches(cliCtx.Background(), projectID, nil)
 			if err != nil {
 				return err
 			}
@@ -226,7 +226,7 @@ func newReposCommitsCmd() *cobra.Command {
 				return err
 			}
 
-			result, err := client.ListRecentCommits(cliCtx.Background(), projectID)
+			result, err := client.ListRecentCommits(cliCtx.Background(), projectID, nil)
 			if err != nil {
 				return err
 			}

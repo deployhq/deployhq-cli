@@ -26,9 +26,10 @@ type IntegrationCreateRequest struct {
 	SendOnFailure    *bool  `json:"send_on_failure,omitempty"`
 }
 
-func (c *Client) ListIntegrations(ctx context.Context, projectID string) ([]Integration, error) {
+func (c *Client) ListIntegrations(ctx context.Context, projectID string, opts *ListOptions) ([]Integration, error) {
 	var integrations []Integration
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/integrations", projectID), &integrations); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/integrations", projectID), opts)
+	if err := c.get(ctx, path, &integrations); err != nil {
 		return nil, err
 	}
 	return integrations, nil

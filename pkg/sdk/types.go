@@ -69,38 +69,38 @@ type ProjectUpdateRequest struct {
 
 // Server represents a deployment server.
 type Server struct {
-	ID                       int     `json:"id"`
-	Identifier               string  `json:"identifier"`
-	Name                     string  `json:"name"`
-	ProtocolType             string  `json:"protocol_type"`
-	ServerPath               string  `json:"server_path"`
-	LastRevision             string  `json:"last_revision"`
-	PreferredBranch          string  `json:"preferred_branch"`
-	Branch                   string  `json:"branch"`
-	NotifyEmail              string  `json:"notify_email"`
-	ServerGroupIdentifier    *string `json:"server_group_identifier,omitempty"`
-	AutoDeploy               bool    `json:"auto_deploy"`
-	Environment              string  `json:"environment"`
-	Enabled                  bool    `json:"enabled"`
-	Agent                    *ServerAgent `json:"agent,omitempty"`
-	Atomic                   *bool   `json:"atomic,omitempty"`
-	AtomicStrategy           string  `json:"atomic_strategy"`
-	AtomicRetention          int     `json:"atomic_retention"`
-	UseCompression           bool    `json:"use_compression"`
-	UseAcceleratedTransfer   bool    `json:"use_accelerated_transfer"`
-	UseParallelUpload        bool    `json:"use_parallel_upload"`
-	RootPath                 string  `json:"root_path"`
-	Position                 int     `json:"position"`
-	CreatedAt                string  `json:"created_at"`
-	UpdatedAt                string  `json:"updated_at"`
-	ConnectionCheckedAt      *string `json:"connection_checked_at,omitempty"`
-	ConnectionErrorMessage   *string `json:"connection_error_message,omitempty"`
-	Hostname                 string     `json:"hostname,omitempty"`
-	Username                 string     `json:"username,omitempty"`
-	Port                     FlexString `json:"port,omitempty"`
-	UseSSHKeys               bool    `json:"use_ssh_keys,omitempty"`
-	HostKey                  string  `json:"host_key,omitempty"`
-	UnlinkBeforeUpload       bool    `json:"unlink_before_upload,omitempty"`
+	ID                     int          `json:"id"`
+	Identifier             string       `json:"identifier"`
+	Name                   string       `json:"name"`
+	ProtocolType           string       `json:"protocol_type"`
+	ServerPath             string       `json:"server_path"`
+	LastRevision           string       `json:"last_revision"`
+	PreferredBranch        string       `json:"preferred_branch"`
+	Branch                 string       `json:"branch"`
+	NotifyEmail            string       `json:"notify_email"`
+	ServerGroupIdentifier  *string      `json:"server_group_identifier,omitempty"`
+	AutoDeploy             bool         `json:"auto_deploy"`
+	Environment            string       `json:"environment"`
+	Enabled                bool         `json:"enabled"`
+	Agent                  *ServerAgent `json:"agent,omitempty"`
+	Atomic                 *bool        `json:"atomic,omitempty"`
+	AtomicStrategy         string       `json:"atomic_strategy"`
+	AtomicRetention        int          `json:"atomic_retention"`
+	UseCompression         bool         `json:"use_compression"`
+	UseAcceleratedTransfer bool         `json:"use_accelerated_transfer"`
+	UseParallelUpload      bool         `json:"use_parallel_upload"`
+	RootPath               string       `json:"root_path"`
+	Position               int          `json:"position"`
+	CreatedAt              string       `json:"created_at"`
+	UpdatedAt              string       `json:"updated_at"`
+	ConnectionCheckedAt    *string      `json:"connection_checked_at,omitempty"`
+	ConnectionErrorMessage *string      `json:"connection_error_message,omitempty"`
+	Hostname               string       `json:"hostname,omitempty"`
+	Username               string       `json:"username,omitempty"`
+	Port                   FlexString   `json:"port,omitempty"`
+	UseSSHKeys             bool         `json:"use_ssh_keys,omitempty"`
+	HostKey                string       `json:"host_key,omitempty"`
+	UnlinkBeforeUpload     bool         `json:"unlink_before_upload,omitempty"`
 }
 
 // ServerCreateRequest is the payload for creating a server.
@@ -127,7 +127,7 @@ type ServerCreateRequest struct {
 	// S3
 	BucketName      string `json:"bucket_name,omitempty"`
 	AccessKeyID     string `json:"access_key_id,omitempty"`
-	SecretAccessKey  string `json:"secret_access_key,omitempty"`
+	SecretAccessKey string `json:"secret_access_key,omitempty"`
 
 	// S3-Compatible
 	CustomEndpoint string `json:"custom_endpoint,omitempty"`
@@ -186,49 +186,49 @@ type ServerGroupUpdateRequest struct {
 // ServerAgent is the embedded agent object within a server response.
 // The API returns the full agent object, not just an identifier.
 type ServerAgent struct {
-	ID        int     `json:"id"`
-	CreatedAt string  `json:"created_at"`
-	Identifier string `json:"identifier"`
-	Name      string  `json:"name"`
-	Online    bool    `json:"online"`
-	RevokedAt *string `json:"revoked_at,omitempty"`
-	UpdatedAt string  `json:"updated_at"`
+	ID         int     `json:"id"`
+	CreatedAt  string  `json:"created_at"`
+	Identifier string  `json:"identifier"`
+	Name       string  `json:"name"`
+	Online     bool    `json:"online"`
+	RevokedAt  *string `json:"revoked_at,omitempty"`
+	UpdatedAt  string  `json:"updated_at"`
 }
 
 // Deployment represents a deployment.
 type Deployment struct {
-	Identifier           string            `json:"identifier"`
-	Servers              []Server          `json:"servers"`
-	Project              *DeploymentProject `json:"project,omitempty"`
-	Deployer             *string           `json:"deployer,omitempty"`
-	DeployerAvatar       *string           `json:"deployer_avatar,omitempty"`
-	Branch               string            `json:"branch"`
-	StartRevision        *Revision         `json:"start_revision,omitempty"`
-	EndRevision          *Revision         `json:"end_revision,omitempty"`
-	Status               string            `json:"status"`
-	Timestamps           *Timestamps       `json:"timestamps,omitempty"`
-	Configuration        *DeployConfig     `json:"configuration,omitempty"`
-	Legacy               bool              `json:"legacy"`
-	Deferred             bool              `json:"deferred"`
-	ConfigFilesDeployment bool             `json:"config_files_deployment"`
-	Overview             *string           `json:"overview,omitempty"`
-	Archived             bool              `json:"archived"`
-	ArchivedAt           *string           `json:"archived_at,omitempty"`
-	LogSummary           *string           `json:"log_summary,omitempty"`
-	Steps                []DeploymentStep  `json:"steps,omitempty"`
+	Identifier            string             `json:"identifier"`
+	Servers               []Server           `json:"servers"`
+	Project               *DeploymentProject `json:"project,omitempty"`
+	Deployer              *string            `json:"deployer,omitempty"`
+	DeployerAvatar        *string            `json:"deployer_avatar,omitempty"`
+	Branch                string             `json:"branch"`
+	StartRevision         *Revision          `json:"start_revision,omitempty"`
+	EndRevision           *Revision          `json:"end_revision,omitempty"`
+	Status                string             `json:"status"`
+	Timestamps            *Timestamps        `json:"timestamps,omitempty"`
+	Configuration         *DeployConfig      `json:"configuration,omitempty"`
+	Legacy                bool               `json:"legacy"`
+	Deferred              bool               `json:"deferred"`
+	ConfigFilesDeployment bool               `json:"config_files_deployment"`
+	Overview              *string            `json:"overview,omitempty"`
+	Archived              bool               `json:"archived"`
+	ArchivedAt            *string            `json:"archived_at,omitempty"`
+	LogSummary            *string            `json:"log_summary,omitempty"`
+	Steps                 []DeploymentStep   `json:"steps,omitempty"`
 }
 
 // DeploymentProject is the embedded project info within a deployment response.
 type DeploymentProject struct {
-	Name          string      `json:"name"`
-	Permalink     string      `json:"permalink"`
-	Identifier    string      `json:"identifier"`
-	PublicKey     string      `json:"public_key"`
-	Repository    *Repository `json:"repository,omitempty"`
-	RepositoryURL string     `json:"repository_url"`
-	Zone          string      `json:"zone"`
-	LastDeployedAt string    `json:"last_deployed_at"`
-	AutoDeployURL string     `json:"auto_deploy_url"`
+	Name           string      `json:"name"`
+	Permalink      string      `json:"permalink"`
+	Identifier     string      `json:"identifier"`
+	PublicKey      string      `json:"public_key"`
+	Repository     *Repository `json:"repository,omitempty"`
+	RepositoryURL  string      `json:"repository_url"`
+	Zone           string      `json:"zone"`
+	LastDeployedAt string      `json:"last_deployed_at"`
+	AutoDeployURL  string      `json:"auto_deploy_url"`
 }
 
 // Revision holds a git revision reference.
@@ -269,18 +269,25 @@ type DeploymentStep struct {
 
 // DeploymentCreateRequest is the payload for creating a deployment.
 type DeploymentCreateRequest struct {
-	StartRevision        string `json:"start_revision,omitempty"`
-	EndRevision          string `json:"end_revision,omitempty"`
-	CopyConfigFiles      *bool  `json:"copy_config_files,omitempty"`
+	StartRevision         string `json:"start_revision,omitempty"`
+	EndRevision           string `json:"end_revision,omitempty"`
+	CopyConfigFiles       *bool  `json:"copy_config_files,omitempty"`
 	NotificationAddresses string `json:"notification_addresses,omitempty"`
-	Branch               string `json:"branch,omitempty"`
-	ParentIdentifier     string `json:"parent_identifier,omitempty"`
-	ServerIdentifier     string `json:"server_identifier,omitempty"`
-	RunBuildCommands     *bool  `json:"run_build_commands,omitempty"`
-	UseBuildCache        *bool  `json:"use_build_cache,omitempty"`
-	ConfigFilesDeployment *bool `json:"config_files_deployment,omitempty"`
-	Mode                 string `json:"mode,omitempty"`
-	UseLatest            *bool  `json:"use_latest,omitempty"`
+	Branch                string `json:"branch,omitempty"`
+	ParentIdentifier      string `json:"parent_identifier,omitempty"`
+	ServerIdentifier      string `json:"server_identifier,omitempty"`
+	RunBuildCommands      *bool  `json:"run_build_commands,omitempty"`
+	UseBuildCache         *bool  `json:"use_build_cache,omitempty"`
+	ConfigFilesDeployment *bool  `json:"config_files_deployment,omitempty"`
+	Mode                  string `json:"mode,omitempty"`
+	UseLatest             *bool  `json:"use_latest,omitempty"`
+}
+
+// DeploymentPreview is the minimal response from a preview deployment.
+// The API returns only status and identifier for preview mode.
+type DeploymentPreview struct {
+	Status     string `json:"status"`
+	Identifier string `json:"identifier"`
 }
 
 // Repository represents a project's repository configuration.
@@ -333,23 +340,29 @@ type CommitsTagsReleases struct {
 
 // DeploymentStepLog represents logs for a deployment step.
 type DeploymentStepLog struct {
-	ID      FlexString  `json:"id"`
-	Step    string      `json:"step"`
-	Type    string      `json:"type,omitempty"`
-	Detail  *string     `json:"detail,omitempty"`
-	Message string      `json:"message"`
+	ID      FlexString `json:"id"`
+	Step    string     `json:"step"`
+	Type    string     `json:"type,omitempty"`
+	Detail  *string    `json:"detail,omitempty"`
+	Message string     `json:"message"`
 }
 
 // Pagination holds pagination metadata from list responses.
 type Pagination struct {
-	CurrentPage int `json:"current_page"`
-	TotalPages  int `json:"total_pages"`
-	TotalCount  int `json:"total_count"`
-	PerPage     int `json:"per_page"`
+	CurrentPage  int `json:"current_page"`
+	TotalPages   int `json:"total_pages"`
+	TotalRecords int `json:"total_records"`
+	Offset       int `json:"offset"`
 }
 
 // PaginatedResponse wraps a list response with pagination info.
 type PaginatedResponse[T any] struct {
 	Pagination Pagination `json:"pagination"`
 	Records    []T        `json:"records"`
+}
+
+// ListOptions provides optional pagination parameters for list endpoints.
+type ListOptions struct {
+	Page    int
+	PerPage int
 }

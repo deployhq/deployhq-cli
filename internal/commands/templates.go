@@ -38,7 +38,7 @@ func newTemplatesListCmd() *cobra.Command {
 				return err
 			}
 
-			templates, err := client.ListTemplates(cliCtx.Background())
+			templates, err := client.ListTemplates(cliCtx.Background(), nil)
 			if err != nil {
 				return err
 			}
@@ -79,7 +79,7 @@ func newTemplatesPublicCmd() *cobra.Command {
 				return err
 			}
 
-			templates, err := client.ListPublicTemplates(cliCtx.Background(), frameworkType)
+			templates, err := client.ListPublicTemplates(cliCtx.Background(), frameworkType, nil)
 			if err != nil {
 				return err
 			}

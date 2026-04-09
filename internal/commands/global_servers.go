@@ -21,7 +21,7 @@ func newGlobalServersCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				servers, err := client.ListGlobalServers(cliCtx.Background())
+				servers, err := client.ListGlobalServers(cliCtx.Background(), nil)
 				if err != nil {
 					return err
 				}
@@ -171,7 +171,7 @@ func newIntegrationsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				integrations, err := client.ListIntegrations(cliCtx.Background(), projectID)
+				integrations, err := client.ListIntegrations(cliCtx.Background(), projectID, nil)
 				if err != nil {
 					return err
 				}

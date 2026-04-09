@@ -106,7 +106,7 @@ Examples:
 					}
 					return env.WriteJSON(output.NewResponse(project, fmt.Sprintf("Project: %s", project.Name)))
 				}
-				projects, err := client.ListProjects(ctx)
+				projects, err := client.ListProjects(ctx, nil)
 				if err != nil {
 					return err
 				}
@@ -143,7 +143,7 @@ func showSubResource(parsed *ParsedURL) error {
 			}
 			return env.WriteJSON(output.NewResponse(dep, fmt.Sprintf("Deployment: %s", dep.Identifier)))
 		}
-		deps, err := client.ListDeployments(ctx, parsed.Project)
+		deps, err := client.ListDeployments(ctx, parsed.Project, nil)
 		if err != nil {
 			return err
 		}
@@ -157,7 +157,7 @@ func showSubResource(parsed *ParsedURL) error {
 			}
 			return env.WriteJSON(output.NewResponse(srv, fmt.Sprintf("Server: %s", srv.Name)))
 		}
-		servers, err := client.ListServers(ctx, parsed.Project)
+		servers, err := client.ListServers(ctx, parsed.Project, nil)
 		if err != nil {
 			return err
 		}

@@ -35,7 +35,7 @@ func newConfigFilesListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			files, err := client.ListConfigFiles(cliCtx.Background(), projectID)
+			files, err := client.ListConfigFiles(cliCtx.Background(), projectID, nil)
 			if err != nil {
 				return err
 			}

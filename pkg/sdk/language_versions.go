@@ -7,9 +7,10 @@ import (
 
 // ListLanguageVersions returns the available language versions for a project's
 // build server. The result maps language names to their available versions.
-func (c *Client) ListLanguageVersions(ctx context.Context, projectID string) (map[string][]string, error) {
+func (c *Client) ListLanguageVersions(ctx context.Context, projectID string, opts *ListOptions) (map[string][]string, error) {
 	var result map[string][]string
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/language_versions", projectID), &result); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/language_versions", projectID), opts)
+	if err := c.get(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return result, nil

@@ -21,7 +21,7 @@ func TestListServerGroups(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	groups, err := c.ListServerGroups(context.Background(), "my-app")
+	groups, err := c.ListServerGroups(context.Background(), "my-app", nil)
 	require.NoError(t, err)
 	assert.Len(t, groups, 1)
 	assert.Equal(t, "Production", groups[0].Name)

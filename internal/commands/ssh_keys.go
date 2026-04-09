@@ -21,7 +21,7 @@ func newSSHKeysCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				keys, err := client.ListSSHKeys(cliCtx.Background())
+				keys, err := client.ListSSHKeys(cliCtx.Background(), nil)
 				if err != nil {
 					return err
 				}

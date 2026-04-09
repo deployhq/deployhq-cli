@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -219,6 +220,28 @@ func parseAPIError(resp *http.Response) error {
 	// Fall back to raw body as message
 	apiErr.Message = strings.TrimSpace(string(body))
 	return apiErr
+}
+
+// appendListParams appends pagination query parameters to a URL path.
+func appendListParams(path string, opts *ListOptions) string {
+	if opts == nil {
+		return path
+	}
+	params := url.Values{}
+	if opts.Page > 0 {
+		params.Set("page", strconv.Itoa(opts.Page))
+	}
+	if opts.PerPage > 0 {
+		params.Set("per_page", strconv.Itoa(opts.PerPage))
+	}
+	if len(params) == 0 {
+		return path
+	}
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + params.Encode()
 }
 
 // get performs a GET request.

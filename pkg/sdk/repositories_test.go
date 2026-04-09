@@ -68,7 +68,7 @@ func TestListBranches(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	branches, err := c.ListBranches(context.Background(), "my-app")
+	branches, err := c.ListBranches(context.Background(), "my-app", nil)
 	require.NoError(t, err)
 	assert.Len(t, branches, 3)
 	assert.Contains(t, branches, "main")
@@ -102,7 +102,7 @@ func TestListRecentCommits(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	result, err := c.ListRecentCommits(context.Background(), "my-app")
+	result, err := c.ListRecentCommits(context.Background(), "my-app", nil)
 	require.NoError(t, err)
 	assert.Len(t, result.Commits, 1)
 	assert.Equal(t, "abc123", result.Commits[0].Ref)

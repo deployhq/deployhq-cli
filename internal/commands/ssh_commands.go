@@ -25,7 +25,7 @@ func newSSHCommandsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				cmds, err := client.ListSSHCommands(cliCtx.Background(), projectID)
+				cmds, err := client.ListSSHCommands(cliCtx.Background(), projectID, nil)
 				if err != nil {
 					return err
 				}

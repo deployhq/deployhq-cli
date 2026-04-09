@@ -35,7 +35,7 @@ func newConfigureCmd() *cobra.Command {
 			}
 
 			// Step 2: Pick a default project
-			projects, err := client.ListProjects(cliCtx.Background())
+			projects, err := client.ListProjects(cliCtx.Background(), nil)
 			if err != nil || len(projects) == 0 {
 				env.Status("No projects found. Create one with 'dhq projects create --name my-app'")
 				return nil

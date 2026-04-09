@@ -26,7 +26,7 @@ func newBuildCommandsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				cmds, err := client.ListBuildCommands(cliCtx.Background(), projectID)
+				cmds, err := client.ListBuildCommands(cliCtx.Background(), projectID, nil)
 				if err != nil {
 					return err
 				}
@@ -112,7 +112,7 @@ func newBuildCommandsUpdateCmd() *cobra.Command {
 
 // resolveBuildCommandID resolves a numeric ID to a UUID identifier if needed.
 func resolveBuildCommandID(ctx context.Context, client *sdk.Client, projectID, arg string) (string, error) {
-	cmds, err := client.ListBuildCommands(ctx, projectID)
+	cmds, err := client.ListBuildCommands(ctx, projectID, nil)
 	if err != nil {
 		return arg, nil // fall through — let the API report the real error
 	}

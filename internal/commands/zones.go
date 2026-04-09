@@ -20,7 +20,7 @@ func newZonesCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				zones, err := client.ListZones(cliCtx.Background())
+				zones, err := client.ListZones(cliCtx.Background(), nil)
 				if err != nil {
 					return err
 				}

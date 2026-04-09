@@ -21,9 +21,10 @@ type AgentCreateRequest struct {
 	ClaimCode string `json:"claim_code"`
 }
 
-func (c *Client) ListAgents(ctx context.Context) ([]Agent, error) {
+func (c *Client) ListAgents(ctx context.Context, opts *ListOptions) ([]Agent, error) {
 	var agents []Agent
-	if err := c.get(ctx, "/agents", &agents); err != nil {
+	path := appendListParams("/agents", opts)
+	if err := c.get(ctx, path, &agents); err != nil {
 		return nil, err
 	}
 	return agents, nil

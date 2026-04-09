@@ -17,9 +17,10 @@ type ExcludedFileCreateRequest struct {
 	Path string `json:"path"`
 }
 
-func (c *Client) ListExcludedFiles(ctx context.Context, projectID string) ([]ExcludedFile, error) {
+func (c *Client) ListExcludedFiles(ctx context.Context, projectID string, opts *ListOptions) ([]ExcludedFile, error) {
 	var files []ExcludedFile
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/excluded_files", projectID), &files); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/excluded_files", projectID), opts)
+	if err := c.get(ctx, path, &files); err != nil {
 		return nil, err
 	}
 	return files, nil
