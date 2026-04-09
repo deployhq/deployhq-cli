@@ -156,15 +156,6 @@ var protocolAPIType = map[string]string{
 	"Shopify":                "shopify",
 }
 
-// protocolNeedsHost returns true if the protocol requires hostname/username/password.
-func protocolNeedsHost(proto string) bool {
-	switch proto {
-	case "ssh", "ftp", "ftps", "rsync":
-		return true
-	}
-	return false
-}
-
 // protocolSupportsSSHKeys returns true if the protocol supports SSH key authentication.
 func protocolSupportsSSHKeys(proto string) bool {
 	switch proto {
