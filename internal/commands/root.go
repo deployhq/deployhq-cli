@@ -3,12 +3,15 @@ package commands
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/deployhq/deployhq-cli/internal/cli"
 	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/harness"
 	"github.com/deployhq/deployhq-cli/internal/output"
+	"github.com/deployhq/deployhq-cli/internal/telemetry"
 	versionpkg "github.com/deployhq/deployhq-cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -28,6 +31,12 @@ var (
 
 	// cliVersion is the build version, set by NewRootCmd.
 	cliVersion string
+
+	// Telemetry state captured during command execution.
+	commandStartTime time.Time
+	commandPath      string
+	telemetryID      string
+	telemetryTracker telemetry.Tracker
 )
 
 // NewRootCmd creates the root command with all subcommands.
@@ -79,6 +88,23 @@ Support: support@deployhq.com`,
 			cliCtx = cli.NewContext(cfg, env, logger)
 			cliCtx.IsAgent = agent.Detected
 			cliCtx.Version = version
+
+			// Telemetry setup
+			commandStartTime = time.Now()
+			commandPath = strings.TrimPrefix(cmd.CommandPath(), "dhq ")
+			telemetryTracker = telemetry.DefaultTracker()
+
+			home, _ := os.UserHomeDir()
+			if home != "" {
+				dir := filepath.Join(home, ".deployhq")
+
+				// First-run notice
+				if telemetry.IsFirstRun() && telemetry.IsEnabled() {
+					env.Status(telemetry.FirstRunNotice())
+				}
+
+				telemetryID = telemetry.DistinctID(dir)
+			}
 
 			return nil
 		},
@@ -177,6 +203,7 @@ Support: support@deployhq.com`,
 		newSetupCmd(),
 		newMCPCmd(),
 		newCompletionCmd(),
+		newTelemetryCmd(),
 		newFeedbackCmd(),
 		newDoctorCmd(),
 		newUpdateCmd(version),
@@ -208,4 +235,48 @@ func cliUserAgent() string {
 		v = "dev"
 	}
 	return harness.UserAgent(v, harness.Detect())
+}
+
+// SendTelemetry fires a telemetry event for the just-completed command.
+// It is called from main.go after cmd.Execute() returns so that the
+// exit code is available. The call is non-blocking (fire-and-forget).
+func SendTelemetry(err error) {
+	if telemetryTracker == nil || telemetryID == "" {
+		return
+	}
+	if !telemetry.IsEnabled() {
+		return
+	}
+	// Don't track the telemetry command itself.
+	if strings.HasPrefix(commandPath, "telemetry") {
+		return
+	}
+
+	exitCode := output.ClassifyError(err)
+	if err != nil && exitCode == 0 {
+		exitCode = 1
+	}
+
+	agentName := ""
+	isAgent := false
+	if cliCtx != nil {
+		isAgent = cliCtx.IsAgent
+	}
+	if isAgent {
+		agentName = harness.Detect().Name
+	}
+
+	telemetryTracker.Track(telemetryID, telemetry.Event{
+		Command:    commandPath,
+		ExitCode:   exitCode,
+		ErrorClass: telemetry.ErrorClassFromExitCode(exitCode),
+		DurationMs: time.Since(commandStartTime).Milliseconds(),
+		CLIVersion: cliVersion,
+		IsAgent:    isAgent,
+		AgentName:  agentName,
+	})
+
+	// Give the goroutine a moment to start the HTTP request before
+	// main() calls os.Exit. This is best-effort; missed events are OK.
+	time.Sleep(50 * time.Millisecond)
 }

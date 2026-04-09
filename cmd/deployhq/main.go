@@ -14,7 +14,9 @@ var version = "dev"
 func main() {
 	cmd := commands.NewRootCmd(version)
 
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	commands.SendTelemetry(err)
+	if err != nil {
 		exitCode := output.ClassifyError(err)
 		if exitCode == 0 {
 			exitCode = 1

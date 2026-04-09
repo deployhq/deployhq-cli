@@ -19,7 +19,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}} -X github.com/deployhq/deployhq-cli/internal/telemetry.mixpanelToken={{.Env.MIXPANEL_TOKEN}} -X github.com/deployhq/deployhq-cli/internal/telemetry.environment={{.Env.MIXPANEL_ENV}}
 
 archives:
   - id: dhq
