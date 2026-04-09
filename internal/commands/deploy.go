@@ -72,7 +72,7 @@ func normalize(s string) string {
 
 func newDeployCmd() *cobra.Command {
 	var branch, server, revision string
-	var wait bool
+	var dryRun, wait bool
 	var timeout int
 
 	cmd := &cobra.Command{
@@ -92,9 +92,13 @@ func newDeployCmd() *cobra.Command {
 
 			env := cliCtx.Envelope
 
+			if dryRun && wait {
+				return &output.UserError{Message: "--dry-run and --wait are mutually exclusive"}
+			}
+
 			// Auto-select server if not specified
 			if server == "" {
-				servers, err := client.ListServers(cliCtx.Background(), projectID)
+				servers, err := client.ListServers(cliCtx.Background(), projectID, nil)
 				if err == nil && len(servers) == 1 {
 					server = servers[0].Identifier
 					env.Status("Auto-selected server: %s", servers[0].Name)
@@ -126,7 +130,7 @@ func newDeployCmd() *cobra.Command {
 
 			// Resolve server name to identifier if needed
 			if server != "" && !isUUID(server) {
-				servers, err := client.ListServers(cliCtx.Background(), projectID)
+				servers, err := client.ListServers(cliCtx.Background(), projectID, nil)
 				if err == nil {
 					resolved, candidates := resolveServerName(server, servers)
 					if resolved != "" {
@@ -171,6 +175,28 @@ func newDeployCmd() *cobra.Command {
 				Branch:           branch,
 				EndRevision:      revision,
 				ParentIdentifier: server,
+			}
+
+			if dryRun {
+				preview, err := client.PreviewDeployment(cliCtx.Background(), projectID, req)
+				if err != nil {
+					return err
+				}
+
+				if env.JSONMode || !env.IsTTY {
+					return env.WriteJSON(output.NewResponse(preview,
+						fmt.Sprintf("Preview %s created (status: %s)", preview.Identifier, preview.Status),
+						output.Breadcrumb{Action: "execute", Cmd: deployExecuteCmd(projectID, server, branch)},
+					))
+				}
+
+				env.Status("DRY RUN — preview created, deployment will NOT execute\n")
+				env.Status("  Identifier: %s", preview.Identifier)
+				env.Status("  Status:     %s", output.ColorStatus(preview.Status))
+				env.Status("\nThe preview will be processed asynchronously.")
+				env.Status("Preview deployments are excluded from 'dhq deployments list'.")
+				env.Status("\nUse 'dhq deploy' (without --dry-run) to execute.")
+				return nil
 			}
 
 			dep, err := client.CreateDeployment(cliCtx.Background(), projectID, req)
@@ -219,8 +245,17 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Branch to deploy")
 	cmd.Flags().StringVarP(&server, "server", "s", "", "Server or group identifier")
 	cmd.Flags().StringVarP(&revision, "revision", "r", "", "End revision (default: latest)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be deployed without executing")
 	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete")
 	cmd.Flags().IntVar(&timeout, "timeout", 0, "Timeout in seconds when using --wait (0 = no timeout)")
+	return cmd
+}
+
+func deployExecuteCmd(projectID, server, branch string) string {
+	cmd := fmt.Sprintf("dhq deploy -p %s -s %s", projectID, server)
+	if branch != "" {
+		cmd += " -b " + branch
+	}
 	return cmd
 }
 

@@ -31,7 +31,9 @@ func newServersCmd() *cobra.Command {
 }
 
 func newServersListCmd() *cobra.Command {
-	return &cobra.Command{
+	var page, perPage int
+
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List servers in a project",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -45,7 +47,7 @@ func newServersListCmd() *cobra.Command {
 				return err
 			}
 
-			servers, err := client.ListServers(cliCtx.Background(), projectID)
+			servers, err := client.ListServers(cliCtx.Background(), projectID, listOptsFromFlags(page, perPage))
 			if err != nil {
 				return err
 			}
@@ -76,6 +78,9 @@ func newServersListCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	addPaginationFlags(cmd, &page, &perPage)
+	return cmd
 }
 
 func newServersShowCmd() *cobra.Command {
@@ -237,7 +242,7 @@ func newServersCreateCmd() *cobra.Command {
 				// Resolve the public key for display / installation
 				var publicKey string
 				if globalKeyPairID != "" {
-					keys, kerr := client.ListSSHKeys(cliCtx.Background())
+					keys, kerr := client.ListSSHKeys(cliCtx.Background(), nil)
 					if kerr == nil {
 						for _, k := range keys {
 							if k.Identifier == globalKeyPairID {

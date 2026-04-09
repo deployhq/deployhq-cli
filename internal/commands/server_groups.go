@@ -27,7 +27,9 @@ func newServerGroupsCmd() *cobra.Command {
 }
 
 func newServerGroupsListCmd() *cobra.Command {
-	return &cobra.Command{
+	var page, perPage int
+
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List server groups",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -41,7 +43,7 @@ func newServerGroupsListCmd() *cobra.Command {
 				return err
 			}
 
-			groups, err := client.ListServerGroups(cliCtx.Background(), projectID)
+			groups, err := client.ListServerGroups(cliCtx.Background(), projectID, listOptsFromFlags(page, perPage))
 			if err != nil {
 				return err
 			}
@@ -64,6 +66,9 @@ func newServerGroupsListCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	addPaginationFlags(cmd, &page, &perPage)
+	return cmd
 }
 
 func newServerGroupsShowCmd() *cobra.Command {
