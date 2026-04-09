@@ -45,8 +45,10 @@ func (c *Client) PreviewDeployment(ctx context.Context, projectID string, req De
 		Deployment DeploymentCreateRequest `json:"deployment"`
 	}{Deployment: req}
 	var preview DeploymentPreview
-	err := c.post(ctx, fmt.Sprintf("/projects/%s/deployments", projectID), body, &preview)
-	return &preview, err
+	if err := c.post(ctx, fmt.Sprintf("/projects/%s/deployments", projectID), body, &preview); err != nil {
+		return nil, err
+	}
+	return &preview, nil
 }
 
 // AbortDeployment aborts a running deployment.

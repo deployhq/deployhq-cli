@@ -5,6 +5,7 @@ import (
 
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestListOptsFromFlags(t *testing.T) {
@@ -21,24 +22,24 @@ func TestDeploymentsListPaginationFlags(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Find the list subcommand and verify flags exist
-	deploymentsCmd, _, _ := cmd.Find([]string{"deployments", "list"})
-	assert.NotNil(t, deploymentsCmd)
+	deploymentsCmd, _, err2 := cmd.Find([]string{"deployments", "list"})
+	require.NoError(t, err2)
 	assert.NotNil(t, deploymentsCmd.Flags().Lookup("page"))
 	assert.NotNil(t, deploymentsCmd.Flags().Lookup("per-page"))
 }
 
 func TestServersListPaginationFlags(t *testing.T) {
 	cmd := NewRootCmd("test")
-	serversCmd, _, _ := cmd.Find([]string{"servers", "list"})
-	assert.NotNil(t, serversCmd)
+	serversCmd, _, err := cmd.Find([]string{"servers", "list"})
+	require.NoError(t, err)
 	assert.NotNil(t, serversCmd.Flags().Lookup("page"))
 	assert.NotNil(t, serversCmd.Flags().Lookup("per-page"))
 }
 
 func TestServerGroupsListPaginationFlags(t *testing.T) {
 	cmd := NewRootCmd("test")
-	sgCmd, _, _ := cmd.Find([]string{"server-groups", "list"})
-	assert.NotNil(t, sgCmd)
+	sgCmd, _, err := cmd.Find([]string{"server-groups", "list"})
+	require.NoError(t, err)
 	assert.NotNil(t, sgCmd.Flags().Lookup("page"))
 	assert.NotNil(t, sgCmd.Flags().Lookup("per-page"))
 }
