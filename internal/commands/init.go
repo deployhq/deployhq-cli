@@ -40,6 +40,22 @@ const (
 	stepSSHKeySelect
 	stepPassword
 	stepServerPath
+	// Cloud/service protocol steps
+	stepBucketName      // s3, s3_compatible
+	stepAccessKeyID     // s3, s3_compatible
+	stepSecretAccessKey  // s3, s3_compatible
+	stepCustomEndpoint   // s3_compatible
+	stepAppName          // heroku
+	stepAPIKeyHeroku     // heroku
+	stepSiteID           // netlify
+	stepAccessToken      // netlify, shopify
+	stepStoreURL         // shopify
+	stepThemeName        // shopify
+	stepDropletName      // digitalocean
+	stepPersonalToken    // digitalocean
+	stepHetznerServer    // hetzner_cloud
+	stepHetznerToken     // hetzner_cloud
+
 	stepDeployConfirm
 	stepDone
 )
@@ -75,6 +91,22 @@ type initModel struct {
 	sshKeys         []sdk.SSHKey
 	selectedKeyID   string
 	selectedKeyName string
+
+	// Cloud/service protocol fields
+	bucketName      string
+	accessKeyID     string
+	secretAccessKey string
+	customEndpoint  string
+	appName         string
+	apiKeyHeroku    string
+	siteID          string
+	accessToken     string
+	storeURL        string
+	themeName       string
+	dropletName     string
+	personalToken   string
+	hetznerServer   string
+	hetznerToken    string
 
 	// Detected
 	detectedRemote string
@@ -140,6 +172,30 @@ func protocolSupportsSSHKeys(proto string) bool {
 		return true
 	}
 	return false
+}
+
+// protocolFirstStep returns the first wizard step for a given protocol.
+func protocolFirstStep(proto string) int {
+	switch proto {
+	case "ssh", "ftp", "ftps", "rsync":
+		return stepHostname
+	case "s3":
+		return stepBucketName
+	case "s3_compatible":
+		return stepCustomEndpoint
+	case "heroku":
+		return stepAppName
+	case "netlify":
+		return stepSiteID
+	case "shopify":
+		return stepStoreURL
+	case "digitalocean":
+		return stepDropletName
+	case "hetzner_cloud":
+		return stepHetznerServer
+	default:
+		return stepServerPath
+	}
 }
 
 func newInitCmd() *cobra.Command {
@@ -446,6 +502,19 @@ func (m *initModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		})
 	case stepPassword:
 		return m.handleTextInput(key, "back")
+	// Cloud protocol steps
+	case stepBucketName, stepAccessKeyID, stepSecretAccessKey, stepCustomEndpoint:
+		return m.handleTextInput(key, "back")
+	case stepAppName, stepAPIKeyHeroku:
+		return m.handleTextInput(key, "back")
+	case stepSiteID, stepAccessToken:
+		return m.handleTextInput(key, "back")
+	case stepStoreURL, stepThemeName:
+		return m.handleTextInput(key, "back")
+	case stepDropletName, stepPersonalToken:
+		return m.handleTextInput(key, "back")
+	case stepHetznerServer, stepHetznerToken:
+		return m.handleTextInput(key, "back")
 	case stepServerPath:
 		return m.handleTextInput(key, "back")
 	case stepDeployConfirm:
@@ -551,11 +620,7 @@ func (m *initModel) submitTextStep() (tea.Model, tea.Cmd) {
 			m.serverName = m.input
 		}
 		m.input = ""
-		if protocolNeedsHost(m.protocol) {
-			m.step = stepHostname
-		} else {
-			m.step = stepServerPath
-		}
+		m.step = protocolFirstStep(m.protocol)
 	case stepHostname:
 		m.hostname = m.input
 		if m.hostname == "" {
@@ -567,16 +632,148 @@ func (m *initModel) submitTextStep() (tea.Model, tea.Cmd) {
 	case stepUsername:
 		m.username = m.input
 		m.input = ""
-		if protocolSupportsSSHKeys(m.protocol) {
+		switch {
+		case m.protocol == "digitalocean" || m.protocol == "hetzner_cloud":
+			m.step = stepServerPath
+		case protocolSupportsSSHKeys(m.protocol):
 			m.cursor = 0
 			m.step = stepAuthMethod
-		} else {
+		default:
 			m.step = stepPassword
 		}
 	case stepPassword:
 		m.password = m.input
 		m.input = ""
 		m.step = stepServerPath
+
+	// S3
+	case stepBucketName:
+		m.bucketName = m.input
+		if m.bucketName == "" {
+			m.err = "Bucket name is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepAccessKeyID
+	case stepAccessKeyID:
+		m.accessKeyID = m.input
+		if m.accessKeyID == "" {
+			m.err = "Access key ID is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepSecretAccessKey
+	case stepSecretAccessKey:
+		m.secretAccessKey = m.input
+		if m.secretAccessKey == "" {
+			m.err = "Secret access key is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepServerPath
+
+	// S3-Compatible
+	case stepCustomEndpoint:
+		m.customEndpoint = m.input
+		if m.customEndpoint == "" {
+			m.err = "Custom endpoint is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepBucketName
+
+	// Heroku
+	case stepAppName:
+		m.appName = m.input
+		if m.appName == "" {
+			m.err = "App name is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepAPIKeyHeroku
+	case stepAPIKeyHeroku:
+		m.apiKeyHeroku = m.input
+		if m.apiKeyHeroku == "" {
+			m.err = "API key is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepServerPath
+
+	// Netlify
+	case stepSiteID:
+		m.siteID = m.input
+		if m.siteID == "" {
+			m.err = "Site ID is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepAccessToken
+	case stepAccessToken:
+		m.accessToken = m.input
+		if m.accessToken == "" {
+			m.err = "Access token is required"
+			return m, nil
+		}
+		m.input = ""
+		if m.protocol == "shopify" {
+			m.step = stepThemeName
+		} else {
+			m.step = stepServerPath
+		}
+
+	// Shopify
+	case stepStoreURL:
+		m.storeURL = m.input
+		if m.storeURL == "" {
+			m.err = "Store URL is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepAccessToken
+	case stepThemeName:
+		m.themeName = m.input
+		m.input = ""
+		m.step = stepServerPath
+
+	// DigitalOcean
+	case stepDropletName:
+		m.dropletName = m.input
+		if m.dropletName == "" {
+			m.err = "Droplet name is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepPersonalToken
+	case stepPersonalToken:
+		m.personalToken = m.input
+		if m.personalToken == "" {
+			m.err = "Personal access token is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepUsername
+	// DigitalOcean then goes username → stepServerPath
+
+	// Hetzner Cloud
+	case stepHetznerServer:
+		m.hetznerServer = m.input
+		if m.hetznerServer == "" {
+			m.err = "Server name is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepHetznerToken
+	case stepHetznerToken:
+		m.hetznerToken = m.input
+		if m.hetznerToken == "" {
+			m.err = "API token is required"
+			return m, nil
+		}
+		m.input = ""
+		m.step = stepUsername
+	// Hetzner then goes username → stepServerPath
+
 	case stepServerPath:
 		m.serverPath = m.input
 		m.creating = true
@@ -615,10 +812,32 @@ func (m *initModel) createServer() tea.Msg {
 	req := sdk.ServerCreateRequest{
 		Name:         m.serverName,
 		ProtocolType: m.protocol,
-		Hostname:     m.hostname,
-		Username:     m.username,
-		Password:     m.password,
 		ServerPath:   m.serverPath,
+		// SSH / FTP / FTPS / Rsync
+		Hostname: m.hostname,
+		Username: m.username,
+		Password: m.password,
+		// S3
+		BucketName:     m.bucketName,
+		AccessKeyID:    m.accessKeyID,
+		SecretAccessKey: m.secretAccessKey,
+		// S3-Compatible
+		CustomEndpoint: m.customEndpoint,
+		// Heroku
+		AppName:      m.appName,
+		APIKeyHeroku: m.apiKeyHeroku,
+		// Netlify / Shopify
+		SiteID:      m.siteID,
+		AccessToken: m.accessToken,
+		// Shopify
+		StoreURL:  m.storeURL,
+		ThemeName: m.themeName,
+		// DigitalOcean
+		PersonalAccessToken: m.personalToken,
+		DropletName:         m.dropletName,
+		// Hetzner Cloud
+		APIToken:          m.hetznerToken,
+		HetznerServerName: m.hetznerServer,
 	}
 	if m.useSSHKeys {
 		useKeys := true
@@ -815,6 +1034,72 @@ func (m *initModel) View() string {
 		b.WriteString("\n")
 		masked := strings.Repeat("*", len(m.input))
 		m.viewTextPrompt(&b, "Password", masked)
+
+	// S3 / S3-Compatible
+	case stepCustomEndpoint:
+		m.viewCloudStep(&b, "Custom S3 endpoint URL")
+	case stepBucketName:
+		m.viewCloudStep(&b, "Bucket name")
+	case stepAccessKeyID:
+		m.viewCloudStep(&b, "Access key ID")
+	case stepSecretAccessKey:
+		masked := strings.Repeat("*", len(m.input))
+		m.viewCompletedSteps(&b)
+		m.viewStepHeader(&b, "3/4", "Server")
+		b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s", m.protocol, m.serverName)))
+		b.WriteString("\n")
+		m.viewTextPrompt(&b, "Secret access key", masked)
+
+	// Heroku
+	case stepAppName:
+		m.viewCloudStep(&b, "Heroku app name")
+	case stepAPIKeyHeroku:
+		masked := strings.Repeat("*", len(m.input))
+		m.viewCompletedSteps(&b)
+		m.viewStepHeader(&b, "3/4", "Server")
+		b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s | App: %s", m.protocol, m.serverName, m.appName)))
+		b.WriteString("\n")
+		m.viewTextPrompt(&b, "Heroku API key", masked)
+
+	// Netlify
+	case stepSiteID:
+		m.viewCloudStep(&b, "Netlify site ID")
+	case stepAccessToken:
+		masked := strings.Repeat("*", len(m.input))
+		m.viewCompletedSteps(&b)
+		m.viewStepHeader(&b, "3/4", "Server")
+		b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s", m.protocol, m.serverName)))
+		b.WriteString("\n")
+		m.viewTextPrompt(&b, "Access token", masked)
+
+	// Shopify
+	case stepStoreURL:
+		m.viewCloudStep(&b, "Shopify store URL (e.g. my-store.myshopify.com)")
+	case stepThemeName:
+		m.viewCloudStep(&b, "Theme name (empty for default)")
+
+	// DigitalOcean
+	case stepDropletName:
+		m.viewCloudStep(&b, "Droplet name")
+	case stepPersonalToken:
+		masked := strings.Repeat("*", len(m.input))
+		m.viewCompletedSteps(&b)
+		m.viewStepHeader(&b, "3/4", "Server")
+		b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s | Droplet: %s", m.protocol, m.serverName, m.dropletName)))
+		b.WriteString("\n")
+		m.viewTextPrompt(&b, "Personal access token", masked)
+
+	// Hetzner Cloud
+	case stepHetznerServer:
+		m.viewCloudStep(&b, "Hetzner server name")
+	case stepHetznerToken:
+		masked := strings.Repeat("*", len(m.input))
+		m.viewCompletedSteps(&b)
+		m.viewStepHeader(&b, "3/4", "Server")
+		b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s | Server: %s", m.protocol, m.serverName, m.hetznerServer)))
+		b.WriteString("\n")
+		m.viewTextPrompt(&b, "API token", masked)
+
 	case stepServerPath:
 		m.viewCompletedSteps(&b)
 		m.viewStepHeader(&b, "3/4", "Server")
@@ -898,6 +1183,14 @@ func (m *initModel) viewCompletedSteps(b *strings.Builder) {
 	} else {
 		m.viewCompleted(b, "2/4", "Repository", "⏭️ Skipped")
 	}
+}
+
+func (m *initModel) viewCloudStep(b *strings.Builder, label string) {
+	m.viewCompletedSteps(b)
+	m.viewStepHeader(b, "3/4", "Server")
+	b.WriteString(initDim.Render(fmt.Sprintf("  Protocol: %s | Name: %s", m.protocol, m.serverName)))
+	b.WriteString("\n")
+	m.viewTextPrompt(b, label, m.input)
 }
 
 func (m *initModel) isPrivateRepo() bool {
