@@ -19,6 +19,18 @@ func TestDetect_DeployHQAgent(t *testing.T) {
 
 func TestDetect_ClaudeCode(t *testing.T) {
 	t.Setenv("DEPLOYHQ_AGENT", "")
+	t.Setenv("CLAUDECODE", "1")
+	t.Setenv("CLAUDE_CODE", "")
+	t.Setenv("CI", "")
+
+	info := Detect()
+	assert.True(t, info.Detected)
+	assert.Equal(t, "claude-code", info.Name)
+}
+
+func TestDetect_ClaudeCode_LegacyEnv(t *testing.T) {
+	t.Setenv("DEPLOYHQ_AGENT", "")
+	t.Setenv("CLAUDECODE", "")
 	t.Setenv("CLAUDE_CODE", "1")
 	t.Setenv("CI", "")
 
@@ -29,6 +41,7 @@ func TestDetect_ClaudeCode(t *testing.T) {
 
 func TestDetect_CI(t *testing.T) {
 	t.Setenv("DEPLOYHQ_AGENT", "")
+	t.Setenv("CLAUDECODE", "")
 	t.Setenv("CLAUDE_CODE", "")
 	t.Setenv("CLAUDE", "")
 	t.Setenv("CODEX", "")
@@ -41,6 +54,7 @@ func TestDetect_CI(t *testing.T) {
 
 func TestDetect_None(t *testing.T) {
 	t.Setenv("DEPLOYHQ_AGENT", "")
+	t.Setenv("CLAUDECODE", "")
 	t.Setenv("CLAUDE_CODE", "")
 	t.Setenv("CLAUDE", "")
 	t.Setenv("CODEX", "")

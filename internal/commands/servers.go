@@ -148,7 +148,10 @@ func newServersCreateCmd() *cobra.Command {
 				return &output.UserError{Message: "Server name is required", Hint: "Use --name flag"}
 			}
 			if protocolType == "" {
-				return &output.UserError{Message: "Protocol type is required", Hint: "Use --protocol-type (ssh, ftp, s3, etc.)"}
+				return &output.UserError{
+					Message: "Protocol type is required",
+					Hint:    "Use --protocol-type with one of: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify",
+				}
 			}
 
 			projectID, err := cliCtx.RequireProject()
@@ -262,7 +265,7 @@ func newServersCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Server name (required)")
-	cmd.Flags().StringVar(&protocolType, "protocol-type", "", "Protocol: ssh, ftp, s3, etc. (required)")
+	cmd.Flags().StringVar(&protocolType, "protocol-type", "", "Protocol (required): ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify")
 	cmd.Flags().StringVar(&serverPath, "path", "", "Server path")
 	cmd.Flags().StringVar(&environment, "environment", "", "Environment name")
 	cmd.Flags().StringVar(&hostname, "hostname", "", "Server hostname or IP address")

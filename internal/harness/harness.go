@@ -26,9 +26,9 @@ func Detect() AgentInfo {
 		return AgentInfo{Detected: true, Name: agent, Source: "DEPLOYHQ_AGENT"}
 	}
 
-	// Claude Code
-	if os.Getenv("CLAUDE_CODE") != "" || os.Getenv("CLAUDE") != "" {
-		return AgentInfo{Detected: true, Name: "claude-code", Source: "CLAUDE_CODE"}
+	// Claude Code (CLAUDECODE=1 is set in subprocesses, CLAUDE_CODE_ENTRYPOINT for context)
+	if os.Getenv("CLAUDECODE") != "" || os.Getenv("CLAUDE_CODE") != "" || os.Getenv("CLAUDE") != "" {
+		return AgentInfo{Detected: true, Name: "claude-code", Source: "CLAUDECODE"}
 	}
 
 	// OpenAI Codex
