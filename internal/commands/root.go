@@ -266,7 +266,7 @@ func SendTelemetry(err error) {
 		agentName = harness.Detect().Name
 	}
 
-	telemetryTracker.Track(telemetryID, telemetry.Event{
+	evt := telemetry.Event{
 		Command:    commandPath,
 		ExitCode:   exitCode,
 		ErrorClass: telemetry.ErrorClassFromExitCode(exitCode),
@@ -274,9 +274,18 @@ func SendTelemetry(err error) {
 		CLIVersion: cliVersion,
 		IsAgent:    isAgent,
 		AgentName:  agentName,
-	})
+	}
 
-	// Give the goroutine a moment to start the HTTP request before
-	// main() calls os.Exit. This is best-effort; missed events are OK.
-	time.Sleep(50 * time.Millisecond)
+	// Run in a goroutine but wait up to 2s so the HTTP request
+	// completes before main() exits or calls os.Exit.
+	done := make(chan struct{})
+	go func() {
+		telemetryTracker.Track(telemetryID, evt)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+	}
 }

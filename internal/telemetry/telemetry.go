@@ -36,7 +36,9 @@ type Event struct {
 }
 
 // Tracker is the interface used for sending telemetry.
-// It exists so tests can substitute a mock.
+// Track sends the event synchronously (with a timeout). The caller
+// is responsible for running it in a goroutine if non-blocking
+// behaviour is desired.
 type Tracker interface {
 	Track(distinctID string, event Event)
 }
@@ -49,7 +51,7 @@ func DefaultTracker() Tracker {
 	}
 	client := &http.Client{Timeout: trackTimeout}
 	return &mixpanelTracker{
-		mp: mixpanel.NewApiClient(mixpanelToken, mixpanel.HttpClient(client)),
+		mp: mixpanel.NewApiClient(mixpanelToken, mixpanel.HttpClient(client), mixpanel.EuResidency()),
 	}
 }
 
@@ -112,12 +114,12 @@ func (t *mixpanelTracker) Track(distinctID string, event Event) {
 		"agent_name":  event.AgentName,
 	})
 
-	// Fire-and-forget: don't block the CLI exit.
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), trackTimeout)
-		defer cancel()
-		_ = t.mp.Track(ctx, []*mixpanel.Event{e})
-	}()
+	// Synchronous send with timeout. The caller (SendTelemetry) runs
+	// this in a goroutine and waits with a channel, so the request
+	// actually completes before main() exits.
+	ctx, cancel := context.WithTimeout(context.Background(), trackTimeout)
+	defer cancel()
+	_ = t.mp.Track(ctx, []*mixpanel.Event{e})
 }
 
 // nopTracker silently discards events (used when no token is configured).
