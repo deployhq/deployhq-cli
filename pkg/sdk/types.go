@@ -104,20 +104,53 @@ type Server struct {
 }
 
 // ServerCreateRequest is the payload for creating a server.
+// Fields are a flat union of all protocol types; the API ignores
+// fields that don't apply to the chosen protocol_type.
 type ServerCreateRequest struct {
-	Name            string `json:"name"`
-	ProtocolType    string `json:"protocol_type"`
+	// Common
+	Name         string `json:"name"`
+	ProtocolType string `json:"protocol_type"`
+	ServerPath   string `json:"server_path,omitempty"`
+	Environment  string `json:"environment,omitempty"`
+	RootPath     string `json:"root_path,omitempty"`
+	AgentID      string `json:"agent_id,omitempty"`
+	Enabled      *bool  `json:"enabled,omitempty"`
+
+	// SSH / FTP / FTPS / Rsync
 	Hostname        string `json:"hostname,omitempty"`
 	Port            *int   `json:"port,omitempty"`
 	Username        string `json:"username,omitempty"`
 	Password        string `json:"password,omitempty"`
-	ServerPath      string `json:"server_path,omitempty"`
-	Environment     string `json:"environment,omitempty"`
-	RootPath        string `json:"root_path,omitempty"`
-	AgentID         string `json:"agent_id,omitempty"`
-	Enabled         *bool  `json:"enabled,omitempty"`
 	UseSSHKeys      *bool  `json:"use_ssh_keys,omitempty"`
 	GlobalKeyPairID string `json:"global_key_pair_id,omitempty"`
+
+	// S3
+	BucketName      string `json:"bucket_name,omitempty"`
+	AccessKeyID     string `json:"access_key_id,omitempty"`
+	SecretAccessKey  string `json:"secret_access_key,omitempty"`
+
+	// S3-Compatible
+	CustomEndpoint string `json:"custom_endpoint,omitempty"`
+
+	// DigitalOcean
+	PersonalAccessToken string `json:"personal_access_token,omitempty"`
+	DropletName         string `json:"droplet_name,omitempty"`
+
+	// Hetzner Cloud
+	APIToken          string `json:"api_token,omitempty"`
+	HetznerServerName string `json:"hetzner_server_name,omitempty"`
+
+	// Heroku
+	AppName      string `json:"app_name,omitempty"`
+	APIKeyHeroku string `json:"api_key_heroku,omitempty"`
+
+	// Netlify
+	SiteID      string `json:"site_id,omitempty"`
+	AccessToken string `json:"access_token,omitempty"`
+
+	// Shopify
+	StoreURL  string `json:"store_url,omitempty"`
+	ThemeName string `json:"theme_name,omitempty"`
 }
 
 // ServerUpdateRequest is the payload for updating a server.

@@ -136,9 +136,22 @@ func newServersShowCmd() *cobra.Command {
 
 func newServersCreateCmd() *cobra.Command {
 	var name, protocolType, serverPath, environment string
+	// SSH / FTP / FTPS / Rsync
 	var hostname, username, password, globalKeyPairID string
 	var port int
 	var useSSHKeys, installKey bool
+	// S3 / S3-Compatible
+	var bucketName, accessKeyID, secretAccessKey, customEndpoint string
+	// DigitalOcean
+	var personalAccessToken, dropletName string
+	// Hetzner Cloud
+	var apiToken, hetznerServerName string
+	// Heroku
+	var appName, apiKeyHeroku string
+	// Netlify
+	var siteID, accessToken string
+	// Shopify
+	var storeURL, themeName string
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -169,9 +182,31 @@ func newServersCreateCmd() *cobra.Command {
 				ProtocolType: protocolType,
 				ServerPath:   serverPath,
 				Environment:  environment,
-				Hostname:     hostname,
-				Username:     username,
-				Password:     password,
+				// SSH / FTP / FTPS / Rsync
+				Hostname: hostname,
+				Username: username,
+				Password: password,
+				// S3
+				BucketName:     bucketName,
+				AccessKeyID:    accessKeyID,
+				SecretAccessKey: secretAccessKey,
+				// S3-Compatible
+				CustomEndpoint: customEndpoint,
+				// DigitalOcean
+				PersonalAccessToken: personalAccessToken,
+				DropletName:         dropletName,
+				// Hetzner Cloud
+				APIToken:          apiToken,
+				HetznerServerName: hetznerServerName,
+				// Heroku
+				AppName:      appName,
+				APIKeyHeroku: apiKeyHeroku,
+				// Netlify
+				SiteID:      siteID,
+				AccessToken: accessToken,
+				// Shopify
+				StoreURL:  storeURL,
+				ThemeName: themeName,
 			}
 			if cmd.Flags().Changed("port") {
 				req.Port = &port
@@ -264,17 +299,49 @@ func newServersCreateCmd() *cobra.Command {
 		},
 	}
 
+	// Common flags
 	cmd.Flags().StringVar(&name, "name", "", "Server name (required)")
 	cmd.Flags().StringVar(&protocolType, "protocol-type", "", "Protocol (required): ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify")
 	cmd.Flags().StringVar(&serverPath, "path", "", "Server path")
 	cmd.Flags().StringVar(&environment, "environment", "", "Environment name")
-	cmd.Flags().StringVar(&hostname, "hostname", "", "Server hostname or IP address")
-	cmd.Flags().StringVar(&username, "username", "", "Server username")
-	cmd.Flags().StringVar(&password, "password", "", "Server password")
-	cmd.Flags().IntVar(&port, "port", 0, "Server port (default: 22 for SSH, 21 for FTP)")
-	cmd.Flags().BoolVar(&useSSHKeys, "use-ssh-keys", false, "Use SSH key authentication instead of password")
-	cmd.Flags().StringVar(&globalKeyPairID, "global-key-pair-id", "", "Global SSH key pair identifier")
+
+	// SSH / FTP / FTPS / Rsync
+	cmd.Flags().StringVar(&hostname, "hostname", "", "Server hostname or IP address (ssh, ftp, ftps, rsync)")
+	cmd.Flags().StringVar(&username, "username", "", "Server username (ssh, ftp, ftps, rsync, digitalocean, hetzner_cloud)")
+	cmd.Flags().StringVar(&password, "password", "", "Server password (ssh, ftp, ftps)")
+	cmd.Flags().IntVar(&port, "port", 0, "Server port (ssh, ftp, ftps, rsync)")
+	cmd.Flags().BoolVar(&useSSHKeys, "use-ssh-keys", false, "Use SSH key authentication (ssh, rsync)")
+	cmd.Flags().StringVar(&globalKeyPairID, "global-key-pair-id", "", "Global SSH key pair identifier (ssh, rsync)")
 	cmd.Flags().BoolVar(&installKey, "install-key", false, "Attempt to install the SSH key on the server via ssh-copy-id")
+
+	// S3
+	cmd.Flags().StringVar(&bucketName, "bucket-name", "", "S3 bucket name (s3, s3_compatible)")
+	cmd.Flags().StringVar(&accessKeyID, "access-key-id", "", "AWS access key ID (s3, s3_compatible)")
+	cmd.Flags().StringVar(&secretAccessKey, "secret-access-key", "", "AWS secret access key (s3, s3_compatible)")
+
+	// S3-Compatible
+	cmd.Flags().StringVar(&customEndpoint, "custom-endpoint", "", "Custom S3 endpoint URL (s3_compatible)")
+
+	// DigitalOcean
+	cmd.Flags().StringVar(&personalAccessToken, "personal-access-token", "", "DigitalOcean personal access token (digitalocean)")
+	cmd.Flags().StringVar(&dropletName, "droplet-name", "", "DigitalOcean droplet name (digitalocean)")
+
+	// Hetzner Cloud
+	cmd.Flags().StringVar(&apiToken, "api-token", "", "Hetzner Cloud API token (hetzner_cloud)")
+	cmd.Flags().StringVar(&hetznerServerName, "hetzner-server-name", "", "Hetzner server name (hetzner_cloud)")
+
+	// Heroku
+	cmd.Flags().StringVar(&appName, "app-name", "", "Heroku app name (heroku)")
+	cmd.Flags().StringVar(&apiKeyHeroku, "api-key", "", "Heroku API key (heroku)")
+
+	// Netlify
+	cmd.Flags().StringVar(&siteID, "site-id", "", "Netlify site ID (netlify)")
+	cmd.Flags().StringVar(&accessToken, "access-token", "", "Access token (netlify, shopify)")
+
+	// Shopify
+	cmd.Flags().StringVar(&storeURL, "store-url", "", "Shopify store URL (shopify)")
+	cmd.Flags().StringVar(&themeName, "theme-name", "", "Shopify theme name (shopify)")
+
 	return cmd
 }
 
