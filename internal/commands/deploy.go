@@ -85,16 +85,16 @@ func newDeployCmd() *cobra.Command {
 				return err
 			}
 
+			if dryRun && wait {
+				return &output.UserError{Message: "--dry-run and --wait are mutually exclusive"}
+			}
+
 			client, err := cliCtx.Client()
 			if err != nil {
 				return err
 			}
 
 			env := cliCtx.Envelope
-
-			if dryRun && wait {
-				return &output.UserError{Message: "--dry-run and --wait are mutually exclusive"}
-			}
 
 			// Auto-select server if not specified
 			if server == "" {
