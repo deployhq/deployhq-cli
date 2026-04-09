@@ -172,7 +172,7 @@ func newDeploymentsShowCmd() *cobra.Command {
 
 func newDeploymentsCreateCmd() *cobra.Command {
 	var branch, endRevision, serverID, parentID string
-	var copyConfig, runBuild, useCache, useLatest bool
+	var copyConfig, runBuild, useCache bool
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -186,6 +186,19 @@ func newDeploymentsCreateCmd() *cobra.Command {
 			client, err := cliCtx.Client()
 			if err != nil {
 				return err
+			}
+
+			// Auto-fetch latest revision if none specified
+			if endRevision == "" {
+				rev, revErr := client.GetLatestRevision(cliCtx.Background(), projectID)
+				if revErr != nil {
+					return &output.UserError{
+						Message: "Could not fetch latest revision",
+						Hint:    "Specify a revision with --revision <sha>",
+					}
+				}
+				endRevision = rev
+				cliCtx.Envelope.Status("Using latest revision: %s", endRevision)
 			}
 
 			req := sdk.DeploymentCreateRequest{
@@ -202,9 +215,6 @@ func newDeploymentsCreateCmd() *cobra.Command {
 			}
 			if cmd.Flags().Changed("use-cache") {
 				req.UseBuildCache = &useCache
-			}
-			if cmd.Flags().Changed("use-latest") {
-				req.UseLatest = &useLatest
 			}
 
 			dep, err := client.CreateDeployment(cliCtx.Background(), projectID, req)
@@ -234,7 +244,6 @@ func newDeploymentsCreateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&copyConfig, "copy-config", false, "Copy config files")
 	cmd.Flags().BoolVar(&runBuild, "run-build", true, "Run build commands")
 	cmd.Flags().BoolVar(&useCache, "use-cache", true, "Use build cache")
-	cmd.Flags().BoolVar(&useLatest, "use-latest", false, "Deploy latest revision")
 	return cmd
 }
 

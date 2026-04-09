@@ -72,7 +72,7 @@ func normalize(s string) string {
 
 func newDeployCmd() *cobra.Command {
 	var branch, server, revision string
-	var useLatest, wait bool
+	var wait bool
 	var timeout int
 
 	cmd := &cobra.Command{
@@ -155,13 +155,13 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			// Auto-fetch latest revision if none specified
-			if revision == "" && !useLatest {
+			if revision == "" {
 				env.Status("Fetching latest revision...")
 				rev, err := client.GetLatestRevision(cliCtx.Background(), projectID)
 				if err != nil {
 					return &output.UserError{
 						Message: "Could not fetch latest revision",
-						Hint:    "Specify --revision or --use-latest",
+						Hint:    "Specify a revision with --revision <sha>",
 					}
 				}
 				revision = rev
@@ -171,9 +171,6 @@ func newDeployCmd() *cobra.Command {
 				Branch:           branch,
 				EndRevision:      revision,
 				ParentIdentifier: server,
-			}
-			if cmd.Flags().Changed("use-latest") {
-				req.UseLatest = &useLatest
 			}
 
 			dep, err := client.CreateDeployment(cliCtx.Background(), projectID, req)
@@ -221,8 +218,7 @@ func newDeployCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Branch to deploy")
 	cmd.Flags().StringVarP(&server, "server", "s", "", "Server or group identifier")
-	cmd.Flags().StringVarP(&revision, "revision", "r", "", "End revision")
-	cmd.Flags().BoolVar(&useLatest, "use-latest", false, "Deploy latest revision")
+	cmd.Flags().StringVarP(&revision, "revision", "r", "", "End revision (default: latest)")
 	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete")
 	cmd.Flags().IntVar(&timeout, "timeout", 0, "Timeout in seconds when using --wait (0 = no timeout)")
 	return cmd
