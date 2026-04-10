@@ -8,9 +8,10 @@ import (
 // GlobalServer is the same as Server but at account level.
 // Reuses the Server type.
 
-func (c *Client) ListGlobalServers(ctx context.Context) ([]Server, error) {
+func (c *Client) ListGlobalServers(ctx context.Context, opts *ListOptions) ([]Server, error) {
 	var servers []Server
-	if err := c.get(ctx, "/global_servers", &servers); err != nil {
+	path := appendListParams("/global_servers", opts)
+	if err := c.get(ctx, path, &servers); err != nil {
 		return nil, err
 	}
 	return servers, nil

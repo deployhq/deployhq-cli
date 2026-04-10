@@ -22,7 +22,7 @@ func TestListTemplates(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	templates, err := c.ListTemplates(context.Background())
+	templates, err := c.ListTemplates(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Len(t, templates, 2)
 	assert.Equal(t, "Rails", templates[0].Name)
@@ -55,7 +55,7 @@ func TestListPublicTemplates(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	templates, err := c.ListPublicTemplates(context.Background(), "")
+	templates, err := c.ListPublicTemplates(context.Background(), "", nil)
 	require.NoError(t, err)
 	assert.Len(t, templates, 1)
 	assert.Equal(t, "WordPress", templates[0].Name)
@@ -88,7 +88,7 @@ func TestListPublicTemplates_WithFilter(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	templates, err := c.ListPublicTemplates(context.Background(), "cms")
+	templates, err := c.ListPublicTemplates(context.Background(), "cms", nil)
 	require.NoError(t, err)
 	assert.Len(t, templates, 1)
 }

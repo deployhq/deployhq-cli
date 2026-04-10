@@ -26,7 +26,7 @@ func newAutoDeploysCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				result, err := client.ListAutoDeployments(cliCtx.Background(), projectID)
+				result, err := client.ListAutoDeployments(cliCtx.Background(), projectID, nil)
 				if err != nil {
 					return err
 				}

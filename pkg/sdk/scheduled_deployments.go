@@ -19,9 +19,10 @@ type ScheduledDeployment struct {
 	UseBuildCache    bool   `json:"use_build_cache"`
 }
 
-func (c *Client) ListScheduledDeployments(ctx context.Context, projectID string) ([]ScheduledDeployment, error) {
+func (c *Client) ListScheduledDeployments(ctx context.Context, projectID string, opts *ListOptions) ([]ScheduledDeployment, error) {
 	var result []ScheduledDeployment
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/scheduled_deployments", projectID), &result); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/scheduled_deployments", projectID), opts)
+	if err := c.get(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return result, nil

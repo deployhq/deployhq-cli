@@ -36,6 +36,43 @@ func TestResponse_JSONShape(t *testing.T) {
 	assert.NotNil(t, raw["data"])
 }
 
+func TestNewPaginatedResponse(t *testing.T) {
+	resp := NewPaginatedResponse(
+		[]string{"a", "b"},
+		Pagination{CurrentPage: 2, TotalPages: 5, TotalRecords: 50, Offset: 10},
+		"test summary",
+	)
+	assert.True(t, resp.OK)
+	assert.NotNil(t, resp.Pagination)
+	assert.Equal(t, 2, resp.Pagination.CurrentPage)
+	assert.Equal(t, 5, resp.Pagination.TotalPages)
+	assert.Equal(t, 50, resp.Pagination.TotalRecords)
+	assert.Equal(t, 10, resp.Pagination.Offset)
+	assert.Equal(t, "test summary", resp.Summary)
+}
+
+func TestNewResponse_NoPagination(t *testing.T) {
+	resp := NewResponse([]string{"a"}, "test")
+	assert.Nil(t, resp.Pagination)
+
+	b, err := json.Marshal(resp)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(b), "pagination")
+}
+
+func TestNewPaginatedResponse_IncludesPaginationInJSON(t *testing.T) {
+	resp := NewPaginatedResponse(
+		[]string{"a"},
+		Pagination{CurrentPage: 1, TotalPages: 3, TotalRecords: 30, Offset: 0},
+		"test",
+	)
+	b, err := json.Marshal(resp)
+	assert.NoError(t, err)
+	assert.Contains(t, string(b), `"pagination"`)
+	assert.Contains(t, string(b), `"current_page":1`)
+	assert.Contains(t, string(b), `"total_pages":3`)
+}
+
 func TestErrorResponse(t *testing.T) {
 	resp := ErrorResponse("timeout", "Deploy timed out", "Increase --wait-timeout", "https://docs.example.com")
 

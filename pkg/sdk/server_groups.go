@@ -6,9 +6,10 @@ import (
 )
 
 // ListServerGroups returns all server groups for a project.
-func (c *Client) ListServerGroups(ctx context.Context, projectID string) ([]ServerGroup, error) {
+func (c *Client) ListServerGroups(ctx context.Context, projectID string, opts *ListOptions) ([]ServerGroup, error) {
 	var groups []ServerGroup
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/server_groups", projectID), &groups); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/server_groups", projectID), opts)
+	if err := c.get(ctx, path, &groups); err != nil {
 		return nil, err
 	}
 	return groups, nil

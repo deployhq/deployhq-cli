@@ -18,9 +18,10 @@ type BuildConfigCreateRequest struct {
 	Packages map[string]string `json:"packages,omitempty"`
 }
 
-func (c *Client) ListBuildConfigs(ctx context.Context, projectID string) ([]BuildConfig, error) {
+func (c *Client) ListBuildConfigs(ctx context.Context, projectID string, opts *ListOptions) ([]BuildConfig, error) {
 	var configs []BuildConfig
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/build_configurations", projectID), &configs); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/build_configurations", projectID), opts)
+	if err := c.get(ctx, path, &configs); err != nil {
 		return nil, err
 	}
 	return configs, nil

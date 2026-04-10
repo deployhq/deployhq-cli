@@ -32,7 +32,7 @@ func newActivityListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			events, err := client.ListActivity(cliCtx.Background())
+			events, err := client.ListActivity(cliCtx.Background(), nil)
 			if err != nil {
 				return err
 			}
@@ -71,7 +71,7 @@ func newActivityStatsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := client.ListActivityWithStats(cliCtx.Background())
+			result, err := client.ListActivityWithStats(cliCtx.Background(), nil)
 			if err != nil {
 				return err
 			}

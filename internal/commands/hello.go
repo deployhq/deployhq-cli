@@ -60,7 +60,7 @@ func newHelloCmd() *cobra.Command {
 				return &output.InternalError{Message: "create client", Cause: err}
 			}
 
-			projects, err := client.ListProjects(cliCtx.Background())
+			projects, err := client.ListProjects(cliCtx.Background(), nil)
 			if err != nil {
 				env.Warn("Could not fetch projects: %v", err)
 				env.Status("")
@@ -196,7 +196,7 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 		return nil, &output.UserError{Message: err.Error()}
 	}
 
-	if _, err := client.ListProjects(cliCtx.Background()); err != nil {
+	if _, err := client.ListProjects(cliCtx.Background(), nil); err != nil {
 		if sdk.IsUnauthorized(err) {
 			return nil, &output.AuthError{
 				Message: "Invalid credentials",

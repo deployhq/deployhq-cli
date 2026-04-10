@@ -6,9 +6,10 @@ import (
 )
 
 // ListServers returns all servers for a project.
-func (c *Client) ListServers(ctx context.Context, projectID string) ([]Server, error) {
+func (c *Client) ListServers(ctx context.Context, projectID string, opts *ListOptions) ([]Server, error) {
 	var servers []Server
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/servers", projectID), &servers); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/servers", projectID), opts)
+	if err := c.get(ctx, path, &servers); err != nil {
 		return nil, err
 	}
 	return servers, nil

@@ -35,18 +35,20 @@ type ActivityWithStats struct {
 }
 
 // ListActivity returns recent activity events for the account.
-func (c *Client) ListActivity(ctx context.Context) ([]ActivityEvent, error) {
+func (c *Client) ListActivity(ctx context.Context, opts *ListOptions) ([]ActivityEvent, error) {
 	var result []ActivityEvent
-	if err := c.get(ctx, "/activity", &result); err != nil {
+	path := appendListParams("/activity", opts)
+	if err := c.get(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
 // ListActivityWithStats returns recent activity events and deploy stats.
-func (c *Client) ListActivityWithStats(ctx context.Context) (*ActivityWithStats, error) {
+func (c *Client) ListActivityWithStats(ctx context.Context, opts *ListOptions) (*ActivityWithStats, error) {
 	var result ActivityWithStats
-	if err := c.get(ctx, "/activity?include=stats", &result); err != nil {
+	path := appendListParams("/activity?include=stats", opts)
+	if err := c.get(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

@@ -66,7 +66,7 @@ func newDoctorCmd() *cobra.Command {
 			if err != nil {
 				checks = append(checks, doctorCheck{"API connectivity", "fail", err.Error()})
 			} else {
-				_, err := client.ListProjects(cliCtx.Background())
+				_, err := client.ListProjects(cliCtx.Background(), nil)
 				if err != nil {
 					checks = append(checks, doctorCheck{"API connectivity", "fail", err.Error()})
 				} else {

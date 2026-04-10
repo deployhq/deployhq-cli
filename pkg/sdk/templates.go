@@ -28,20 +28,22 @@ type TemplateUpdateRequest struct {
 }
 
 // ListTemplates returns all private templates for the account.
-func (c *Client) ListTemplates(ctx context.Context) ([]Template, error) {
+func (c *Client) ListTemplates(ctx context.Context, opts *ListOptions) ([]Template, error) {
 	var templates []Template
-	if err := c.get(ctx, "/templates", &templates); err != nil {
+	path := appendListParams("/templates", opts)
+	if err := c.get(ctx, path, &templates); err != nil {
 		return nil, err
 	}
 	return templates, nil
 }
 
 // ListPublicTemplates returns publicly available templates, optionally filtered by framework type.
-func (c *Client) ListPublicTemplates(ctx context.Context, frameworkType string) ([]Template, error) {
+func (c *Client) ListPublicTemplates(ctx context.Context, frameworkType string, opts *ListOptions) ([]Template, error) {
 	path := "/templates/public_templates"
 	if frameworkType != "" {
 		path += "?framework_type=" + frameworkType
 	}
+	path = appendListParams(path, opts)
 	var templates []Template
 	if err := c.get(ctx, path, &templates); err != nil {
 		return nil, err

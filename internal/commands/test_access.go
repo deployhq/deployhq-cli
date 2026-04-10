@@ -35,7 +35,7 @@ func newTestAccessCmd() *cobra.Command {
 
 			// Resolve server name to identifier if provided
 			if server != "" && !isUUID(server) {
-				servers, err := client.ListServers(cliCtx.Background(), projectID)
+				servers, err := client.ListServers(cliCtx.Background(), projectID, nil)
 				if err == nil {
 					resolved, _ := resolveServerName(server, servers)
 					if resolved != "" {

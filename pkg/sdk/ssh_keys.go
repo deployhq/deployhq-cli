@@ -21,9 +21,10 @@ type SSHKeyCreateRequest struct {
 	KeyType string `json:"key_type,omitempty"`
 }
 
-func (c *Client) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
+func (c *Client) ListSSHKeys(ctx context.Context, opts *ListOptions) ([]SSHKey, error) {
 	var keys []SSHKey
-	if err := c.get(ctx, "/ssh_keys", &keys); err != nil {
+	path := appendListParams("/ssh_keys", opts)
+	if err := c.get(ctx, path, &keys); err != nil {
 		return nil, err
 	}
 	return keys, nil

@@ -42,7 +42,7 @@ func newProjectsListCmd() *cobra.Command {
 				return err
 			}
 
-			projects, err := client.ListProjects(cliCtx.Background())
+			projects, err := client.ListProjects(cliCtx.Background(), nil)
 			if err != nil {
 				return err
 			}
@@ -129,7 +129,7 @@ func newProjectsShowCmd() *cobra.Command {
 				{"Auto Deploy URL", project.AutoDeployURL},
 			})
 
-			servers, err := client.ListServers(cliCtx.Background(), project.Permalink)
+			servers, err := client.ListServers(cliCtx.Background(), project.Permalink, nil)
 			if err != nil {
 				return nil // non-fatal: just skip server listing
 			}

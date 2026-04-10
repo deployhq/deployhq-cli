@@ -23,7 +23,7 @@ func TestListProjects(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	projects, err := c.ListProjects(context.Background())
+	projects, err := c.ListProjects(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Len(t, projects, 2)
 	assert.Equal(t, "My App", projects[0].Name)

@@ -25,7 +25,7 @@ func newScheduledDeploysCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				result, err := client.ListScheduledDeployments(cliCtx.Background(), projectID)
+				result, err := client.ListScheduledDeployments(cliCtx.Background(), projectID, nil)
 				if err != nil {
 					return err
 				}

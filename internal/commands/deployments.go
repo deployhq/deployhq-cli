@@ -30,7 +30,9 @@ func newDeploymentsCmd() *cobra.Command {
 }
 
 func newDeploymentsListCmd() *cobra.Command {
-	return &cobra.Command{
+	var page, perPage int
+
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List deployments",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -44,14 +46,20 @@ func newDeploymentsListCmd() *cobra.Command {
 				return err
 			}
 
-			result, err := client.ListDeployments(cliCtx.Background(), projectID)
+			result, err := client.ListDeployments(cliCtx.Background(), projectID, listOptsFromFlags(page, perPage))
 			if err != nil {
 				return err
 			}
 
 			env := cliCtx.Envelope
 			if env.JSONMode || !env.IsTTY {
-				return env.WriteJSON(output.NewResponse(result,
+				return env.WriteJSON(output.NewPaginatedResponse(result.Records,
+					output.Pagination{
+						CurrentPage:  result.Pagination.CurrentPage,
+						TotalPages:   result.Pagination.TotalPages,
+						TotalRecords: result.Pagination.TotalRecords,
+						Offset:       result.Pagination.Offset,
+					},
 					fmt.Sprintf("%d deployments (page %d/%d)", len(result.Records), result.Pagination.CurrentPage, result.Pagination.TotalPages),
 					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq deployments show <id> -p %s", projectID)},
 					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
@@ -73,12 +81,22 @@ func newDeploymentsListCmd() *cobra.Command {
 			}
 			env.WriteTable(columns, rows)
 
+			if result.Pagination.TotalPages > 1 {
+				env.Status("\nPage %d/%d (%d total) — use --page to navigate",
+					result.Pagination.CurrentPage,
+					result.Pagination.TotalPages,
+					result.Pagination.TotalRecords)
+			}
+
 			if len(result.Records) > 0 {
 				env.Status("\nTip: dhq deployments show %s -p %s", result.Records[0].Identifier, projectID)
 			}
 			return nil
 		},
 	}
+
+	addPaginationFlags(cmd, &page, &perPage)
+	return cmd
 }
 
 func newDeploymentsShowCmd() *cobra.Command {

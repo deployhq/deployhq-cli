@@ -123,7 +123,7 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 		return &output.UserError{Message: err.Error()}
 	}
 
-	_, err = client.ListProjects(cliCtx.Background())
+	_, err = client.ListProjects(cliCtx.Background(), nil)
 	if err != nil {
 		if sdk.IsUnauthorized(err) {
 			return &output.AuthError{

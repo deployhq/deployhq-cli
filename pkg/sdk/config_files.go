@@ -23,9 +23,10 @@ type ConfigFileCreateRequest struct {
 	Build       *bool  `json:"build,omitempty"`
 }
 
-func (c *Client) ListConfigFiles(ctx context.Context, projectID string) ([]ConfigFile, error) {
+func (c *Client) ListConfigFiles(ctx context.Context, projectID string, opts *ListOptions) ([]ConfigFile, error) {
 	var files []ConfigFile
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/config_files", projectID), &files); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/config_files", projectID), opts)
+	if err := c.get(ctx, path, &files); err != nil {
 		return nil, err
 	}
 	return files, nil

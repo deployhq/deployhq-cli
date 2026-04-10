@@ -26,7 +26,7 @@ func newBuildConfigsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				configs, err := client.ListBuildConfigs(cliCtx.Background(), projectID)
+				configs, err := client.ListBuildConfigs(cliCtx.Background(), projectID, nil)
 				if err != nil {
 					return err
 				}

@@ -15,7 +15,7 @@ func TestListDeployments(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects/my-app/deployments", r.URL.Path)
 		_ = json.NewEncoder(w).Encode(PaginatedResponse[Deployment]{
-			Pagination: Pagination{CurrentPage: 1, TotalPages: 1, TotalCount: 2, PerPage: 20},
+			Pagination: Pagination{CurrentPage: 1, TotalPages: 1, TotalRecords: 2, Offset: 0},
 			Records: []Deployment{
 				{Identifier: "dep1", Status: "completed", Branch: "main"},
 				{Identifier: "dep2", Status: "running", Branch: "develop"},
@@ -25,7 +25,7 @@ func TestListDeployments(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	result, err := c.ListDeployments(context.Background(), "my-app")
+	result, err := c.ListDeployments(context.Background(), "my-app", nil)
 	require.NoError(t, err)
 	assert.Len(t, result.Records, 2)
 	assert.Equal(t, 1, result.Pagination.CurrentPage)
