@@ -68,11 +68,17 @@ func watchDeploymentTUI(ctx context.Context, client *sdk.Client, env *output.Env
 
 // bubbletea messages
 type tickMsg time.Time
+type spinnerTickMsg time.Time
 type deploymentMsg struct {
 	dep *sdk.Deployment
 	err error
 }
 type abortMsg struct{ err error }
+
+// Spinner frames (Braille pattern — matches Claude Code and most modern CLIs).
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+const spinnerInterval = 80 * time.Millisecond
 
 type watchModel struct {
 	ctx          context.Context
@@ -86,10 +92,17 @@ type watchModel struct {
 	done         bool
 	confirmAbort bool
 	aborted      bool
+	spinnerFrame int
 }
 
 func (m *watchModel) Init() tea.Cmd {
-	return m.fetchDeployment
+	return tea.Batch(m.fetchDeployment, m.spinnerTick())
+}
+
+func (m *watchModel) spinnerTick() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(t time.Time) tea.Msg {
+		return spinnerTickMsg(t)
+	})
 }
 
 func (m *watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -142,6 +155,12 @@ func (m *watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 	case tickMsg:
 		return m, m.fetchDeployment
+	case spinnerTickMsg:
+		if m.done {
+			return m, nil
+		}
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		return m, m.spinnerTick()
 	}
 	return m, nil
 }
@@ -152,23 +171,32 @@ func (m *watchModel) View() string {
 	lastStage := ""
 	for _, s := range m.steps {
 		if s.Stage != lastStage {
+			if lastStage != "" {
+				b.WriteString("\n")
+			}
 			lastStage = s.Stage
-			b.WriteString("\n")
-			b.WriteString(styleStage.Render(fmt.Sprintf("%s %s:", stageEmoji(s.Stage), capitalize(s.Stage))))
+			b.WriteString(styleStage.Render(capitalize(s.Stage) + ":"))
 			b.WriteString("\n")
 		}
 
-		icon := stepEmoji(s.Status)
 		desc := s.Description
+
+		var line string
 		switch s.Status {
-		case "running":
-			desc = styleRunning.Render(desc)
 		case "completed":
-			desc = styleDim.Render(desc)
+			line = fmt.Sprintf("  %s %s", styleSuccess.Render("✓"), styleDim.Render(desc))
+		case "running":
+			spinner := spinnerFrames[m.spinnerFrame]
+			line = fmt.Sprintf("  %s %s", styleRunning.Render(spinner), styleRunning.Render(desc))
 		case "failed":
-			desc = styleError.Render(desc)
+			line = fmt.Sprintf("  %s %s", styleError.Render("✗"), styleError.Render(desc))
+		case "skipped":
+			line = fmt.Sprintf("  %s %s", styleDim.Render("–"), styleDim.Render(desc))
+		default:
+			line = fmt.Sprintf("  %s %s", styleDim.Render("·"), styleDim.Render(desc))
 		}
-		fmt.Fprintf(&b, "  %s %s\n", icon, desc)
+		b.WriteString(line)
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")

@@ -190,12 +190,9 @@ func newDeploymentsCreateCmd() *cobra.Command {
 
 			// Auto-fetch latest revision if none specified
 			if endRevision == "" {
-				rev, revErr := client.GetLatestRevision(cliCtx.Background(), projectID)
-				if revErr != nil {
-					return &output.UserError{
-						Message: "Could not fetch latest revision",
-						Hint:    "Specify a revision with --revision <sha>",
-					}
+				rev, err := resolveLatestRevision(cliCtx.Background(), client, projectID)
+				if err != nil {
+					return err
 				}
 				endRevision = rev
 				cliCtx.Envelope.Status("Using latest revision: %s", endRevision)

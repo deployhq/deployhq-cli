@@ -17,6 +17,37 @@ func isUUID(s string) bool {
 	return len(s) >= 32 && strings.ContainsRune(s, '-')
 }
 
+// resolveLatestRevision tries to find the latest revision for a project,
+// falling back to the most recent deployment's end revision if the
+// repository endpoint fails (e.g. empty repo, missing default branch).
+func resolveLatestRevision(ctx context.Context, client *sdk.Client, projectID string) (string, error) {
+	// Primary: /repository/latest_revision
+	rev, primaryErr := client.GetLatestRevision(ctx, projectID)
+	if primaryErr == nil && rev != "" {
+		return rev, nil
+	}
+
+	// Fallback: most recent deployment's end revision
+	deps, depsErr := client.ListDeployments(ctx, projectID)
+	if depsErr == nil && deps != nil {
+		for _, d := range deps.Records {
+			if d.EndRevision != nil && d.EndRevision.Ref != "" {
+				return d.EndRevision.Ref, nil
+			}
+		}
+	}
+
+	// Both failed — surface the primary error with an actionable hint.
+	hint := "Specify a revision with --revision <sha>"
+	if primaryErr != nil {
+		hint = fmt.Sprintf("API error: %v\nSpecify a revision with --revision <sha>", primaryErr)
+	}
+	return "", &output.UserError{
+		Message: "Could not fetch latest revision",
+		Hint:    hint,
+	}
+}
+
 // resolveServerName matches a user-provided server name to a server identifier.
 // Returns the identifier if a single match is found, or empty string + candidates for picker.
 func resolveServerName(input string, servers []sdk.Server) (string, []sdk.Server) {
@@ -157,12 +188,9 @@ func newDeployCmd() *cobra.Command {
 			// Auto-fetch latest revision if none specified
 			if revision == "" {
 				env.Status("Fetching latest revision...")
-				rev, err := client.GetLatestRevision(cliCtx.Background(), projectID)
+				rev, err := resolveLatestRevision(cliCtx.Background(), client, projectID)
 				if err != nil {
-					return &output.UserError{
-						Message: "Could not fetch latest revision",
-						Hint:    "Specify a revision with --revision <sha>",
-					}
+					return err
 				}
 				revision = rev
 			}

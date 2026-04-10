@@ -38,7 +38,7 @@ func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.E
 			if isTerminal && !printed[s.Identifier] {
 				if !stageShown[s.Stage] {
 					stageShown[s.Stage] = true
-					env.Status("\n%s %s:", stageEmoji(s.Stage), capitalize(s.Stage))
+					env.Status("\n%s:", capitalize(s.Stage))
 				}
 				env.Status("  %s %s", stepEmoji(s.Status), s.Description)
 				printed[s.Identifier] = true
@@ -53,7 +53,7 @@ func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.E
 			if s.Status == "running" && shownRunning != s.Identifier && !printed[s.Identifier] {
 				if !stageShown[s.Stage] {
 					stageShown[s.Stage] = true
-					env.Status("\n%s %s:", stageEmoji(s.Stage), capitalize(s.Stage))
+					env.Status("\n%s:", capitalize(s.Stage))
 				}
 				env.Status("  %s %s...", stepEmoji("running"), s.Description)
 				shownRunning = s.Identifier
@@ -111,33 +111,24 @@ func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.E
 	}
 }
 
+// stageEmoji is retained for backward-compat with the non-TTY fallback output,
+// but the TUI now renders stage headers without an icon prefix.
 func stageEmoji(stage string) string {
-	switch stage {
-	case "preparing":
-		return "📦"
-	case "building":
-		return "🌀"
-	case "transferring":
-		return "🌐"
-	case "finishing":
-		return "✨"
-	default:
-		return "▸"
-	}
+	return ""
 }
 
 func stepEmoji(status string) string {
 	switch status {
 	case "completed":
-		return "✅"
+		return "✓"
 	case "failed":
-		return "❌"
+		return "✗"
 	case "running":
-		return "🔄"
+		return "⋮"
 	case "pending":
-		return "⏳"
+		return "·"
 	case "skipped":
-		return "⏭️"
+		return "–"
 	default:
 		return "·"
 	}
