@@ -111,12 +111,6 @@ func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.E
 	}
 }
 
-// stageEmoji is retained for backward-compat with the non-TTY fallback output,
-// but the TUI now renders stage headers without an icon prefix.
-func stageEmoji(stage string) string {
-	return ""
-}
-
 func stepEmoji(status string) string {
 	switch status {
 	case "completed":
