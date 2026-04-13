@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -112,12 +111,12 @@ func findMCPBinary() *mcpBinary {
 // MCPConfigSnippet returns a JSON snippet for configuring the MCP server
 // in agent config files (e.g. Claude Desktop, Cursor).
 func MCPConfigSnippet() string {
-	return fmt.Sprintf(`{
+	return `{
   "mcpServers": {
     "deployhq": {
       "command": "dhq",
       "args": ["mcp"]
     }
   }
-}`)
+}`
 }
