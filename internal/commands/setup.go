@@ -32,6 +32,18 @@ var agents = []agentSetup{
 		Name:   "Codex",
 		DotDir: ".codex",
 	},
+	{
+		Use:    "cursor",
+		Short:  "Install Cursor integration",
+		Name:   "Cursor",
+		DotDir: ".cursor",
+	},
+	{
+		Use:    "windsurf",
+		Short:  "Install Windsurf integration",
+		Name:   "Windsurf",
+		DotDir: ".windsurf",
+	},
 }
 
 func newSetupCmd() *cobra.Command {
