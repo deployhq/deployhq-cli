@@ -45,7 +45,7 @@ func newUpdateCmd(currentVersion string) *cobra.Command {
 
 			// Fall back to install script
 			env.Status("Downloading v%s...", info.Latest)
-			script := "curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh"
+			script := "curl -fsSL https://deployhq.com/install/cli | sh"
 
 			c := exec.Command("sh", "-c", script)
 			c.Stdout = os.Stdout
@@ -53,7 +53,7 @@ func newUpdateCmd(currentVersion string) *cobra.Command {
 			if err := c.Run(); err != nil {
 				return &output.UserError{
 					Message: fmt.Sprintf("Auto-update failed: %v", err),
-					Hint: fmt.Sprintf("Download manually from %s\n\n  Or run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh",
+					Hint: fmt.Sprintf("Download manually from %s\n\n  Or run: curl -fsSL https://deployhq.com/install/cli | sh",
 						info.URL),
 				}
 			}

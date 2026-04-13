@@ -13,7 +13,7 @@ brew install deployhq/tap/dhq
 ### Script (macOS/Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+curl -fsSL https://deployhq.com/install/cli | sh
 ```
 
 ### Go
@@ -81,7 +81,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+      - run: curl -fsSL https://deployhq.com/install/cli | sh
       - run: dhq deploy --server production --revision ${{ github.sha }} --wait --json
 ```
 
@@ -132,7 +132,7 @@ dhq assist        [question] (AI deployment assistant, requires Ollama)
 dhq completion    bash | zsh | fish | powershell
 dhq doctor        (health check)
 dhq update        (self-update to latest version)
-dhq setup         claude | codex (install agent plugins, --project for project-level)
+dhq setup         claude | codex | cursor | windsurf (install agent plugins, --project for project-level)
 dhq mcp           (start MCP server in stdio mode)
 ```
 
@@ -237,10 +237,10 @@ dhq config show --resolved
 
 The CLI is designed for AI agents that can run shell commands.
 
-Agent skill guides are available at `.claude/SKILL.md`, `.codex/SKILL.md`, and `docs/SKILL.md`.
+Agent skill guides are available at `.claude/SKILL.md`, `.codex/SKILL.md`, `.cursor/SKILL.md`, `.windsurf/SKILL.md`, and `docs/SKILL.md`.
 
 ```bash
-# Install agent plugin
+# Install agent plugin (Claude Code, Codex, Cursor, or Windsurf)
 dhq setup claude
 
 # Full command catalog for agent discovery

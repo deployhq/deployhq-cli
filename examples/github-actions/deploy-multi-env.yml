@@ -24,7 +24,7 @@ jobs:
     environment: staging
     steps:
       - name: Install DeployHQ CLI
-        run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+        run: curl -fsSL https://deployhq.com/install/cli | sh
 
       - name: Deploy to staging
         run: dhq deploy --server staging --revision ${{ github.sha }} --wait --json
@@ -35,7 +35,7 @@ jobs:
     environment: production
     steps:
       - name: Install DeployHQ CLI
-        run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+        run: curl -fsSL https://deployhq.com/install/cli | sh
 
       - name: Deploy to production
         run: dhq deploy --server production --revision ${{ github.sha }} --wait --json

@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install DeployHQ CLI
-        run: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+        run: curl -fsSL https://deployhq.com/install/cli | sh
 
       - name: Deploy and wait
         id: deploy

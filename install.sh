@@ -1,6 +1,6 @@
 #!/bin/sh
 # DeployHQ CLI installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/deployhq/deployhq-cli/main/install.sh | sh
+# Usage: curl -fsSL https://deployhq.com/install/cli | sh
 set -e
 
 REPO="deployhq/deployhq-cli"
