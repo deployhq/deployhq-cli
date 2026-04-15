@@ -35,6 +35,12 @@ internal/cli/       Command execution pipeline, lazy SDK client
 internal/commands/  All CLI commands (38 top-level, 142 total)
 
 internal/version/   Update checker (GitHub releases API)
+
+skills/deployhq/    Agent skill guide + per-domain reference docs (8 files)
+                    SKILL.md is the entry point for any AI agent.
+
+skill-evals/deployhq/  Eval suite (49 cases) testing LLM → CLI translation
+                        run-evals.sh drives Claude API, checks command accuracy.
 ```
 
 ## Key Design Decisions

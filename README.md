@@ -258,6 +258,31 @@ dhq deploy -p my-app
 cat /tmp/deployhq.jsonl
 ```
 
+### Skill System
+
+The `skills/deployhq/` directory contains structured reference docs that AI agents consume to correctly use the CLI:
+
+- `SKILL.md` — Entry point: auth, output contract, decision trees, gotchas
+- `references/` — 8 per-domain docs (projects, servers, deployments, repos, configuration, global resources, operations, auth/setup)
+
+### Skill Evals
+
+`skill-evals/deployhq/` contains 49 evaluation cases that test whether an LLM correctly translates natural language into `dhq` commands:
+
+```bash
+# Dry-run (no API calls)
+./skill-evals/deployhq/run-evals.sh --dry-run
+
+# Run all evals
+ANTHROPIC_API_KEY=sk-... ./skill-evals/deployhq/run-evals.sh
+
+# Run one category
+./skill-evals/deployhq/run-evals.sh --category deployments
+
+# Test a specific model
+./skill-evals/deployhq/run-evals.sh --model claude-haiku-4-5-20251001
+```
+
 ## Escape Hatch
 
 `dhq api` covers all 144+ API endpoints:
