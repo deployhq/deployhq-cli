@@ -162,7 +162,21 @@ func removeSetupFiles(files map[string]string, dir, name string) error {
 
 // skillMD is the embedded SKILL.md content.
 // It can also be fetched remotely from the DeployHQ docs.
-const skillMD = `# DeployHQ CLI — Agent Skill Guide
+const skillMD = `---
+name: deployhq
+description: >
+  Deploy code, manage servers, and automate infrastructure via the DeployHQ CLI (dhq).
+  Use when the user wants to deploy, check deployment status, manage projects/servers,
+  or interact with the DeployHQ platform.
+license: MIT
+metadata:
+  author: DeployHQ
+  version: "1.0.0"
+  homepage: https://www.deployhq.com/cli
+  repository: https://github.com/deployhq/deployhq-cli
+---
+
+# DeployHQ CLI — Agent Skill Guide
 
 ## Identity
 DeployHQ is a deployment automation platform. The ` + "`dhq`" + ` CLI manages projects, servers, and deployments.

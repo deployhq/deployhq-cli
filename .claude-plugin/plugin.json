@@ -1,0 +1,14 @@
+{
+  "name": "deployhq",
+  "version": "1.0.0",
+  "description": "Deploy code, manage servers, and automate infrastructure via the DeployHQ CLI",
+  "author": {
+    "name": "DeployHQ",
+    "url": "https://www.deployhq.com"
+  },
+  "homepage": "https://www.deployhq.com/cli",
+  "repository": "https://github.com/deployhq/deployhq-cli",
+  "license": "MIT",
+  "keywords": ["deployhq", "deployment", "devops", "cli", "infrastructure", "servers"],
+  "skills": ["skills/deployhq"]
+}
