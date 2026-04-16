@@ -70,6 +70,41 @@ dhq global-env-vars create --name SHARED_SECRET --value "abc123" --json
 dhq global-env-vars update 12345 --value "new-value" --json
 ```
 
+## Global Config Files
+
+Account-level config files shared across projects.
+
+### `dhq global-config-files list`
+```bash
+dhq global-config-files list --json
+```
+
+### `dhq global-config-files show <id>`
+```bash
+dhq global-config-files show 12345 --json
+```
+
+### `dhq global-config-files create`
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--name` | yes | File name |
+| `--body` | yes | File content |
+
+```bash
+dhq global-config-files create --name ".env.shared" --body "RAILS_ENV=production" --json
+```
+
+### `dhq global-config-files update <id>`
+```bash
+dhq global-config-files update 12345 --body "RAILS_ENV=staging" --json
+```
+
+### `dhq global-config-files delete <id>`
+```bash
+dhq global-config-files delete 12345
+```
+
 ## SSH Keys
 
 ### `dhq ssh-keys list`

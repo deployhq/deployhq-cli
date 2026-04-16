@@ -155,3 +155,79 @@ dhq ssh-commands list -p my-app --json
 ```bash
 dhq ssh-commands create -p my-app --name "Restart" --command "sudo systemctl restart app" --json
 ```
+
+## Build Cache Files
+
+Manage files/directories cached between builds to speed up deployments.
+
+### `dhq build-cache-files list`
+```bash
+dhq build-cache-files list -p my-app --json
+```
+
+### `dhq build-cache-files create`
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--path` | yes | Path to cache |
+
+```bash
+dhq build-cache-files create -p my-app --path "node_modules" --json
+dhq build-cache-files create -p my-app --path ".cache" --json
+```
+
+### `dhq build-cache-files update <id>`
+```bash
+dhq build-cache-files update 12345 -p my-app --path "vendor" --json
+```
+
+### `dhq build-cache-files delete <id>`
+```bash
+dhq build-cache-files delete 12345 -p my-app
+```
+
+## Build Languages
+
+Set language runtime versions used by the build server.
+
+### `dhq build-languages set <language-id>`
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--version` | yes | Language version |
+| `--build-config` | no | Build configuration override ID |
+
+```bash
+# Set Ruby version for project
+dhq build-languages set ruby -p my-app --version "3.2" --json
+
+# Set Node version for a specific build config override
+dhq build-languages set node -p my-app --version "20" --build-config override-123 --json
+```
+
+**Tip:** Use `dhq language-versions list -p <project>` to see available versions.
+
+## Build Known Hosts
+
+Manage SSH known hosts for the build server (e.g. for private dependencies fetched during builds).
+
+### `dhq build-known-hosts list`
+```bash
+dhq build-known-hosts list -p my-app --json
+```
+
+### `dhq build-known-hosts create`
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--hostname` | yes | SSH hostname |
+| `--public-key` | yes | SSH public key |
+
+```bash
+dhq build-known-hosts create -p my-app --hostname "github.com" --public-key "ssh-rsa AAAA..." --json
+```
+
+### `dhq build-known-hosts delete <id>`
+```bash
+dhq build-known-hosts delete 12345 -p my-app
+```

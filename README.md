@@ -124,6 +124,10 @@ dhq agents        list | create | update | delete | revoke
 dhq ssh-keys      list | create | delete
 dhq global-servers list | show | create | update | delete | copy-to-project
 dhq global-env-vars list | show | create | update | delete
+dhq global-config-files list | show | create | update | delete
+dhq build-cache-files list | create | update | delete
+dhq build-languages set <language-id> --version <ver> [-p project]
+dhq build-known-hosts list | create | delete
 dhq auto-deploys list | enable
 dhq scheduled-deploys list | show | create | update | delete
 dhq activity      list | stats

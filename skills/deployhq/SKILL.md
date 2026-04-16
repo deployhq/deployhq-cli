@@ -36,8 +36,8 @@ The CLI never prompts when all required flags are provided. For agent usage, alw
 | **servers** | Manage deployment targets (SSH, FTP, S3, etc.) | [servers.md](references/servers.md) |
 | **deployments** | Create, monitor, rollback deployments | [deployments.md](references/deployments.md) |
 | **repos** | Repository configuration, branches, commits | [repos.md](references/repos.md) |
-| **configuration** | Env vars, config files, build commands, exclusions | [configuration.md](references/configuration.md) |
-| **global resources** | Global servers, env vars, SSH keys, templates | [global-resources.md](references/global-resources.md) |
+| **configuration** | Env vars, config files, build commands, exclusions, cache files, build languages, known hosts | [configuration.md](references/configuration.md) |
+| **global resources** | Global servers, env vars, config files, SSH keys, templates | [global-resources.md](references/global-resources.md) |
 | **operations** | Activity, status, test-access, doctor | [operations.md](references/operations.md) |
 | **auth & setup** | Authentication, CLI config, agent setup | [auth-setup.md](references/auth-setup.md) |
 
