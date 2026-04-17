@@ -30,9 +30,10 @@ type BuildCommandCreateRequest struct {
 	Enabled     *bool  `json:"enabled,omitempty"`
 }
 
-func (c *Client) ListBuildCommands(ctx context.Context, projectID string) ([]BuildCommand, error) {
+func (c *Client) ListBuildCommands(ctx context.Context, projectID string, opts *ListOptions) ([]BuildCommand, error) {
 	var cmds []BuildCommand
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/build_commands", projectID), &cmds); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/build_commands", projectID), opts)
+	if err := c.get(ctx, path, &cmds); err != nil {
 		return nil, err
 	}
 	return cmds, nil

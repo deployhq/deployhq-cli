@@ -17,7 +17,7 @@ func newStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := client.ListActivityWithStats(cliCtx.Background())
+			result, err := client.ListActivityWithStats(cliCtx.Background(), nil)
 			if err != nil {
 				return err
 			}

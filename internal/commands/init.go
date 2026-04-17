@@ -791,7 +791,7 @@ func (m *initModel) createRepo() tea.Msg {
 
 func (m *initModel) fetchSSHKeys() tea.Msg {
 	ctx := context.Background()
-	keys, err := m.client.ListSSHKeys(ctx)
+	keys, err := m.client.ListSSHKeys(ctx, nil)
 	if err != nil {
 		return sshKeysResultMsg{keys: nil, err: err}
 	}

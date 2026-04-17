@@ -40,9 +40,10 @@ func (c *Client) UpdateRepository(ctx context.Context, projectID string, req Rep
 
 // ListBranches returns the branches for a project's repository.
 // The API returns a map of branch_name -> latest_commit_sha.
-func (c *Client) ListBranches(ctx context.Context, projectID string) (map[string]string, error) {
+func (c *Client) ListBranches(ctx context.Context, projectID string, opts *ListOptions) (map[string]string, error) {
 	var branches map[string]string
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/repository/branches", projectID), &branches); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/repository/branches", projectID), opts)
+	if err := c.get(ctx, path, &branches); err != nil {
 		return nil, err
 	}
 	return branches, nil
@@ -60,9 +61,10 @@ func (c *Client) GetLatestRevision(ctx context.Context, projectID string) (strin
 }
 
 // ListRecentCommits returns recent commits for a project's repository.
-func (c *Client) ListRecentCommits(ctx context.Context, projectID string) (*CommitsTagsReleases, error) {
+func (c *Client) ListRecentCommits(ctx context.Context, projectID string, opts *ListOptions) (*CommitsTagsReleases, error) {
 	var result CommitsTagsReleases
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/repository/recent_commits", projectID), &result); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/repository/recent_commits", projectID), opts)
+	if err := c.get(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

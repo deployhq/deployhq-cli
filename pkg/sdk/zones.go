@@ -8,9 +8,10 @@ type Zone struct {
 	Description string `json:"description"`
 }
 
-func (c *Client) ListZones(ctx context.Context) ([]Zone, error) {
+func (c *Client) ListZones(ctx context.Context, opts *ListOptions) ([]Zone, error) {
 	var zones []Zone
-	if err := c.get(ctx, "/zones", &zones); err != nil {
+	path := appendListParams("/zones", opts)
+	if err := c.get(ctx, path, &zones); err != nil {
 		return nil, err
 	}
 	return zones, nil

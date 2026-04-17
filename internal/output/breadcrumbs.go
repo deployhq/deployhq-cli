@@ -8,10 +8,19 @@ type Breadcrumb struct {
 	Cmd    string `json:"cmd"`
 }
 
+// Pagination metadata for JSON output.
+type Pagination struct {
+	CurrentPage  int `json:"current_page"`
+	TotalPages   int `json:"total_pages"`
+	TotalRecords int `json:"total_records"`
+	Offset       int `json:"offset"`
+}
+
 // Response is the JSON envelope with breadcrumbs (Basecamp pattern).
 type Response struct {
 	OK          bool         `json:"ok"`
 	Data        interface{}  `json:"data"`
+	Pagination  *Pagination  `json:"pagination,omitempty"`
 	Summary     string       `json:"summary,omitempty"`
 	Breadcrumbs []Breadcrumb `json:"breadcrumbs,omitempty"`
 }
@@ -21,6 +30,18 @@ func NewResponse(data interface{}, summary string, breadcrumbs ...Breadcrumb) *R
 	return &Response{
 		OK:          true,
 		Data:        data,
+		Summary:     summary,
+		Breadcrumbs: breadcrumbs,
+	}
+}
+
+// NewPaginatedResponse creates a success response with pagination metadata and optional breadcrumbs.
+func NewPaginatedResponse(data interface{}, pagination Pagination, summary string, breadcrumbs ...Breadcrumb) *Response {
+	p := pagination
+	return &Response{
+		OK:          true,
+		Data:        data,
+		Pagination:  &p,
 		Summary:     summary,
 		Breadcrumbs: breadcrumbs,
 	}

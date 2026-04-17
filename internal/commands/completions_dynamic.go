@@ -10,7 +10,7 @@ func completeProjectNames(cmd *cobra.Command, args []string, toComplete string) 
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	projects, err := client.ListProjects(cliCtx.Background())
+	projects, err := client.ListProjects(cliCtx.Background(), nil)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -31,7 +31,7 @@ func completeServerNames(cmd *cobra.Command, args []string, toComplete string) (
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	servers, err := client.ListServers(cliCtx.Background(), projectID)
+	servers, err := client.ListServers(cliCtx.Background(), projectID, nil)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

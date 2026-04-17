@@ -27,7 +27,7 @@ func newLanguageVersionsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				versions, err := client.ListLanguageVersions(cliCtx.Background(), projectID)
+				versions, err := client.ListLanguageVersions(cliCtx.Background(), projectID, nil)
 				if err != nil {
 					return err
 				}

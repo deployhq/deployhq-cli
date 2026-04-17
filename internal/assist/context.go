@@ -52,7 +52,7 @@ func GatherContext(ctx context.Context, client *sdk.Client, projectID string) (*
 	ac := &AssistContext{Project: projectID}
 
 	// Fetch recent deployments
-	result, err := client.ListDeployments(ctx, projectID)
+	result, err := client.ListDeployments(ctx, projectID, nil)
 	if err != nil {
 		return ac, nil // non-fatal
 	}
@@ -121,7 +121,7 @@ func GatherContext(ctx context.Context, client *sdk.Client, projectID string) (*
 	}
 
 	// Fetch servers
-	servers, err := client.ListServers(ctx, projectID)
+	servers, err := client.ListServers(ctx, projectID, nil)
 	if err == nil {
 		for _, s := range servers {
 			ac.Servers = append(ac.Servers, serverSummary{

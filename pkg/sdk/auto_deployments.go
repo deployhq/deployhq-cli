@@ -31,9 +31,10 @@ type DeployableToggle struct {
 	AutoDeploy bool   `json:"auto_deploy"`
 }
 
-func (c *Client) ListAutoDeployments(ctx context.Context, projectID string) (*AutoDeployment, error) {
+func (c *Client) ListAutoDeployments(ctx context.Context, projectID string, opts *ListOptions) (*AutoDeployment, error) {
 	var result AutoDeployment
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/auto_deployments", projectID), &result); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/auto_deployments", projectID), opts)
+	if err := c.get(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

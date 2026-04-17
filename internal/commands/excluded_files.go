@@ -25,7 +25,7 @@ func newExcludedFilesCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				files, err := client.ListExcludedFiles(cliCtx.Background(), projectID)
+				files, err := client.ListExcludedFiles(cliCtx.Background(), projectID, nil)
 				if err != nil {
 					return err
 				}

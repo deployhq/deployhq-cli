@@ -29,9 +29,10 @@ type SSHCommandCreateRequest struct {
 	Enabled     *bool  `json:"enabled,omitempty"`
 }
 
-func (c *Client) ListSSHCommands(ctx context.Context, projectID string) ([]SSHCommand, error) {
+func (c *Client) ListSSHCommands(ctx context.Context, projectID string, opts *ListOptions) ([]SSHCommand, error) {
 	var cmds []SSHCommand
-	if err := c.get(ctx, fmt.Sprintf("/projects/%s/commands", projectID), &cmds); err != nil {
+	path := appendListParams(fmt.Sprintf("/projects/%s/commands", projectID), opts)
+	if err := c.get(ctx, path, &cmds); err != nil {
 		return nil, err
 	}
 	return cmds, nil

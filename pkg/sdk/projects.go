@@ -6,9 +6,10 @@ import (
 )
 
 // ListProjects returns all projects for the account.
-func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
+func (c *Client) ListProjects(ctx context.Context, opts *ListOptions) ([]Project, error) {
 	var projects []Project
-	if err := c.get(ctx, "/projects", &projects); err != nil {
+	path := appendListParams("/projects", opts)
+	if err := c.get(ctx, path, &projects); err != nil {
 		return nil, err
 	}
 	return projects, nil

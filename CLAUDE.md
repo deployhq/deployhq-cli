@@ -51,6 +51,9 @@ skill-evals/deployhq/  Eval suite (49 cases) testing LLM → CLI translation
 - **`dhq api`**: Escape hatch covering all 144+ endpoints not in the command tree.
 - **Breadcrumbs**: JSON responses include suggested next commands.
 - **No login in CI**: `DEPLOYHQ_ACCOUNT` + `DEPLOYHQ_EMAIL` + `DEPLOYHQ_API_KEY` env vars.
+- **Pagination**: `--page` and `--per-page` on paginated list commands (deployments, servers, server-groups). JSON output includes `pagination` metadata when available. Non-paginated endpoints don't have these flags.
+- **Dry-run**: `dhq deploy --dry-run` creates a preview deployment without executing. Returns `preview_pending` status. Mutually exclusive with `--wait`.
+- **API spec**: `https://api.deployhq.com/docs` (OpenAPI 3.1.0, machine-readable JSON at `/docs.json`)
 
 ## Testing
 
