@@ -29,13 +29,14 @@ var (
 //   - Pipe (non-TTY):       JSON to stdout, status to stderr
 //   - DEPLOYHQ_OUTPUT_FILE: JSONL appended to the specified file
 type Envelope struct {
-	Stdout     io.Writer
-	Stderr     io.Writer
-	Logger     *Logger
-	JSONMode   bool
-	JSONFields []string   // field selection for --json
-	OutputFile *os.File   // DEPLOYHQ_OUTPUT_FILE JSONL writer
-	IsTTY      bool
+	Stdout         io.Writer
+	Stderr         io.Writer
+	Logger         *Logger
+	JSONMode       bool
+	JSONFields     []string // field selection for --json
+	OutputFile     *os.File // DEPLOYHQ_OUTPUT_FILE JSONL writer
+	IsTTY          bool
+	NonInteractive bool // when true, never prompt — fail with actionable errors
 }
 
 // NewEnvelope creates an Envelope with auto-detected TTY and output file.

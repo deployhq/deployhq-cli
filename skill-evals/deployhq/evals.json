@@ -467,6 +467,90 @@
       },
       "must_not_contain": ["deployments rollback"],
       "notes": "Should prefer shortcut 'dhq rollback' over 'dhq deployments rollback'"
+    },
+
+    {
+      "id": "workflow-diagnose-failed-deploy",
+      "category": "agent-workflows",
+      "prompt": "Deployment xyz789 on my-app just failed. Help me figure out what went wrong and fix it.",
+      "expected": {
+        "command": "dhq deployments logs",
+        "args": ["xyz789"],
+        "flags": ["-p", "my-app"]
+      },
+      "notes": "First step in diagnosing a failed deployment is reading the logs. Agent should then suggest rollback or retry based on output."
+    },
+    {
+      "id": "workflow-non-interactive-deploy",
+      "category": "agent-workflows",
+      "prompt": "Deploy my-app to Production server in a CI pipeline where no interactive prompts are allowed",
+      "expected": {
+        "command": "dhq deploy",
+        "flags": ["-p", "my-app", "-s", "Production", "--json"]
+      },
+      "must_not_contain": ["--interactive", "init", "hello"],
+      "notes": "Agent must always specify --server explicitly to avoid interactive picker. --non-interactive is auto-enabled in CI."
+    },
+    {
+      "id": "workflow-rollback-after-failure",
+      "category": "agent-workflows",
+      "prompt": "The latest deployment abc123 on my-app failed. Roll it back.",
+      "expected": {
+        "command": "dhq rollback",
+        "args": ["abc123"],
+        "flags": ["-p", "my-app", "--json"]
+      },
+      "notes": "Direct rollback of a known failed deployment."
+    },
+    {
+      "id": "workflow-check-metadata-safety",
+      "category": "agent-workflows",
+      "prompt": "I want to see which commands are safe to run automatically without human oversight",
+      "expected": {
+        "command": "dhq commands",
+        "flags": ["--json"]
+      },
+      "notes": "Agent should use 'dhq commands --json' and inspect the 'agent.safe_for_automation' field."
+    },
+    {
+      "id": "workflow-doctor-connectivity",
+      "category": "agent-workflows",
+      "prompt": "The CLI seems broken — check if everything is configured correctly and we can reach the API",
+      "expected": {
+        "command": "dhq doctor"
+      },
+      "notes": "Doctor checks auth, account, project, config files, and API connectivity."
+    },
+    {
+      "id": "workflow-ambiguous-server-strict",
+      "category": "agent-workflows",
+      "prompt": "Deploy my-app but I'm not sure which server to use. List the servers first.",
+      "expected": {
+        "command": "dhq servers list",
+        "flags": ["-p", "my-app", "--json"]
+      },
+      "notes": "When server is ambiguous, agent should list servers first rather than deploying without --server."
+    },
+    {
+      "id": "workflow-deploy-with-next-actions",
+      "category": "agent-workflows",
+      "prompt": "Deploy my-app and tell me what commands I can run next to monitor it",
+      "expected": {
+        "command": "dhq deploy",
+        "flags": ["-p", "my-app", "--json"]
+      },
+      "notes": "With --json, the response includes breadcrumbs with watch, status, logs, and abort commands."
+    },
+    {
+      "id": "workflow-deploy-wait-timeout",
+      "category": "agent-workflows",
+      "prompt": "Deploy my-app to staging, wait for it to finish, but give up after 3 minutes",
+      "expected": {
+        "command": "dhq deploy",
+        "flags": ["-p", "my-app", "-s", "staging", "--wait", "--timeout", "180"]
+      },
+      "notes": "Agent should convert 3 minutes to 180 seconds for the --timeout flag."
     }
   ]
 }
+

@@ -18,13 +18,14 @@ import (
 
 var (
 	// Global flags
-	flagAccount string
-	flagEmail   string
-	flagAPIKey  string
-	flagProject string
-	flagJSON    string
-	flagCwd     string
-	flagHost    string
+	flagAccount        string
+	flagEmail          string
+	flagAPIKey         string
+	flagProject        string
+	flagJSON           string
+	flagCwd            string
+	flagHost           string
+	flagNonInteractive bool
 
 	// Shared context
 	cliCtx *cli.Context
@@ -85,6 +86,11 @@ Support: support@deployhq.com`,
 			// Detect agent mode
 			agent := harness.Detect()
 
+			// Non-interactive: explicit flag, agent detection, or non-TTY
+			if flagNonInteractive || agent.Detected || !env.IsTTY {
+				env.NonInteractive = true
+			}
+
 			cliCtx = cli.NewContext(cfg, env, logger)
 			cliCtx.IsAgent = agent.Detected
 			cliCtx.Version = version
@@ -139,6 +145,7 @@ Support: support@deployhq.com`,
 	pf.StringVar(&flagJSON, "json", "", "Output as JSON (optionally specify fields: --json name,status)")
 	pf.Lookup("json").NoOptDefVal = "true"
 	pf.StringVarP(&flagCwd, "cwd", "C", "", "Change working directory before running")
+	pf.BoolVar(&flagNonInteractive, "non-interactive", false, "Never prompt; fail with actionable errors on ambiguity")
 	pf.StringVar(&flagHost, "host", "", "API host override (e.g. deployhq.dev for staging)")
 	_ = pf.MarkHidden("host")
 

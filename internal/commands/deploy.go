@@ -134,7 +134,7 @@ func newDeployCmd() *cobra.Command {
 					server = servers[0].Identifier
 					env.Status("Auto-selected server: %s", servers[0].Name)
 				} else if err == nil && len(servers) > 1 {
-					if env.IsTTY {
+					if !env.NonInteractive {
 						// Interactive picker
 						items := make([]string, len(servers))
 						for i, s := range servers {
@@ -151,9 +151,13 @@ func newDeployCmd() *cobra.Command {
 						server = servers[idx].Identifier
 						env.Status("Selected server: %s", servers[idx].Name)
 					} else {
+						names := make([]string, len(servers))
+						for i, s := range servers {
+							names[i] = fmt.Sprintf("%s (%s)", s.Identifier, s.Name)
+						}
 						return &output.UserError{
 							Message: "Multiple servers found — specify which one",
-							Hint:    fmt.Sprintf("Use --server <identifier>, e.g. dhq deploy -p %s -s %s", projectID, servers[0].Identifier),
+							Hint:    fmt.Sprintf("Use --server <identifier>. Available: %s", strings.Join(names, ", ")),
 						}
 					}
 				}
@@ -166,7 +170,7 @@ func newDeployCmd() *cobra.Command {
 					resolved, candidates := resolveServerName(server, servers)
 					if resolved != "" {
 						server = resolved
-					} else if len(candidates) > 0 && env.IsTTY {
+					} else if len(candidates) > 0 && !env.NonInteractive {
 						items := make([]string, len(candidates))
 						for i, s := range candidates {
 							items[i] = fmt.Sprintf("%s (%s)", s.Name, s.ProtocolType)
@@ -181,9 +185,13 @@ func newDeployCmd() *cobra.Command {
 						}
 						server = candidates[idx].Identifier
 					} else if len(candidates) > 0 {
+						names := make([]string, len(candidates))
+						for i, s := range candidates {
+							names[i] = fmt.Sprintf("%s (%s)", s.Identifier, s.Name)
+						}
 						return &output.UserError{
 							Message: fmt.Sprintf("Multiple servers match %q — specify which one", server),
-							Hint:    fmt.Sprintf("Use the full identifier, e.g. dhq deploy -p %s -s %s", projectID, candidates[0].Identifier),
+							Hint:    fmt.Sprintf("Use the full identifier. Matches: %s", strings.Join(names, ", ")),
 						}
 					}
 				}
@@ -235,10 +243,10 @@ func newDeployCmd() *cobra.Command {
 			if env.JSONMode || !env.IsTTY {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Deployment %s queued", dep.Identifier),
-					output.Breadcrumb{Action: "watch", Cmd: fmt.Sprintf("dhq deployments watch %s -p %s", dep.Identifier, projectID)},
-					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
-					output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", dep.Identifier, projectID)},
-					output.Breadcrumb{Action: "abort", Cmd: fmt.Sprintf("dhq deployments abort %s -p %s", dep.Identifier, projectID)},
+					output.Breadcrumb{Action: "watch", Cmd: fmt.Sprintf("dhq deployments watch %s -p %s", dep.Identifier, projectID), Resource: "deployment", ID: dep.Identifier},
+					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID), Resource: "deployment", ID: dep.Identifier},
+					output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", dep.Identifier, projectID), Resource: "deployment", ID: dep.Identifier},
+					output.Breadcrumb{Action: "abort", Cmd: fmt.Sprintf("dhq deployments abort %s -p %s", dep.Identifier, projectID), Resource: "deployment", ID: dep.Identifier},
 				))
 			}
 

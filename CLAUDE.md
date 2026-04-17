@@ -49,7 +49,10 @@ skill-evals/deployhq/  Eval suite (49 cases) testing LLM → CLI translation
 - **`--json <fields>`**: Field selection on any command. Piped output auto-switches to JSON.
 - **`FlexString` type**: The DeployHQ API inconsistently returns some fields as strings or numbers. `FlexString` handles both.
 - **`dhq api`**: Escape hatch covering all 144+ endpoints not in the command tree.
-- **Breadcrumbs**: JSON responses include suggested next commands.
+- **Breadcrumbs**: JSON responses include suggested next commands with `resource` type and `id`.
+- **`--non-interactive`**: Strict mode that never prompts. Auto-enabled for detected agents and piped output. Ambiguous inputs fail with structured errors listing available options.
+- **Agent metadata**: `dhq commands --json` includes per-command `agent` object with `interactive`, `destructive`, `idempotent`, `safe_for_automation`, `resource_types`. Defined in `internal/commands/agent_metadata.go`.
+- **Structured errors**: Error responses include `exit_code`, `retryable`, and `recovery` actions.
 - **No login in CI**: `DEPLOYHQ_ACCOUNT` + `DEPLOYHQ_EMAIL` + `DEPLOYHQ_API_KEY` env vars.
 - **Pagination**: `--page` and `--per-page` on paginated list commands (deployments, servers, server-groups). JSON output includes `pagination` metadata when available. Non-paginated endpoints don't have these flags.
 - **Dry-run**: `dhq deploy --dry-run` creates a preview deployment without executing. Returns `preview_pending` status. Mutually exclusive with `--wait`.

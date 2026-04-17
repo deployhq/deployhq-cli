@@ -77,7 +77,73 @@ func TestErrorResponse(t *testing.T) {
 	resp := ErrorResponse("timeout", "Deploy timed out", "Increase --wait-timeout", "https://docs.example.com")
 
 	assert.False(t, resp.OK)
-	data := resp.Data.(map[string]string)
-	assert.Equal(t, "timeout", data["code"])
-	assert.Equal(t, "Deploy timed out", data["error"])
+	data := resp.Data.(ErrorData)
+	assert.Equal(t, "timeout", data.Code)
+	assert.Equal(t, "Deploy timed out", data.Error)
+	assert.Equal(t, "Increase --wait-timeout", data.Suggestion)
+	assert.Equal(t, "https://docs.example.com", data.DocURL)
+}
+
+func TestErrorResponseFromErr_UserError(t *testing.T) {
+	err := &UserError{Message: "No project specified", Hint: "Use --project flag"}
+	resp := ErrorResponseFromErr(err)
+
+	assert.False(t, resp.OK)
+	data := resp.Data.(ErrorData)
+	assert.Equal(t, "user_error", data.Code)
+	assert.Equal(t, ExitUserError, data.ExitCode)
+	assert.Equal(t, "No project specified", data.Error)
+	assert.Equal(t, "Use --project flag", data.Suggestion)
+	assert.False(t, data.Retryable)
+}
+
+func TestErrorResponseFromErr_AuthError(t *testing.T) {
+	err := &AuthError{Message: "Not logged in", Hint: "Run dhq auth login"}
+	resp := ErrorResponseFromErr(err)
+
+	data := resp.Data.(ErrorData)
+	assert.Equal(t, "auth_error", data.Code)
+	assert.Equal(t, ExitAuthError, data.ExitCode)
+	assert.NotEmpty(t, data.Recovery)
+	assert.Equal(t, "login", data.Recovery[0].Action)
+}
+
+func TestErrorResponseFromErr_Retryable(t *testing.T) {
+	err := &InternalError{Message: "rate_limit exceeded"}
+	resp := ErrorResponseFromErr(err)
+
+	data := resp.Data.(ErrorData)
+	assert.True(t, data.Retryable)
+}
+
+func TestErrorData_JSONShape(t *testing.T) {
+	resp := ErrorResponseFromErr(&UserError{Message: "test error"})
+
+	b, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	var raw map[string]interface{}
+	require.NoError(t, json.Unmarshal(b, &raw))
+
+	assert.False(t, raw["ok"].(bool))
+	data := raw["data"].(map[string]interface{})
+	assert.Equal(t, "user_error", data["code"])
+	assert.Equal(t, "test error", data["error"])
+	assert.NotNil(t, data["exit_code"])
+	_, hasRetryable := data["retryable"]
+	assert.True(t, hasRetryable)
+}
+
+func TestBreadcrumb_ResourceFields(t *testing.T) {
+	b := Breadcrumb{
+		Action:   "watch",
+		Cmd:      "dhq deployments watch abc -p proj",
+		Resource: "deployment",
+		ID:       "abc",
+	}
+
+	data, err := json.Marshal(b)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"resource":"deployment"`)
+	assert.Contains(t, string(data), `"id":"abc"`)
 }

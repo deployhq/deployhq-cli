@@ -38,9 +38,13 @@ Verify with: `dhq auth status`
 - **Breadcrumbs**: JSON responses include `breadcrumbs` array with suggested next commands
 - **Exit codes**: 0 = success, non-zero = failure
 
-## Non-Interactive Guarantee
+## Non-Interactive Mode
 
-The CLI never prompts when all required flags are provided. For agent usage, always supply all required flags explicitly. The only interactive commands are `dhq init`, `dhq hello`, and `dhq auth login` (when flags are omitted).
+Use `--non-interactive` to guarantee the CLI never prompts. This mode is **auto-enabled** when an agent is detected or output is piped.
+
+In non-interactive mode, any ambiguity (e.g. multiple servers, missing required values) fails with a structured error listing available options instead of prompting.
+
+The only commands that **cannot** run non-interactively are: `dhq init`, `dhq hello`, `dhq configure` (use their flag-based alternatives instead).
 
 ## Command Groups
 
@@ -94,8 +98,12 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 ## Invariants
 
 - Always use `--json` for machine-readable output when scripting or in agent context
-- JSON responses include `breadcrumbs` with suggested next commands — use them for workflow chaining
+- Use `--non-interactive` to guarantee no prompts (auto-enabled for agents and piped output)
+- JSON responses include `breadcrumbs` with `action`, `cmd`, `resource`, and `id` fields for workflow chaining
+- Error responses include `retryable`, `exit_code`, and `recovery` actions for automated error handling
+- Exit codes: 0 = success, 1 = user error, 2 = internal, 3 = auth, 4 = network, 5 = not found, 6 = conflict
 - Empty results return exit 0 with empty `data` array (not an error)
+- `dhq commands --json` includes per-command agent metadata: `interactive`, `destructive`, `idempotent`, `safe_for_automation`, `resource_types`
 - `dhq api` covers all 144+ API endpoints not in the command tree
 - Project flag (`-p`/`--project`) accepts permalink or identifier
 - Server flag (`-s`/`--server`) uses fuzzy matching: exact > normalized > substring

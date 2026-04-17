@@ -10,12 +10,13 @@ import (
 
 // CommandInfo describes a command for the agent discovery catalog.
 type CommandInfo struct {
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Usage       string        `json:"usage"`
-	Aliases     []string      `json:"aliases,omitempty"`
-	Flags       []FlagInfo    `json:"flags,omitempty"`
-	Subcommands []CommandInfo `json:"subcommands,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Usage       string         `json:"usage"`
+	Aliases     []string       `json:"aliases,omitempty"`
+	Flags       []FlagInfo     `json:"flags,omitempty"`
+	Subcommands []CommandInfo  `json:"subcommands,omitempty"`
+	Agent       *AgentMetadata `json:"agent,omitempty"`
 }
 
 // FlagInfo describes a command flag.
@@ -52,11 +53,13 @@ func buildCatalog(cmd *cobra.Command) []CommandInfo {
 			continue
 		}
 
+		meta := lookupAgentMetadata(child.CommandPath())
 		info := CommandInfo{
 			Name:        child.Name(),
 			Description: child.Short,
 			Usage:       child.UseLine(),
 			Aliases:     child.Aliases,
+			Agent:       &meta,
 		}
 
 		// Collect local flags

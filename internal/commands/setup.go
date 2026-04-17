@@ -210,7 +210,7 @@ dhq deploy -p <project> -s <server> --wait --json
 
 #### Deploy latest revision
 ` + "```" + `
-dhq deploy -p <project> -s <server> --use-latest --wait --json
+dhq deploy -p <project> -s <server> --wait --json
 ` + "```" + `
 
 #### Check deployment status
@@ -282,10 +282,13 @@ dhq api POST /projects/<id>/config_files --body '{"config_file":{...}}'
 
 ## Invariants
 - Always use ` + "`--json`" + ` for machine-readable output
-- JSON responses include ` + "`breadcrumbs`" + ` with suggested next commands
-- Exit code 0 = success, 1 = failure (check JSON ` + "`ok`" + ` field for details)
+- Use ` + "`--non-interactive`" + ` to guarantee no prompts (auto-enabled for agents and piped output)
+- JSON responses include ` + "`breadcrumbs`" + ` with suggested next commands and resource IDs
+- Error responses include ` + "`retryable`" + `, ` + "`exit_code`" + `, and ` + "`recovery`" + ` actions
+- Exit code 0 = success, 1 = user error, 2 = internal, 3 = auth, 4 = network, 5 = not found, 6 = conflict
 - Empty results return exit 0 with empty ` + "`data`" + ` (not an error)
 - ` + "`dhq api`" + ` covers any endpoint not in the command tree
+- ` + "`dhq commands --json`" + ` includes agent metadata (interactive, destructive, idempotent, safe_for_automation)
 - Use ` + "`--wait`" + ` on deploy to block until completion (exits non-zero on failure)
 
 ## Triggers

@@ -4,8 +4,10 @@ import "strings"
 
 // Breadcrumb represents a suggested next action.
 type Breadcrumb struct {
-	Action string `json:"action"`
-	Cmd    string `json:"cmd"`
+	Action   string `json:"action"`
+	Cmd      string `json:"cmd"`
+	Resource string `json:"resource,omitempty"` // resource type (deployment, server, project)
+	ID       string `json:"id,omitempty"`       // resource identifier
 }
 
 // Pagination metadata for JSON output.
@@ -47,15 +49,28 @@ func NewPaginatedResponse(data interface{}, pagination Pagination, summary strin
 	}
 }
 
+// ErrorData is the structured error payload inside a Response.
+type ErrorData struct {
+	Error      string       `json:"error"`
+	Code       string       `json:"code"`        // user_error, auth_error, internal_error, not_found, conflict, network_error
+	ExitCode   int          `json:"exit_code"`    // numeric exit code (1-6)
+	Retryable  bool         `json:"retryable"`    // safe to retry the same command
+	Suggestion string       `json:"suggestion,omitempty"`
+	DocURL     string       `json:"doc_url,omitempty"`
+	Recovery   []Breadcrumb `json:"recovery,omitempty"` // suggested recovery actions
+}
+
 // ErrorResponse creates an error response envelope.
 func ErrorResponse(code, message, suggestion, docURL string) *Response {
 	return &Response{
 		OK: false,
-		Data: map[string]string{
-			"error":      message,
-			"code":       code,
-			"suggestion": suggestion,
-			"doc_url":    docURL,
+		Data: ErrorData{
+			Error:      message,
+			Code:       code,
+			ExitCode:   exitCodeForErrorCode(code),
+			Retryable:  isRetryable(code, message),
+			Suggestion: suggestion,
+			DocURL:     docURL,
 		},
 	}
 }
@@ -69,6 +84,7 @@ func ErrorResponseFromErr(err error) *Response {
 	code := "error"
 	message := err.Error()
 	hint := ""
+	exitCode := ClassifyError(err)
 
 	switch e := err.(type) {
 	case *UserError:
@@ -92,7 +108,73 @@ func ErrorResponseFromErr(err error) *Response {
 		hint = cobraArgHint(message)
 	}
 
-	return ErrorResponse(code, message, hint, "")
+	return &Response{
+		OK: false,
+		Data: ErrorData{
+			Error:      message,
+			Code:       code,
+			ExitCode:   exitCode,
+			Retryable:  isRetryable(code, message),
+			Suggestion: hint,
+			Recovery:   recoveryActions(code, message),
+		},
+	}
+}
+
+// exitCodeForErrorCode maps error code strings to numeric exit codes.
+func exitCodeForErrorCode(code string) int {
+	switch code {
+	case "user_error":
+		return ExitUserError
+	case "auth_error":
+		return ExitAuthError
+	case "internal_error":
+		return ExitInternalError
+	case "not_found":
+		return ExitNotFoundError
+	case "conflict":
+		return ExitConflictError
+	case "network_error":
+		return ExitNetworkError
+	default:
+		return ExitInternalError
+	}
+}
+
+// isRetryable determines if an error is safe to retry.
+func isRetryable(code, message string) bool {
+	msg := strings.ToLower(message)
+	if strings.Contains(msg, "rate_limit") || strings.Contains(msg, "timeout") ||
+		code == "network_error" {
+		return true
+	}
+	return false
+}
+
+// recoveryActions returns suggested next commands for common errors.
+func recoveryActions(code, message string) []Breadcrumb {
+	msg := strings.ToLower(message)
+	switch {
+	case code == "auth_error":
+		return []Breadcrumb{
+			{Action: "login", Cmd: "dhq auth login"},
+			{Action: "check_status", Cmd: "dhq auth status"},
+		}
+	case strings.Contains(msg, "not logged in") || strings.Contains(msg, "not authenticated"):
+		return []Breadcrumb{
+			{Action: "login", Cmd: "dhq auth login"},
+		}
+	case strings.Contains(msg, "no project"):
+		return []Breadcrumb{
+			{Action: "list_projects", Cmd: "dhq projects list --json"},
+			{Action: "set_project", Cmd: "dhq config set project <permalink>"},
+		}
+	case strings.Contains(msg, "not found"):
+		return []Breadcrumb{
+			{Action: "list_resources", Cmd: "dhq projects list --json"},
+		}
+	}
+	return nil
 }
 
 // apiErrorHint returns a suggestion for known API error patterns.
