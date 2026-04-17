@@ -28,7 +28,7 @@ func resolveLatestRevision(ctx context.Context, client *sdk.Client, projectID st
 	}
 
 	// Fallback: most recent deployment's end revision
-	deps, depsErr := client.ListDeployments(ctx, projectID)
+	deps, depsErr := client.ListDeployments(ctx, projectID, nil)
 	if depsErr == nil && deps != nil {
 		for _, d := range deps.Records {
 			if d.EndRevision != nil && d.EndRevision.Ref != "" {
