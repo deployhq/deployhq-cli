@@ -16,6 +16,13 @@ brew install deployhq/tap/dhq
 curl -fsSL https://deployhq.com/install/cli | sh
 ```
 
+### Scoop (Windows)
+
+```powershell
+scoop bucket add deployhq https://github.com/deployhq/scoop-bucket
+scoop install dhq
+```
+
 ### Go
 
 ```bash
@@ -24,7 +31,7 @@ go install github.com/deployhq/deployhq-cli/cmd/deployhq@latest
 
 ### Binary
 
-Download from [Releases](https://github.com/deployhq/deployhq-cli/releases).
+Download from [Releases](https://github.com/deployhq/deployhq-cli/releases) (Linux, macOS, Windows — amd64/arm64).
 
 ### Updating
 
@@ -101,6 +108,7 @@ dhq repos         show | create | update | branches | commits | commit-info | la
 dhq deploy        [-p project] [-s server] [--wait] (deploy with live progress)
 dhq retry         <deployment-id> -p <project>
 dhq rollback      <deployment-id> -p <project>
+dhq insights      [project] (deployment insights: totals, success rate, duration)
 dhq test-access   [-p project] [-s server] [--wait] (test repo + server connectivity)
 dhq open          [project] (open DeployHQ in browser)
 dhq hello         (guided onboarding: login/signup + project setup)
@@ -158,6 +166,8 @@ On failure, logs are shown automatically with suggested next commands.
 ## AI Assistant
 
 Get AI-powered help for your deployments using a local LLM. All data stays on your machine.
+
+If you are already using an AI coding agent (Claude Code, Codex, Cursor, etc.), your agent can use `dhq` commands and the API directly — you don't need `dhq assist`. The local assistant is for developers who want a **privacy-first, offline-capable** option using an open-source model via [Ollama](https://ollama.com), without relying on an external coding agent.
 
 ```bash
 # One-time setup (installs Ollama + downloads model)
@@ -247,11 +257,41 @@ Agent skill guides are available at `.claude/SKILL.md`, `.codex/SKILL.md`, `.cur
 # Install agent plugin (Claude Code, Codex, Cursor, or Windsurf)
 dhq setup claude
 
-# Full command catalog for agent discovery
+# Full command catalog with agent safety metadata
 dhq commands --json
 
 # Agent-optimized workflow
 DEPLOYHQ_AGENT=my-bot dhq deploy -p my-app --json
+```
+
+### Non-Interactive Mode
+
+Use `--non-interactive` to guarantee the CLI never prompts. Auto-enabled when output is piped.
+
+```bash
+# Explicit strict mode — errors instead of prompting
+dhq deploy -p my-app --non-interactive --json
+
+# Piped output auto-enables non-interactive
+dhq deploy -p my-app --json | jq .
+```
+
+### Agent Metadata
+
+`dhq commands --json` includes per-command safety metadata:
+
+```json
+{
+  "agent": {
+    "interactive": false,
+    "destructive": true,
+    "idempotent": false,
+    "requires_confirmation": true,
+    "supports_json": true,
+    "safe_for_automation": true,
+    "resource_types": ["project"]
+  }
+}
 ```
 
 Set `DEPLOYHQ_OUTPUT_FILE` to capture all operations as JSONL:
@@ -271,7 +311,7 @@ The `skills/deployhq/` directory contains structured reference docs that AI agen
 
 ### Skill Evals
 
-`skill-evals/deployhq/` contains 49 evaluation cases that test whether an LLM correctly translates natural language into `dhq` commands:
+`skill-evals/deployhq/` contains 57 evaluation cases that test whether an LLM correctly translates natural language into `dhq` commands:
 
 ```bash
 # Dry-run (no API calls)
