@@ -75,9 +75,9 @@ func TestAgentMetadata_UnsafeForAutomation(t *testing.T) {
 
 func TestAgentMetadata_DefaultForUnknown(t *testing.T) {
 	m := lookupAgentMetadata("dhq nonexistent command")
-	assert.True(t, m.Idempotent)
-	assert.True(t, m.SupportsJSON)
-	assert.True(t, m.SafeForAutomation)
+	assert.False(t, m.Idempotent, "unknown commands default to not idempotent")
+	assert.False(t, m.SupportsJSON, "unknown commands default to no JSON support")
+	assert.False(t, m.SafeForAutomation, "unknown commands default to not safe")
 	assert.False(t, m.Destructive)
 	assert.False(t, m.Interactive)
 }
@@ -129,4 +129,47 @@ func TestNonInteractive_DeployServerAmbiguity(t *testing.T) {
 	err := cmd.Execute()
 	// This will fail at auth since we have no credentials, but the flag should parse
 	assert.Error(t, err)
+}
+
+func TestNonInteractive_InitFails(t *testing.T) {
+	cmd := NewRootCmd("test")
+	cmd.SetArgs([]string{"init", "--non-interactive"})
+	err := cmd.Execute()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "interactive-only")
+}
+
+func TestNonInteractive_HelloFails(t *testing.T) {
+	cmd := NewRootCmd("test")
+	cmd.SetArgs([]string{"hello", "--non-interactive"})
+	err := cmd.Execute()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "interactive-only")
+}
+
+func TestNonInteractive_ConfigureFails(t *testing.T) {
+	cmd := NewRootCmd("test")
+	cmd.SetArgs([]string{"configure", "--non-interactive"})
+	err := cmd.Execute()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "interactive-only")
+}
+
+func TestAgentMetadata_MCPNotSafe(t *testing.T) {
+	m := lookupAgentMetadata("dhq mcp")
+	assert.True(t, m.Interactive)
+	assert.False(t, m.SafeForAutomation)
+}
+
+func TestAgentMetadata_AuthLogout(t *testing.T) {
+	m := lookupAgentMetadata("dhq auth logout")
+	assert.True(t, m.Interactive, "logout can prompt for account picker")
+	assert.True(t, m.SafeForAutomation, "safe with --account flag")
+}
+
+func TestAgentMetadata_Commands(t *testing.T) {
+	m := lookupAgentMetadata("dhq commands")
+	assert.True(t, m.Idempotent)
+	assert.True(t, m.SupportsJSON)
+	assert.True(t, m.SafeForAutomation)
 }

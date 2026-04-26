@@ -142,7 +142,14 @@ var commandMetadataTable = map[string]AgentMetadata{
 		Interactive: true, Idempotent: true,
 		SupportsJSON: false, SafeForAutomation: true,
 	},
+	"dhq auth logout": {
+		Interactive: true, Idempotent: true,
+		SupportsJSON: false, SafeForAutomation: true,
+	},
 	"dhq auth status": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+	},
+	"dhq auth token": {
 		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
 	},
 	"dhq init": {
@@ -159,7 +166,107 @@ var commandMetadataTable = map[string]AgentMetadata{
 	},
 	"dhq signup": {
 		Interactive: true,
-		SupportsJSON: false, SafeForAutomation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+	},
+	"dhq mcp": {
+		Interactive: true,
+		SupportsJSON: false, SafeForAutomation: false,
+	},
+
+	// Configuration resources (all non-interactive CRUD)
+	"dhq config-files list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"config_file"},
+	},
+	"dhq config-files create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"config_file"},
+	},
+	"dhq config-files delete": {
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"config_file"},
+	},
+	"dhq build-commands list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"build_command"},
+	},
+	"dhq build-commands create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"build_command"},
+	},
+	"dhq excluded-files list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"excluded_file"},
+	},
+	"dhq excluded-files create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"excluded_file"},
+	},
+	"dhq ssh-commands list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"ssh_command"},
+	},
+	"dhq ssh-commands create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"ssh_command"},
+	},
+
+	// Repos
+	"dhq repos show": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"repository"},
+	},
+	"dhq repos create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"repository"},
+	},
+	"dhq repos branches": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"repository"},
+	},
+	"dhq repos commits": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"repository"},
+	},
+
+	// Global resources
+	"dhq global-servers list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"server"},
+	},
+	"dhq global-env-vars list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"env_var"},
+	},
+	"dhq ssh-keys list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"ssh_key"},
+	},
+	"dhq templates list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"template"},
+	},
+	"dhq zones list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"zone"},
+	},
+
+	// Meta
+	"dhq commands": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+	},
+	"dhq version": {
+		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
+	},
+	"dhq update": {
+		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
+	},
+	"dhq config show": {
+		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
+	},
+	"dhq config set": {
+		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
 	},
 }
 
@@ -172,12 +279,15 @@ func lookupAgentMetadata(commandPath string) AgentMetadata {
 	return defaultMetadata()
 }
 
-// defaultMetadata returns conservative defaults: non-interactive, non-destructive,
-// idempotent, supports JSON, safe for automation.
+// defaultMetadata returns conservative defaults for unaudited commands:
+// not safe for automation, not idempotent, no JSON support assumed.
+// Commands must be explicitly added to commandMetadataTable to be marked safe.
 func defaultMetadata() AgentMetadata {
 	return AgentMetadata{
-		Idempotent:    true,
-		SupportsJSON:  true,
-		SafeForAutomation: true,
+		Interactive:       false,
+		Destructive:       false,
+		Idempotent:        false,
+		SupportsJSON:      false,
+		SafeForAutomation: false,
 	}
 }

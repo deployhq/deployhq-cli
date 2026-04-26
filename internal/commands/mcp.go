@@ -34,7 +34,7 @@ The MCP server binary is searched in:
 			bin := findMCPBinary()
 			if bin == nil {
 				// Offer to install if running interactively
-				if env.IsTTY {
+				if !env.NonInteractive {
 					env.Status("MCP server not found.")
 					prompt := promptui.Select{
 						Label: "Install deployhq-mcp-server",

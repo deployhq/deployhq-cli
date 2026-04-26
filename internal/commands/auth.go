@@ -68,7 +68,7 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 
 	// Interactive prompts for missing values (two-tier: flag > prompt)
 	if opts.Account == "" {
-		if !env.IsTTY {
+		if env.NonInteractive {
 			return &output.UserError{
 				Message: "Account is required in non-interactive mode",
 				Hint:    "Use --account flag",
@@ -80,7 +80,7 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 	}
 
 	if opts.Email == "" {
-		if !env.IsTTY {
+		if env.NonInteractive {
 			return &output.UserError{
 				Message: "Email is required in non-interactive mode",
 				Hint:    "Use --email flag",
@@ -92,7 +92,7 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 	}
 
 	if opts.APIKey == "" {
-		if !env.IsTTY {
+		if env.NonInteractive {
 			return &output.UserError{
 				Message: "API key is required in non-interactive mode",
 				Hint:    "Use --api-key flag",
@@ -195,8 +195,8 @@ func newAuthLogoutCmd() *cobra.Command {
 				return nil
 			}
 
-			// Multiple accounts — show picker in TTY, error in non-TTY
-			if !env.IsTTY {
+			// Multiple accounts — show picker or fail in non-interactive
+			if env.NonInteractive {
 				return &output.UserError{
 					Message: "Multiple accounts logged in — specify which one",
 					Hint:    "Use --account <name> or --all",

@@ -26,7 +26,7 @@ func newSignupCmd() *cobra.Command {
 
 			// Interactive prompts for missing fields
 			if email == "" {
-				if !env.IsTTY {
+				if env.NonInteractive {
 					return &output.UserError{
 					Message: "--email is required in non-interactive mode",
 					Hint:    "Usage: dhq signup --email user@example.com --password <pass> [--account-name <name>] [--full-name <name>]",
@@ -41,7 +41,7 @@ func newSignupCmd() *cobra.Command {
 			}
 
 			if password == "" {
-				if !env.IsTTY {
+				if env.NonInteractive {
 					return &output.UserError{
 					Message: "--password is required in non-interactive mode",
 					Hint:    "Usage: dhq signup --email user@example.com --password <pass> [--account-name <name>] [--full-name <name>]",
@@ -59,7 +59,7 @@ func newSignupCmd() *cobra.Command {
 				return &output.UserError{Message: "Password is required"}
 			}
 
-			if accountName == "" && env.IsTTY {
+			if accountName == "" && !env.NonInteractive {
 				fmt.Fprint(env.Stderr, "Account name (optional, press Enter to auto-generate): ") //nolint:errcheck
 				input, _ := reader.ReadString('\n')
 				accountName = strings.TrimSpace(input)

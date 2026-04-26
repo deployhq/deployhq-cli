@@ -23,6 +23,12 @@ func newHelloCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
+			if env.NonInteractive {
+				return &output.UserError{
+					Message: "'dhq hello' is interactive-only and cannot run in non-interactive mode",
+					Hint:    "Use the non-interactive equivalents:\n  dhq auth login --account <acct> --email <email> --api-key <key>\n  dhq config set project <permalink>",
+				}
+			}
 			if !env.IsTTY {
 				return &output.UserError{
 					Message: "Interactive setup requires a terminal",

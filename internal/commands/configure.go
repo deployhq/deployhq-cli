@@ -17,6 +17,12 @@ func newConfigureCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
+			if env.NonInteractive {
+				return &output.UserError{
+					Message: "'dhq configure' is interactive-only and cannot run in non-interactive mode",
+					Hint:    "Use the non-interactive equivalents:\n  dhq config set project <permalink>\n  dhq config set account <name>",
+				}
+			}
 			if !env.IsTTY {
 				return &output.UserError{
 					Message: "Interactive setup requires a terminal",

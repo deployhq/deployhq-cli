@@ -196,6 +196,12 @@ func newInitCmd() *cobra.Command {
 		Long:  "Create a new DeployHQ project with repository, server, and optional first deploy — all from your terminal.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
+			if env.NonInteractive {
+				return &output.UserError{
+					Message: "'dhq init' is interactive-only and cannot run in non-interactive mode",
+					Hint:    "Use the non-interactive equivalents:\n  dhq projects create --name <name> --json\n  dhq repos create -p <project> --scm-type git --url <url> --json\n  dhq servers create -p <project> --name <name> --protocol-type ssh --hostname <host> --username <user> --json",
+				}
+			}
 			if !env.IsTTY {
 				return &output.UserError{
 					Message: "Interactive setup requires a terminal",
