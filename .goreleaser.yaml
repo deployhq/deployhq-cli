@@ -56,15 +56,15 @@ brews:
     test: |
       system "#{bin}/dhq", "version"
 
-# Uncomment when deployhq/scoop-bucket repo is created:
-# scoops:
-#   - name: dhq
-#     repository:
-#       owner: deployhq
-#       name: scoop-bucket
-#     homepage: "https://www.deployhq.com"
-#     description: "DeployHQ CLI — deploy from your terminal"
-#     license: "MIT"
+scoops:
+  - name: dhq
+    repository:
+      owner: deployhq
+      name: scoop-bucket
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://www.deployhq.com"
+    description: "DeployHQ CLI — deploy from your terminal"
+    license: "MIT"
 
 nfpms:
   - id: dhq
