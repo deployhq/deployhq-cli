@@ -86,8 +86,11 @@ Support: support@deployhq.com`,
 			// Detect agent mode
 			agent := harness.Detect()
 
-			// Non-interactive: explicit flag, agent detection, or non-TTY
-			if flagNonInteractive || agent.Detected || !env.IsTTY {
+			// Non-interactive: explicit flag or non-TTY (piped output).
+			// Agent detection alone does NOT force non-interactive — agents
+			// running in a real terminal keep interactive prompts unless
+			// they explicitly pass --non-interactive.
+			if flagNonInteractive || !env.IsTTY {
 				env.NonInteractive = true
 			}
 
