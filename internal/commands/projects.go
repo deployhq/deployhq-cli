@@ -358,8 +358,7 @@ func newProjectsInsightsCmd() *cobra.Command {
 				return err
 			}
 
-			return cliCtx.Envelope.WriteJSON(output.NewResponse(insights,
-				fmt.Sprintf("Insights for project: %s", projectID)))
+			return renderInsights(insights, projectID)
 		},
 	}
 }
