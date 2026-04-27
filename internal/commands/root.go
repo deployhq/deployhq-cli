@@ -282,13 +282,14 @@ func SendTelemetry(err error) {
 	}
 
 	evt := telemetry.Event{
-		Command:    commandPath,
-		ExitCode:   exitCode,
-		ErrorClass: telemetry.ErrorClassFromExitCode(exitCode),
-		DurationMs: time.Since(commandStartTime).Milliseconds(),
-		CLIVersion: cliVersion,
-		IsAgent:    isAgent,
-		AgentName:  agentName,
+		Command:      commandPath,
+		ExitCode:     exitCode,
+		ErrorClass:   telemetry.ErrorClassFromExitCode(exitCode),
+		ErrorMessage: telemetry.SanitizeErrorMessage(err),
+		DurationMs:   time.Since(commandStartTime).Milliseconds(),
+		CLIVersion:   cliVersion,
+		IsAgent:      isAgent,
+		AgentName:    agentName,
 	}
 
 	// Run in a goroutine but wait up to 2s so the HTTP request

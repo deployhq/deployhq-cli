@@ -3,7 +3,10 @@ package telemetry
 import (
 	"context"
 	"net/http"
+	"os"
+	"regexp"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/mixpanel/mixpanel-go"
@@ -26,13 +29,14 @@ const (
 
 // Event holds the properties sent with each telemetry event.
 type Event struct {
-	Command    string
-	ExitCode   int
-	ErrorClass string
-	DurationMs int64
-	CLIVersion string
-	IsAgent    bool
-	AgentName  string
+	Command      string
+	ExitCode     int
+	ErrorClass   string
+	ErrorMessage string // sanitized first line of the error; empty on success
+	DurationMs   int64
+	CLIVersion   string
+	IsAgent      bool
+	AgentName    string
 }
 
 // Tracker is the interface used for sending telemetry.
@@ -102,16 +106,17 @@ func (t *mixpanelTracker) Track(distinctID string, event Event) {
 	env := Environment()
 
 	e := t.mp.NewEvent(eventName, distinctID, map[string]any{
-		"command":     event.Command,
-		"exit_code":   event.ExitCode,
-		"error_class": event.ErrorClass,
-		"duration_ms": event.DurationMs,
-		"cli_version": event.CLIVersion,
-		"environment": env,
-		"os":          runtime.GOOS,
-		"arch":        runtime.GOARCH,
-		"is_agent":    event.IsAgent,
-		"agent_name":  event.AgentName,
+		"command":       event.Command,
+		"exit_code":     event.ExitCode,
+		"error_class":   event.ErrorClass,
+		"error_message": event.ErrorMessage,
+		"duration_ms":   event.DurationMs,
+		"cli_version":   event.CLIVersion,
+		"environment":   env,
+		"os":            runtime.GOOS,
+		"arch":          runtime.GOARCH,
+		"is_agent":      event.IsAgent,
+		"agent_name":    event.AgentName,
 	})
 
 	// Synchronous send with timeout. The caller (SendTelemetry) runs
@@ -126,3 +131,46 @@ func (t *mixpanelTracker) Track(distinctID string, event Event) {
 type nopTracker struct{}
 
 func (nopTracker) Track(string, Event) {}
+
+const errorMessageMaxLen = 200
+
+//nolint:gochecknoglobals // compiled once, used by SanitizeErrorMessage
+var (
+	emailRE = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+	uuidRE  = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+	// bearerRE catches "Bearer <token>" and "Authorization: Bearer <token>" patterns.
+	bearerRE = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._\-]{8,}`)
+	// kvSecretRE catches key=value / token=value style leaks (api_key=..., secret=..., token=...).
+	kvSecretRE = regexp.MustCompile(`(?i)\b(api[_-]?key|api[_-]?token|secret|token|password|passwd)\s*[=:]\s*\S+`)
+)
+
+// SanitizeErrorMessage produces a privacy-safe, single-line summary of an
+// error suitable for telemetry. It:
+//   - returns "" if err is nil
+//   - keeps only the first line
+//   - replaces the user's home directory with "~"
+//   - redacts emails, UUIDs, bearer tokens, and key=value secrets
+//   - truncates to 200 characters
+func SanitizeErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if s == "" {
+		return ""
+	}
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if home, herr := os.UserHomeDir(); herr == nil && home != "" && home != "/" {
+		s = strings.ReplaceAll(s, home, "~")
+	}
+	s = kvSecretRE.ReplaceAllString(s, "$1=<redacted>")
+	s = bearerRE.ReplaceAllString(s, "${1}<redacted>")
+	s = emailRE.ReplaceAllString(s, "<email>")
+	s = uuidRE.ReplaceAllString(s, "<uuid>")
+	if len(s) > errorMessageMaxLen {
+		s = s[:errorMessageMaxLen] + "…"
+	}
+	return s
+}

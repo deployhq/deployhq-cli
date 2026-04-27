@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,4 +163,77 @@ func TestMockTracker(t *testing.T) {
 	assert.Len(t, m.events, 1)
 	assert.Equal(t, "deploy", m.events[0].Command)
 	assert.Equal(t, "test-id", m.ids[0])
+}
+
+// --- SanitizeErrorMessage tests ---
+
+func TestSanitizeErrorMessage_Nil(t *testing.T) {
+	assert.Equal(t, "", SanitizeErrorMessage(nil))
+}
+
+func TestSanitizeErrorMessage_FirstLineOnly(t *testing.T) {
+	err := errors.New("primary cause\nstack: foo\nstack: bar")
+	got := SanitizeErrorMessage(err)
+	assert.Equal(t, "primary cause", got)
+}
+
+func TestSanitizeErrorMessage_RedactsEmail(t *testing.T) {
+	err := errors.New("user alice@example.com not found")
+	got := SanitizeErrorMessage(err)
+	assert.Equal(t, "user <email> not found", got)
+	assert.NotContains(t, got, "alice@example.com")
+}
+
+func TestSanitizeErrorMessage_RedactsUUID(t *testing.T) {
+	err := errors.New("project 550e8400-e29b-41d4-a716-446655440000 not found")
+	got := SanitizeErrorMessage(err)
+	assert.Equal(t, "project <uuid> not found", got)
+}
+
+func TestSanitizeErrorMessage_RedactsBearer(t *testing.T) {
+	err := errors.New("invalid Bearer abc123def456ghi token")
+	got := SanitizeErrorMessage(err)
+	assert.NotContains(t, got, "abc123def456ghi")
+	assert.Contains(t, got, "<redacted>")
+}
+
+func TestSanitizeErrorMessage_RedactsKVSecrets(t *testing.T) {
+	cases := []string{
+		"failed: api_key=sk_live_abc123 not accepted",
+		"failed: token=eyJhbGciOiJIUzI1NiJ9 expired",
+		"failed: password=hunter2 invalid",
+		"failed: secret=topsecret123",
+	}
+	for _, msg := range cases {
+		got := SanitizeErrorMessage(errors.New(msg))
+		assert.Contains(t, got, "<redacted>", "input: %q", msg)
+		assert.NotContains(t, got, "sk_live_abc123", "input: %q", msg)
+		assert.NotContains(t, got, "eyJhbGciOiJIUzI1NiJ9", "input: %q", msg)
+		assert.NotContains(t, got, "hunter2", "input: %q", msg)
+		assert.NotContains(t, got, "topsecret123", "input: %q", msg)
+	}
+}
+
+func TestSanitizeErrorMessage_ReplacesHomeDir(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	if home == "" || home == "/" {
+		t.Skip("no usable home dir")
+	}
+	in := errors.New("read " + filepath.Join(home, ".deployhq", "config.toml") + ": permission denied")
+	got := SanitizeErrorMessage(in)
+	assert.NotContains(t, got, home)
+	assert.Contains(t, got, "~")
+}
+
+func TestSanitizeErrorMessage_Truncates(t *testing.T) {
+	long := strings.Repeat("x", 500)
+	got := SanitizeErrorMessage(errors.New(long))
+	// 200 chars + the truncation marker rune
+	assert.True(t, len(got) <= errorMessageMaxLen+len("…"), "got %d chars: %q", len(got), got)
+	assert.True(t, strings.HasSuffix(got, "…"), "expected ellipsis suffix, got %q", got)
+}
+
+func TestSanitizeErrorMessage_EmptyError(t *testing.T) {
+	assert.Equal(t, "", SanitizeErrorMessage(errors.New("")))
 }

@@ -16,8 +16,10 @@ func newTelemetryCmd() *cobra.Command {
 		Short: "Manage anonymous usage telemetry",
 		Long: `Control anonymous telemetry that helps improve the DeployHQ CLI.
 
-What we collect: command name, exit code, duration, CLI version, OS, arch, agent flag.
-What we never collect: account, email, project, arguments, file paths, error messages.`,
+What we collect: command name, exit code, duration, CLI version, OS, arch, agent flag,
+and a sanitized one-line error summary on failure (home paths, emails, UUIDs, and
+secrets are redacted; truncated to 200 chars).
+What we never collect: account, project, arguments, full stack traces, or unredacted credentials.`,
 	}
 
 	cmd.AddCommand(
