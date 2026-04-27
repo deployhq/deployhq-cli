@@ -169,8 +169,16 @@ dhq agents create --name "Office Agent" --json
 ### Integrations
 ```bash
 dhq integrations list -p my-app --json
-dhq integrations create -p my-app --type slack --config '{"webhook_url":"..."}' --json
+dhq integrations create -p my-app --type slack_oauth --json
+dhq integrations create -p my-app --type google_chat --config '{"url":"https://chat.googleapis.com/v1/spaces/..."}' --json
+dhq integrations create -p my-app --type telegram --config '{"bot_token":"...","chat_id":"..."}' --json
+dhq integrations create -p my-app --type microsoft_teams --config '{"url":"...","team":"..."}' --json
+dhq integrations create -p my-app --type discord --json
 ```
+
+Available types: `slack_oauth`, `google_chat`, `telegram`, `microsoft_teams`, `discord`, `http_req`, `cloudflare`, `new_relic`, `rollbar`, `sentry`, `bugsnag`, `honeybadger`, `git_deployment_status`.
+
+Deprecated (use alternatives): `slack` (use `slack_oauth`), `flowdock`, `campfire`, `http_post` (use `http_req`).
 
 ### Auto-Deploys
 ```bash
