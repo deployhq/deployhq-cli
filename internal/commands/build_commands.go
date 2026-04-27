@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -44,9 +45,9 @@ func newBuildCommandsCmd() *cobra.Command {
 					if !c.Enabled {
 						enabled = "no"
 					}
-					rows[i] = []string{c.Identifier, c.Command, c.Description, enabled}
+					rows[i] = []string{c.Identifier, c.Description, enabled, truncateLine(c.Command, 60)}
 				}
-				env.WriteTable([]string{"Identifier", "Command", "Description", "Enabled"}, rows)
+				env.WriteTable([]string{"Identifier", "Description", "Enabled", "Command"}, rows)
 				return nil
 			},
 		},
@@ -148,4 +149,16 @@ func newBuildCommandsCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&command, "command", "", "Build command (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
 	return cmd
+}
+
+// truncateLine returns the first line of s, truncated to maxLen characters.
+func truncateLine(s string, maxLen int) string {
+	line, _, multiline := strings.Cut(s, "\n")
+	if len(line) > maxLen {
+		return line[:maxLen-3] + "..."
+	}
+	if multiline {
+		return line + "..."
+	}
+	return line
 }
