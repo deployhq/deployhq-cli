@@ -209,6 +209,9 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 				Hint:    "Check your email and API key at Profile > API Key in DeployHQ",
 			}
 		}
+		if output.IsNetworkErr(err) {
+			return nil, &output.NetworkError{Message: "validate credentials", Cause: err}
+		}
 		return nil, &output.InternalError{Message: "validate credentials", Cause: err}
 	}
 

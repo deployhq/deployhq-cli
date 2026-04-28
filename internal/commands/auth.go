@@ -131,6 +131,9 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 				Hint:    "Check your email and API key at Profile > API Key in DeployHQ",
 			}
 		}
+		if output.IsNetworkErr(err) {
+			return &output.NetworkError{Message: "validate credentials", Cause: err}
+		}
 		return &output.InternalError{Message: "validate credentials", Cause: err}
 	}
 
