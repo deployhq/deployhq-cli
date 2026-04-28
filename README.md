@@ -2,6 +2,8 @@
 
 DeployHQ from your terminal -- for humans and agents.
 
+![dhq demo](assets/demo.gif)
+
 ## Install
 
 ### Homebrew (macOS/Linux)
