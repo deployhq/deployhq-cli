@@ -29,7 +29,9 @@ dhq deploy -p my-app --wait --timeout 300 --json
 
 **Behaviors:**
 - Auto-selects sole server; prompts for multiple (TTY) or errors (non-TTY)
-- Auto-fetches latest revision if `--revision` omitted
+- Branch resolution: `--branch` overrides everything. Otherwise deploys the **server's default branch** (`preferred_branch`). Falls back to the repo default only if the server has no preferred branch.
+- Revision resolution: `--revision` overrides everything. Otherwise uses the tip SHA of the resolved branch.
+- An unknown `--branch` errors out instead of silently deploying the wrong branch.
 - `--wait` shows TUI progress in TTY, append-only in pipes
 
 ### `dhq deployments list`
