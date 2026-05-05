@@ -16,6 +16,9 @@ func newServersCmd() *cobra.Command {
 		Use:     "servers",
 		Aliases: []string{"server", "srv"},
 		Short:   "Manage servers",
+		Long: `Servers are the deployment targets for a project — the destinations where your code lands. DeployHQ supports many protocols: SSH, FTP/FTPS, Rsync, S3 (and S3-compatible), DigitalOcean, Hetzner Cloud, Heroku, Netlify, and Shopify. Each server pins exactly one protocol.
+
+Use these commands to create, configure, and list the servers attached to a project. To deploy to one, see "dhq deploy" or "dhq deployments create".`,
 	}
 
 	cmd.AddCommand(

@@ -13,6 +13,9 @@ func newTemplatesCmd() *cobra.Command {
 		Use:     "templates",
 		Aliases: []string{"template", "tmpl"},
 		Short:   "Manage templates",
+		Long: `Reusable project blueprints that pre-fill build commands, SSH commands, config files, and excluded paths when creating a new project. Browse public templates with "dhq templates public", or maintain your own account-level templates.
+
+Apply a template at project creation: "dhq projects create --template <id>".`,
 	}
 
 	cmd.AddCommand(

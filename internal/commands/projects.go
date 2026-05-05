@@ -15,6 +15,9 @@ func newProjectsCmd() *cobra.Command {
 		Use:     "projects",
 		Aliases: []string{"project", "proj"},
 		Short:   "Manage projects",
+		Long: `Projects are the top-level container in DeployHQ. Each project bundles one repository, one or more servers, build settings, environment variables, and a deployment history.
+
+Use these commands to create, list, configure, and delete projects. Once a project exists, scope subsequent commands to it with -p <permalink> or DEPLOYHQ_PROJECT.`,
 	}
 
 	cmd.AddCommand(

@@ -12,6 +12,9 @@ func newBuildCacheFilesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "build-cache-files",
 		Short: "Manage build cache files",
+		Long: `File or directory patterns the build server should cache between deploys — node_modules, vendor/, .gradle/, etc. Cached paths are restored at the start of each build, dramatically cutting time spent reinstalling dependencies.
+
+The cache can be bypassed for a single deploy with "dhq deployments create --use-cache=false".`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

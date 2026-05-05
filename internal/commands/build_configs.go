@@ -13,6 +13,7 @@ func newBuildConfigsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "build-configs",
 		Short: "Manage build configurations",
+		Long: `The build environment for a project — which language versions, OS image, and runtime tooling are available to build commands. Pair with "dhq language-versions" to discover what's pinnable.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

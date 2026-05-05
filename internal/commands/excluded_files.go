@@ -12,6 +12,9 @@ func newExcludedFilesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "excluded-files",
 		Short: "Manage excluded files",
+		Long: `File or directory patterns to skip when uploading a deployment. Common uses: keeping local-only files (.env.local, .DS_Store, .git) off production servers, or pruning documentation and tests from the deployed artifact.
+
+Patterns are evaluated against repository paths and apply per-project. Each excluded-file entry may target specific servers or all of them.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

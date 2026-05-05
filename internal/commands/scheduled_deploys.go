@@ -12,6 +12,7 @@ func newScheduledDeploysCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scheduled-deploys",
 		Short: "Manage scheduled deployments",
+		Long: `Future or recurring deployments — typically used for nightly staging refreshes, planned maintenance windows, or off-hours releases. Each schedule pins to a server, branch, and a one-off or recurring time.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

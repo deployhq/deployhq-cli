@@ -14,6 +14,9 @@ func newReposCmd() *cobra.Command {
 		Use:     "repos",
 		Aliases: []string{"repo", "repository"},
 		Short:   "Manage repository",
+		Long: `A project's repository configuration: the SCM type (git, mercurial, etc.), URL, and default branch DeployHQ pulls from. There is exactly one repository per project.
+
+Use these commands to inspect or update the repo, browse branches and commits, and look up the latest revision before deploying.`,
 	}
 
 	cmd.AddCommand(

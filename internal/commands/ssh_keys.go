@@ -12,6 +12,9 @@ func newSSHKeysCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh-keys",
 		Short: "Manage global SSH keys",
+		Long: `Account-level SSH key pairs reusable across servers and projects. Generate or upload a key once, then reference it from any "dhq servers create --use-ssh-keys --global-key-pair-id <id>" call.
+
+Centralizing keys here means rotation is one update instead of touching every server.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

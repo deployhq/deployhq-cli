@@ -12,6 +12,9 @@ func newSSHCommandsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh-commands",
 		Short: "Manage SSH commands",
+		Long: `Commands run over SSH on the deployment target — restart services, run migrations, warm caches, etc. Each command pins to a phase relative to the file upload (pre-upload, post-upload) and may target specific servers.
+
+Build commands run on the build server; SSH commands run on the deploy target.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

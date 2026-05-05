@@ -11,6 +11,9 @@ func newZonesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "zones",
 		Short: "List available deployment zones",
+		Long: `Geographic zones where DeployHQ runs its build infrastructure (US, EU, Asia-Pacific, etc.). Choosing a zone close to your servers reduces deploy latency and stays within data-residency boundaries.
+
+Pin a zone per project at creation: "dhq projects create --zone <id>", or change later with "dhq projects update".`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

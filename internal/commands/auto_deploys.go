@@ -12,6 +12,9 @@ func newAutoDeploysCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auto-deploys",
 		Short: "Manage auto deployments",
+		Long: `Auto-deploy rules trigger a deployment automatically when commits land on a configured branch. Each rule maps a server (or server group) to a branch — push to that branch, get a deployment.
+
+Use these commands to enable, disable, and list auto-deploy configuration per server.`,
 	}
 	cmd.AddCommand(
 		newAutoDeploysEnableCmd(),

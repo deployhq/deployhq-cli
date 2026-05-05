@@ -14,6 +14,9 @@ func newBuildCommandsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "build-commands",
 		Short: "Manage build commands",
+		Long: `Commands that run on the build server before files are deployed — install dependencies, compile assets, run database migrations, etc. Build commands execute in a sandboxed Docker container with the languages and tooling configured under "dhq build-configs".
+
+The output of build commands becomes the artifact that gets deployed. Each command runs in order; a non-zero exit code fails the deploy.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

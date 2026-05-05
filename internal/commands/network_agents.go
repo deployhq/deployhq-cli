@@ -12,6 +12,9 @@ func newAgentsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agents",
 		Short: "Manage network agents",
+		Long: `Network agents are DeployHQ's secure proxy for deploying through firewalls and into private networks. The agent runs on a host inside your network, brokering deploy connections from DeployHQ to private servers without exposing them to the public internet.
+
+Manage agents at the account level here, then attach one to an individual server when you create or update it.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

@@ -30,6 +30,9 @@ func newEnvVarsCmd() *cobra.Command {
 		Use:     "env-vars",
 		Aliases: []string{"env"},
 		Short:   "Manage environment variables",
+		Long: `Project-level environment variables exposed to your build pipeline (build commands, SSH commands, config files). Variables can be plain or "locked" — locked values are write-only and never returned by the API after creation, useful for secrets.
+
+For account-wide variables that apply to every project, see "dhq global-env-vars".`,
 	}
 	cmd.AddCommand(
 		newEnvVarsListCmd(),
@@ -218,6 +221,9 @@ func newGlobalEnvVarsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "global-env-vars",
 		Short: "Manage global environment variables",
+		Long: `Account-wide environment variables that apply to every project automatically. Useful for shared secrets and tooling defaults like a CI token, package registry credentials, or notification webhook URLs.
+
+Project-level variables ("dhq env-vars") with the same name override globals for that project.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

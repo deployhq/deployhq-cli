@@ -12,6 +12,7 @@ func newBuildKnownHostsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "build-known-hosts",
 		Short: "Manage build server SSH known hosts",
+		Long: `SSH known-hosts entries the build server should trust. Required when build commands fetch from non-public Git hosts (private GitLab, Gitea, internal git servers) so the SSH client doesn't prompt for host-key confirmation and fail the build.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

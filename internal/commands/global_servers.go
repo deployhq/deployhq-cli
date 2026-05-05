@@ -12,6 +12,9 @@ func newGlobalServersCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "global-servers",
 		Short: "Manage global servers",
+		Long: `Account-wide server definitions reusable across projects. Define a server once at the account level, then copy it into individual projects with "dhq global-servers copy-to-project <id>".
+
+Useful for shared infrastructure (e.g., a single CDN bucket or a shared Heroku staging app) that many projects deploy to.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{
@@ -158,6 +161,7 @@ func newIntegrationsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "integrations",
 		Short: "Manage integrations (webhooks/notifications)",
+		Long: `Webhooks and notification channels that fire on deployment events — Slack, Discord, Microsoft Teams, Google Chat, Telegram, generic webhooks, and others. Each integration pins to a project and a set of trigger events (deploy started, succeeded, failed, etc.).`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

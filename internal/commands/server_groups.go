@@ -13,6 +13,9 @@ func newServerGroupsCmd() *cobra.Command {
 		Use:     "server-groups",
 		Aliases: []string{"sg"},
 		Short:   "Manage server groups",
+		Long: `Logical groupings of servers — typically by environment (production, staging) or role (web, worker). Deploying to a group fans out to every server in it in parallel.
+
+Useful for clusters and blue-green setups where one logical "deploy" actually targets many machines.`,
 	}
 
 	cmd.AddCommand(

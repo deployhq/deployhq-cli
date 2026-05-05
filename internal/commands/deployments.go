@@ -13,6 +13,9 @@ func newDeploymentsCmd() *cobra.Command {
 		Use:     "deployments",
 		Aliases: []string{"deployment", "dep"},
 		Short:   "Manage deployments",
+		Long: `Deployments are individual runs that ship code from your repository to one or more servers. Each deployment has a status, step-by-step logs, and a start/end revision.
+
+Use these commands to create, watch, retry, roll back, and inspect deployments. For the common case — deploying the latest code — the top-level shortcut "dhq deploy" is faster.`,
 	}
 
 	cmd.AddCommand(

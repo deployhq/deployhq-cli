@@ -12,6 +12,7 @@ func newGlobalConfigFilesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "global-config-files",
 		Short: "Manage global config files",
+		Long: `Account-wide config files that can be attached to any project. Edit once at the account level, deploy to many places — useful for shared snippets like CI tokens, monitoring agent configs, or company-wide nginx fragments.`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{

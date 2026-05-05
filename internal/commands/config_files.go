@@ -12,6 +12,9 @@ func newConfigFilesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config-files",
 		Short: "Manage config files",
+		Long: `Per-project config file overrides DeployHQ writes onto each server during a deploy. Useful for environment-specific secrets and configuration that aren't (and shouldn't be) in source control — production database URLs, API keys, .env files.
+
+Each config file is scoped to one project and pinned to a target path on the server. For account-wide files reusable across projects, see "dhq global-config-files".`,
 	}
 	cmd.AddCommand(
 		newConfigFilesListCmd(),
