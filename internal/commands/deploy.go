@@ -17,6 +17,67 @@ func isUUID(s string) bool {
 	return len(s) >= 32 && strings.ContainsRune(s, '-')
 }
 
+// resolveBranchAndRevision determines the branch and end revision for a deployment.
+//
+// Branch resolution: explicit --branch → server's PreferredBranch (or Branch) → "" (use repo default).
+// Revision resolution: explicit --revision → tip SHA of the resolved branch → repo default tip.
+//
+// Sending end_revision without ensuring it matches the chosen branch was the source of two
+// user-reported bugs: server.preferred_branch was ignored, and --branch foo deployed main's tip
+// because /repository/latest_revision is branch-agnostic and end_revision overrides branch on the API.
+func resolveBranchAndRevision(
+	ctx context.Context,
+	client *sdk.Client,
+	projectID, serverIdentifier, flagBranch, flagRevision string,
+	knownServer *sdk.Server,
+) (branch, revision string, err error) {
+	branch = flagBranch
+	revision = flagRevision
+
+	if branch == "" && serverIdentifier != "" {
+		srv := knownServer
+		if srv == nil {
+			// GetServer 404s for server-group identifiers; that's expected — we fall through.
+			if s, gerr := client.GetServer(ctx, projectID, serverIdentifier); gerr == nil {
+				srv = s
+			}
+		}
+		if srv != nil {
+			switch {
+			case srv.PreferredBranch != "":
+				branch = srv.PreferredBranch
+			case srv.Branch != "":
+				branch = srv.Branch
+			}
+		}
+	}
+
+	if revision != "" {
+		return branch, revision, nil
+	}
+
+	if branch != "" {
+		branches, lerr := client.ListBranches(ctx, projectID, nil)
+		if lerr == nil {
+			sha, ok := branches[branch]
+			if !ok || sha == "" {
+				return "", "", &output.UserError{
+					Message: fmt.Sprintf("Branch %q not found in repository", branch),
+					Hint:    "Run 'dhq repos branches' to list available branches",
+				}
+			}
+			return branch, sha, nil
+		}
+		// ListBranches failed — fall through to repo-default revision.
+	}
+
+	rev, ferr := resolveLatestRevision(ctx, client, projectID)
+	if ferr != nil {
+		return "", "", ferr
+	}
+	return branch, rev, nil
+}
+
 // resolveLatestRevision tries to find the latest revision for a project,
 // falling back to the most recent deployment's end revision if the
 // repository endpoint fails (e.g. empty repo, missing default branch).
@@ -127,11 +188,16 @@ func newDeployCmd() *cobra.Command {
 
 			env := cliCtx.Envelope
 
+			// Track the Server we resolved to, so branch/revision lookup can reuse it
+			// without an extra GetServer round-trip.
+			var resolvedServer *sdk.Server
+
 			// Auto-select server if not specified
 			if server == "" {
 				servers, err := client.ListServers(cliCtx.Background(), projectID, nil)
 				if err == nil && len(servers) == 1 {
 					server = servers[0].Identifier
+					resolvedServer = &servers[0]
 					env.Status("Auto-selected server: %s", servers[0].Name)
 				} else if err == nil && len(servers) > 1 {
 					if !env.NonInteractive {
@@ -149,6 +215,7 @@ func newDeployCmd() *cobra.Command {
 							return &output.UserError{Message: "Server selection cancelled"}
 						}
 						server = servers[idx].Identifier
+						resolvedServer = &servers[idx]
 						env.Status("Selected server: %s", servers[idx].Name)
 					} else {
 						names := make([]string, len(servers))
@@ -170,6 +237,12 @@ func newDeployCmd() *cobra.Command {
 					resolved, candidates := resolveServerName(server, servers)
 					if resolved != "" {
 						server = resolved
+						for i := range servers {
+							if servers[i].Identifier == resolved {
+								resolvedServer = &servers[i]
+								break
+							}
+						}
 					} else if len(candidates) > 0 && !env.NonInteractive {
 						items := make([]string, len(candidates))
 						for i, s := range candidates {
@@ -184,6 +257,7 @@ func newDeployCmd() *cobra.Command {
 							return &output.UserError{Message: "Server selection cancelled"}
 						}
 						server = candidates[idx].Identifier
+						resolvedServer = &candidates[idx]
 					} else if len(candidates) > 0 {
 						names := make([]string, len(candidates))
 						for i, s := range candidates {
@@ -197,14 +271,16 @@ func newDeployCmd() *cobra.Command {
 				}
 			}
 
-			// Auto-fetch latest revision if none specified
-			if revision == "" {
-				env.Status("Fetching latest revision...")
-				rev, err := resolveLatestRevision(cliCtx.Background(), client, projectID)
+			if branch == "" || revision == "" {
+				env.Status("Resolving branch and revision...")
+				resolvedBranch, resolvedRev, err := resolveBranchAndRevision(
+					cliCtx.Background(), client, projectID, server, branch, revision, resolvedServer,
+				)
 				if err != nil {
 					return err
 				}
-				revision = rev
+				branch = resolvedBranch
+				revision = resolvedRev
 			}
 
 			req := sdk.DeploymentCreateRequest{
