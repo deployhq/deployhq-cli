@@ -122,10 +122,13 @@ Support: support@deployhq.com`,
 				return
 			}
 
-			// Version update check (Wrangler pattern: show on exit, non-blocking)
+			// Version update check (Wrangler pattern: show on exit, non-blocking).
+			// The notice goes to stderr while structured output goes to stdout, so
+			// agents and pipes consuming stdout JSON never see it — there's no need
+			// to suppress on IsAgent.
 			// Skip after "dhq update" — the running binary still has the old
 			// version baked in, so the check would show a stale notice.
-			if version != "dev" && !cliCtx.IsAgent && cmd.Name() != "update" {
+			if version != "dev" && cmd.Name() != "update" {
 				info := versionpkg.Check(version)
 				if msg := versionpkg.FormatUpdateMessage(info); msg != "" {
 					cliCtx.Envelope.Status(msg)
