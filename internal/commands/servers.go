@@ -161,6 +161,23 @@ func newServersCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new server",
+		Example: `  # SSH server with password
+  dhq servers create -p my-app --name prod --protocol-type ssh \
+    --hostname prod.example.com --username deploy --password '<pw>' \
+    --path /var/www/app
+
+  # SSH server with global SSH key (recommended)
+  dhq servers create -p my-app --name prod --protocol-type ssh \
+    --hostname prod.example.com --username deploy --use-ssh-keys \
+    --global-key-pair-id key-abc123 --path /var/www/app
+
+  # S3 bucket
+  dhq servers create -p my-app --name cdn --protocol-type s3 \
+    --bucket-name assets.example.com --access-key-id AKIA... --secret-access-key '<key>'
+
+  # Heroku app
+  dhq servers create -p my-app --name staging --protocol-type heroku \
+    --app-name my-app-staging --api-key '<key>'`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if name == "" {
 				return &output.UserError{Message: "Server name is required", Hint: "Use --name flag"}

@@ -35,6 +35,14 @@ func newDeploymentsListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List deployments",
+		Example: `  # List recent deployments for a project
+  dhq deployments list -p my-app
+
+  # Page through results
+  dhq deployments list -p my-app --page 2 --per-page 50
+
+  # JSON output, just identifiers and statuses
+  dhq deployments list -p my-app --json identifier,status`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -103,7 +111,12 @@ func newDeploymentsShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <identifier>",
 		Short: "Show deployment details",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Show full details of a deployment
+  dhq deployments show dep-abc123 -p my-app
+
+  # JSON output for piping into jq
+  dhq deployments show dep-abc123 -p my-app --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -195,6 +208,15 @@ func newDeploymentsCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a deployment",
+		Long:  "Create a deployment. For most use cases, prefer the `dhq deploy` shortcut, which auto-resolves the server and the branch's tip revision.",
+		Example: `  # Create a deployment to a specific server, latest revision auto-resolved
+  dhq deployments create -p my-app --server srv-prod
+
+  # Deploy a specific branch and revision to a server group
+  dhq deployments create -p my-app --branch develop --revision a1b2c3d --parent grp-staging
+
+  # Skip the build cache for this deployment
+  dhq deployments create -p my-app --server srv-prod --use-cache=false`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -361,7 +383,12 @@ func newDeploymentsLogsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs <deployment-id>",
 		Short: "Show deployment step logs",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Show logs for every step of a deployment
+  dhq deployments logs dep-abc123 -p my-app
+
+  # Show logs for a single step only
+  dhq deployments logs dep-abc123 -p my-app --step step-xyz`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -425,7 +452,9 @@ func newDeploymentsWatchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "watch <deployment-id>",
 		Short: "Watch a deployment in real-time",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Watch a deployment until it completes or fails
+  dhq deployments watch dep-abc123 -p my-app`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {

@@ -47,6 +47,11 @@ func newAuthLoginCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Authenticate with DeployHQ",
 		Long:  "Login with your DeployHQ account credentials. Provide --account, --email, and --api-key flags, or enter them interactively.",
+		Example: `  # Interactive login (prompts for any missing values)
+  dhq auth login
+
+  # Non-interactive login with all credentials supplied
+  dhq auth login --account mycompany --email me@example.com --api-key '<key>'`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.RunF != nil {
 				return opts.RunF(opts)

@@ -107,6 +107,14 @@ func newEnvVarsCreateCmd() *cobra.Command {
 	var locked bool
 	cmd := &cobra.Command{
 		Use: "create", Short: "Create an environment variable",
+		Example: `  # Create a variable (prompts for value securely)
+  dhq env-vars create -p my-app --name DATABASE_URL
+
+  # Create with value inline
+  dhq env-vars create -p my-app --name LOG_LEVEL --value info
+
+  # Create a locked variable (value hidden after creation)
+  dhq env-vars create -p my-app --name SECRET_KEY --locked`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if name == "" {
 				return &output.UserError{Message: "--name is required"}

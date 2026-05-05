@@ -84,6 +84,11 @@ func newReposCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create repository configuration",
+		Example: `  # Connect a Git repository over SSH
+  dhq repos create -p my-app --scm-type git --url git@github.com:myco/my-app.git --branch main
+
+  # Connect over HTTPS
+  dhq repos create -p my-app --scm-type git --url https://github.com/myco/my-app.git`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if scmType == "" || url == "" {
 				return &output.UserError{Message: "Both --scm-type and --url are required"}

@@ -15,13 +15,17 @@ func newAPICmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api <method> <path>",
 		Short: "Make a raw API request (escape hatch)",
-		Long: `Make a raw API request to any DeployHQ endpoint.
-Covers all 144+ endpoints including those without dedicated commands.
-
-Examples:
+		Long:  "Make a raw API request to any DeployHQ endpoint. Covers all 144+ endpoints including those without dedicated commands.",
+		Example: `  # GET request
   dhq api GET /projects
+
+  # POST with a JSON body
   dhq api POST /projects --body '{"project":{"name":"New"}}'
+
+  # Nested resources
   dhq api GET /projects/my-app/deployments
+
+  # DELETE request
   dhq api DELETE /projects/my-app/servers/srv-123`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

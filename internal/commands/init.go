@@ -194,6 +194,13 @@ func newInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Interactive project setup wizard",
 		Long:  "Create a new DeployHQ project with repository, server, and optional first deploy — all from your terminal.",
+		Example: `  # Launch the interactive wizard
+  dhq init
+
+  # For automation, use the non-interactive equivalents instead:
+  #   dhq projects create --name <name>
+  #   dhq repos create -p <project> --scm-type git --url <url>
+  #   dhq servers create -p <project> --name <name> --protocol-type ssh ...`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 			if env.NonInteractive {

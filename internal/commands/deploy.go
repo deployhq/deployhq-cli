@@ -171,6 +171,20 @@ func newDeployCmd() *cobra.Command {
 		Use:   "deploy",
 		Short: "Deploy to a server (shortcut for deployments create)",
 		Long:  "Create a deployment. Shortcut for 'dhq deployments create'.\n\nUse --wait (-w) to watch the deployment until it completes or fails.",
+		Example: `  # Deploy the latest revision (auto-selects the only server, uses the server's preferred branch)
+  dhq deploy
+
+  # Deploy a specific branch and watch until it finishes
+  dhq deploy --branch develop --wait
+
+  # Deploy to a specific server, watching with a 10-minute timeout
+  dhq deploy -s production -w --timeout 600
+
+  # Preview what would be deployed without executing
+  dhq deploy --dry-run
+
+  # Deploy a specific commit
+  dhq deploy --revision a1b2c3d`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -375,7 +389,12 @@ func newRetryCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "retry <deployment-id>",
 		Short: "Retry a deployment (shortcut for deployments retry)",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Retry a failed deployment
+  dhq retry dep-abc123
+
+  # Retry and watch the result
+  dhq retry dep-abc123 && dhq deployments watch dep-abc123`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -406,7 +425,9 @@ func newRollbackCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "rollback <deployment-id>",
 		Short: "Rollback a deployment (shortcut for deployments rollback)",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Roll back a deployment to the previous revision
+  dhq rollback dep-abc123`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {

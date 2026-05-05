@@ -169,6 +169,14 @@ func newProjectsCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new project",
+		Example: `  # Create a new project
+  dhq projects create --name "My App"
+
+  # Create in a specific zone
+  dhq projects create --name "My App" --zone eu-west-1
+
+  # Create from a template
+  dhq projects create --name "My App" --template tmpl-rails-7`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if name == "" {
 				return &output.UserError{Message: "Project name is required", Hint: "Use --name flag"}
