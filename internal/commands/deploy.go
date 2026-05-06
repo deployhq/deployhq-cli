@@ -78,6 +78,28 @@ func resolveBranchAndRevision(
 	return branch, rev, nil
 }
 
+// resolveStartRevision determines the start_revision for a deployment.
+//
+// Resolution order: --full → "" (deploy entire branch) → explicit --start-revision →
+// resolved server's LastRevision (incremental from last successful deploy) → "".
+//
+// Sending an empty start_revision to the API means "deploy entire branch from the
+// first commit". That was the source of issue #5: dhq deploy never populated this
+// field, so every deploy looked like an initial one regardless of what the server
+// had previously deployed.
+func resolveStartRevision(server *sdk.Server, flagStart string, full bool) string {
+	if full {
+		return ""
+	}
+	if flagStart != "" {
+		return flagStart
+	}
+	if server != nil && server.LastRevision != "" {
+		return server.LastRevision
+	}
+	return ""
+}
+
 // resolveLatestRevision tries to find the latest revision for a project,
 // falling back to the most recent deployment's end revision if the
 // repository endpoint fails (e.g. empty repo, missing default branch).
@@ -163,14 +185,14 @@ func normalize(s string) string {
 }
 
 func newDeployCmd() *cobra.Command {
-	var branch, server, revision string
-	var dryRun, wait bool
+	var branch, server, revision, startRevision string
+	var dryRun, wait, full bool
 	var timeout int
 
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "Deploy to a server (shortcut for deployments create)",
-		Long:  "Create a deployment. Shortcut for 'dhq deployments create'.\n\nUse --wait (-w) to watch the deployment until it completes or fails.",
+		Long:  "Create a deployment. Shortcut for 'dhq deployments create'.\n\nBy default deploys are incremental: the start revision defaults to the server's last successfully deployed commit. Use --full to deploy the entire branch from the first commit.\n\nUse --wait (-w) to watch the deployment until it completes or fails.",
 		Example: `  # Deploy the latest revision (auto-selects the only server, uses the server's preferred branch)
   dhq deploy
 
@@ -184,7 +206,13 @@ func newDeployCmd() *cobra.Command {
   dhq deploy --dry-run
 
   # Deploy a specific commit
-  dhq deploy --revision a1b2c3d`,
+  dhq deploy --revision a1b2c3d
+
+  # Deploy from a specific start commit (useful for hotfixes)
+  dhq deploy --start-revision a1b2c3d --revision e4f5g6h
+
+  # Deploy the entire branch from the first commit (overrides incremental default)
+  dhq deploy --full`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -193,6 +221,10 @@ func newDeployCmd() *cobra.Command {
 
 			if dryRun && wait {
 				return &output.UserError{Message: "--dry-run and --wait are mutually exclusive"}
+			}
+
+			if full && startRevision != "" {
+				return &output.UserError{Message: "--full and --start-revision are mutually exclusive"}
 			}
 
 			client, err := cliCtx.Client()
@@ -285,6 +317,16 @@ func newDeployCmd() *cobra.Command {
 				}
 			}
 
+			// Eagerly fetch the server when caller didn't already resolve it
+			// (e.g. user passed a UUID directly). We need its LastRevision for
+			// start_revision resolution. GetServer 404s for server-group
+			// identifiers — that's expected, we just leave resolvedServer nil.
+			if resolvedServer == nil && server != "" {
+				if s, gerr := client.GetServer(cliCtx.Background(), projectID, server); gerr == nil {
+					resolvedServer = s
+				}
+			}
+
 			if branch == "" || revision == "" {
 				env.Status("Resolving branch and revision...")
 				resolvedBranch, resolvedRev, err := resolveBranchAndRevision(
@@ -298,6 +340,7 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			req := sdk.DeploymentCreateRequest{
+				StartRevision:    resolveStartRevision(resolvedServer, startRevision, full),
 				Branch:           branch,
 				EndRevision:      revision,
 				ParentIdentifier: server,
@@ -371,6 +414,8 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Branch to deploy")
 	cmd.Flags().StringVarP(&server, "server", "s", "", "Server or group identifier")
 	cmd.Flags().StringVarP(&revision, "revision", "r", "", "End revision (default: latest)")
+	cmd.Flags().StringVar(&startRevision, "start-revision", "", "Start revision (default: server's last deployed commit)")
+	cmd.Flags().BoolVar(&full, "full", false, "Deploy entire branch from the first commit (overrides the incremental default)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be deployed without executing")
 	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete")
 	cmd.Flags().IntVar(&timeout, "timeout", 0, "Timeout in seconds when using --wait (0 = no timeout)")

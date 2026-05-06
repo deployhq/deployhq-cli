@@ -230,6 +230,76 @@ func TestResolveBranchAndRevision_FallsBackWhenNoBranchAvailable(t *testing.T) {
 	assert.True(t, mux.latestRevCalled)
 }
 
+func TestResolveStartRevision_DefaultsToServerLastRevision(t *testing.T) {
+	// Issue #5: dhq deploy was always doing a full-branch deploy because it
+	// never populated start_revision. The default for an incremental deploy is
+	// the server's last successfully deployed commit.
+	srv := &sdk.Server{Identifier: "srv-1", LastRevision: "last-deploy-sha"}
+	got := resolveStartRevision(srv, "", false)
+	assert.Equal(t, "last-deploy-sha", got)
+}
+
+func TestResolveStartRevision_FlagOverridesServerLastRevision(t *testing.T) {
+	// --start-revision is the explicit override path (e.g. for hotfixes
+	// starting from a specific commit other than the last deploy).
+	srv := &sdk.Server{Identifier: "srv-1", LastRevision: "last-deploy-sha"}
+	got := resolveStartRevision(srv, "explicit-start", false)
+	assert.Equal(t, "explicit-start", got)
+}
+
+func TestResolveStartRevision_FullForcesEmpty(t *testing.T) {
+	// --full means "deploy entire branch from first commit" — the API treats
+	// an empty start_revision as that signal.
+	srv := &sdk.Server{Identifier: "srv-1", LastRevision: "last-deploy-sha"}
+	got := resolveStartRevision(srv, "", true)
+	assert.Equal(t, "", got, "--full must clear start_revision even when server has a last_revision")
+}
+
+func TestResolveStartRevision_FullBeatsExplicitFlag(t *testing.T) {
+	// Defensive: even if both somehow get through (the cobra-level mutual
+	// exclusivity check should catch it), --full wins.
+	srv := &sdk.Server{Identifier: "srv-1", LastRevision: "last-deploy-sha"}
+	got := resolveStartRevision(srv, "explicit-start", true)
+	assert.Equal(t, "", got)
+}
+
+func TestResolveStartRevision_NilServerReturnsEmpty(t *testing.T) {
+	// Server-group deploys and project-wide deploys have no single Server to
+	// read from — fall back to "" and let the API decide per server.
+	got := resolveStartRevision(nil, "", false)
+	assert.Equal(t, "", got)
+}
+
+func TestResolveStartRevision_NilServerStillRespectsFlag(t *testing.T) {
+	// Even without a resolved server, an explicit --start-revision must be honored.
+	got := resolveStartRevision(nil, "explicit-start", false)
+	assert.Equal(t, "explicit-start", got)
+}
+
+func TestResolveStartRevision_FreshServerReturnsEmpty(t *testing.T) {
+	// A server that has never been deployed has LastRevision="". First deploy
+	// must be a full one — there's no incremental baseline to start from.
+	srv := &sdk.Server{Identifier: "srv-1", LastRevision: ""}
+	got := resolveStartRevision(srv, "", false)
+	assert.Equal(t, "", got)
+}
+
+func TestDeployFullMutuallyExclusiveWithStartRevision(t *testing.T) {
+	cmd := NewRootCmd("test")
+	cmd.SetArgs([]string{"deploy", "--full", "--start-revision", "abc123", "-p", "test-project"})
+	err := cmd.Execute()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "mutually exclusive")
+}
+
+func TestDeployStartRevisionFlagsRegistered(t *testing.T) {
+	cmd := NewRootCmd("test")
+	deployCmd, _, _ := cmd.Find([]string{"deploy"})
+	require.NotNil(t, deployCmd)
+	assert.NotNil(t, deployCmd.Flags().Lookup("start-revision"))
+	assert.NotNil(t, deployCmd.Flags().Lookup("full"))
+}
+
 func TestResolveBranchAndRevision_PreferredBranchEmptyFallsToBranchField(t *testing.T) {
 	// Some servers populate Branch but not PreferredBranch. Treat both as the
 	// same source of truth.

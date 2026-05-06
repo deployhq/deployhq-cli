@@ -1,15 +1,22 @@
 ---
 name: deployhq
-description: >
-  Deploy code, manage servers, and automate infrastructure via the DeployHQ CLI (dhq).
-  Use when the user wants to deploy, check deployment status, manage projects/servers,
-  or interact with the DeployHQ platform.
+description: |
+  Deploy code, manage servers, and automate infrastructure via the DeployHQ CLI (dhq). Use when the user wants to deploy, check deployment status, manage projects/servers, or interact with the DeployHQ platform.
 license: MIT
 metadata:
   author: DeployHQ
-  version: "1.0.0"
-  homepage: https://www.deployhq.com/cli
-  repository: https://github.com/deployhq/deployhq-cli
+  version: 1.0.0
+  homepage: 'https://www.deployhq.com/cli'
+  repository: 'https://github.com/deployhq/deployhq-cli'
+tags:
+  - deployment automation
+  - rollback
+  - environment variables
+  - SSH
+  - S3
+tools:
+  - DeployHQ
+  - dhq
 ---
 
 # DeployHQ CLI — Agent Skill Guide
@@ -113,6 +120,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 
 - Some API fields return strings OR numbers inconsistently (handled internally by `FlexString`)
 - `dhq deploy` auto-fetches latest revision if `--revision` is omitted
+- `dhq deploy` is **incremental by default** — it picks up from the server's last successful deploy. Use `--full` for a full-branch deploy or `--start-revision <sha>` to pin a specific start commit
 - `dhq deploy --wait` blocks until deployment completes (use `--timeout` to cap)
 - Deployment `watch` uses TUI in TTY mode, append-only in pipes
 - `dhq env-vars create` prompts for value if `--value` is omitted (not agent-friendly — always pass `--value`)

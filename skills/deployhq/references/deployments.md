@@ -1,3 +1,13 @@
+---
+tags:
+  - deployment
+  - rollback
+  - retry
+  - abort
+  - build cache
+tools:
+  - dhq
+---
 # Deployments Reference
 
 ## Commands
@@ -10,11 +20,13 @@ Shortcut for creating a deployment with smart defaults.
 | `--branch` | `-b` | Branch to deploy |
 | `--server` | `-s` | Server or group identifier (fuzzy matched) |
 | `--revision` | `-r` | End revision SHA (auto-fetches latest if omitted) |
+| `--start-revision` | | Start revision SHA (default: server's last deployed commit) |
+| `--full` | | Deploy entire branch from the first commit (overrides incremental default) |
 | `--wait` | `-w` | Block until deployment completes |
 | `--timeout` | | Timeout in seconds for `--wait` (0 = no timeout) |
 
 ```bash
-# Basic deploy
+# Basic deploy (incremental — only changes since the server's last deploy)
 dhq deploy -p my-app --json
 
 # Deploy specific branch to specific server
@@ -25,13 +37,21 @@ dhq deploy -p my-app -s Production --wait --json
 
 # Deploy with timeout
 dhq deploy -p my-app --wait --timeout 300 --json
+
+# Deploy a specific commit range (e.g. a hotfix)
+dhq deploy -p my-app --start-revision a1b2c3d --revision e4f5g6h --json
+
+# Force a full deploy (entire branch from the first commit)
+dhq deploy -p my-app --full --json
 ```
 
 **Behaviors:**
 - Auto-selects sole server; prompts for multiple (TTY) or errors (non-TTY)
 - Branch resolution: `--branch` overrides everything. Otherwise deploys the **server's default branch** (`preferred_branch`). Falls back to the repo default only if the server has no preferred branch.
 - Revision resolution: `--revision` overrides everything. Otherwise uses the tip SHA of the resolved branch.
+- **Start revision resolution (incremental by default):** `--full` forces an empty start (full-branch deploy). Otherwise `--start-revision` is used if set. Otherwise the resolved server's `last_revision` (last successful deploy) is used — this is what makes deploys incremental. Servers with no prior deploy and server-group identifiers fall through to a full deploy because there's no single baseline to start from.
 - An unknown `--branch` errors out instead of silently deploying the wrong branch.
+- `--full` and `--start-revision` are mutually exclusive.
 - `--wait` shows TUI progress in TTY, append-only in pipes
 
 ### `dhq deployments list`
