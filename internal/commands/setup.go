@@ -116,6 +116,7 @@ func newAgentSetupCmd(a agentSetup) *cobra.Command {
 		Use:   a.Use,
 		Short: a.Short,
 		Long:  longHelp(a),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sc := scopeUser
 			if project {
@@ -274,6 +275,32 @@ func pathWindsurf(sc scope) (string, error) {
 
 // ----- Marked-block helpers ------------------------------------------------
 
+// writeFileAtomic writes data to path via a temp file + rename, so a crash
+// mid-write can't corrupt the target. Used for shared files (AGENTS.md,
+// global_rules.md) that may contain unrelated user content outside our block.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".dhq-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}
+
 // upsertBlock inserts or replaces the dhq-managed block in the file at path.
 // Returns true if the block was newly added (file created or block appended),
 // false if an existing block was replaced.
@@ -286,7 +313,7 @@ func upsertBlock(path, content string) (added bool, err error) {
 	block := blockBegin + "\n" + strings.TrimRight(content, "\n") + "\n" + blockEnd
 
 	if errors.Is(readErr, os.ErrNotExist) {
-		return true, os.WriteFile(path, []byte(block+"\n"), 0644)
+		return true, writeFileAtomic(path, []byte(block+"\n"), 0644)
 	}
 
 	text := string(existing)
@@ -296,14 +323,14 @@ func upsertBlock(path, content string) (added bool, err error) {
 			return false, fmt.Errorf("found %s without matching %s", blockBegin, blockEnd)
 		}
 		end := start + rel + len(blockEnd)
-		return false, os.WriteFile(path, []byte(text[:start]+block+text[end:]), 0644)
+		return false, writeFileAtomic(path, []byte(text[:start]+block+text[end:]), 0644)
 	}
 
 	if !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
 	text += "\n" + block + "\n"
-	return true, os.WriteFile(path, []byte(text), 0644)
+	return true, writeFileAtomic(path, []byte(text), 0644)
 }
 
 // removeBlock removes the dhq-managed block from the file at path.
@@ -337,7 +364,7 @@ func removeBlock(path string) (bool, error) {
 	if strings.TrimSpace(text) == "" {
 		return true, os.Remove(path)
 	}
-	return true, os.WriteFile(path, []byte(text), 0644)
+	return true, writeFileAtomic(path, []byte(text), 0644)
 }
 
 // ----- Skill content -------------------------------------------------------
