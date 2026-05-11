@@ -7,7 +7,7 @@ before:
 
 builds:
   - id: dhq
-    main: ./cmd/deployhq
+    main: ./cmd/dhq
     binary: dhq
     env:
       - CGO_ENABLED=0

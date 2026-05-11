@@ -28,7 +28,7 @@ scoop install dhq
 ### Go
 
 ```bash
-go install github.com/deployhq/deployhq-cli/cmd/deployhq@latest
+go install github.com/deployhq/deployhq-cli/cmd/dhq@latest
 ```
 
 ### Binary
@@ -356,7 +356,7 @@ dep, _ := client.CreateDeployment(ctx, "my-app", sdk.DeploymentCreateRequest{
 ## Development
 
 ```bash
-go build ./cmd/deployhq/
+go build ./cmd/dhq/
 go test ./... -v
 go vet ./...
 ```

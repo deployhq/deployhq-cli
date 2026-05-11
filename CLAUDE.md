@@ -7,7 +7,7 @@
 ## Development
 
 ```bash
-go build ./cmd/deployhq/   # binary outputs as dhq       # Build binary
+go build ./cmd/dhq/        # binary outputs as dhq       # Build binary
 go test ./... -v               # Run all tests (96 tests)
 go vet ./...                   # Static analysis
 ```

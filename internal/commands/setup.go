@@ -1,48 +1,98 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-// agentSetup defines the configuration for an agent integration command.
+// blockBegin / blockEnd delimit the section managed by `dhq setup`
+// inside files that may also contain unrelated user content (AGENTS.md, global_rules.md).
+const (
+	blockBegin = "<!-- BEGIN dhq -->"
+	blockEnd   = "<!-- END dhq -->"
+)
+
+// errUnsupportedScope is returned when an agent does not support a given scope.
+var errUnsupportedScope = errors.New("scope not supported")
+
+type scope string
+
+const (
+	scopeUser    scope = "user"
+	scopeProject scope = "project"
+)
+
+// writeStrategy controls how content is combined with the target file.
+type writeStrategy int
+
+const (
+	// strategyOverwrite writes the entire file. Used when we own a dedicated path
+	// (e.g. ~/.claude/skills/deployhq/SKILL.md, .cursor/rules/deployhq.mdc).
+	strategyOverwrite writeStrategy = iota
+	// strategyMarkedBlock inserts or replaces our delimited block within a shared
+	// file (AGENTS.md, global_rules.md). On uninstall only the block is removed.
+	strategyMarkedBlock
+)
+
+// agentSetup describes a single agent integration target.
 type agentSetup struct {
-	Use       string // cobra Use field (e.g. "claude")
-	Short     string // one-line description
-	Name      string // display name (e.g. "Claude Code")
-	DotDir    string // directory name (e.g. ".claude")
-	ExtraFile string // optional extra file to write (besides SKILL.md)
+	Use         string
+	Short       string
+	Name        string
+	PathFor     func(scope) (string, error)
+	Content     func() []byte
+	StrategyFor func(scope) writeStrategy
+}
+
+func always(s writeStrategy) func(scope) writeStrategy {
+	return func(scope) writeStrategy { return s }
 }
 
 var agents = []agentSetup{
 	{
-		Use:       "claude",
-		Short:     "Install Claude Code integration",
-		Name:      "Claude Code",
-		DotDir:    ".claude",
-		ExtraFile: "deployhq-commands.md",
+		Use:         "claude",
+		Short:       "Install Claude Code skill",
+		Name:        "Claude Code",
+		PathFor:     pathClaude,
+		Content:     func() []byte { return []byte(skillFrontmatter + skillBody) },
+		StrategyFor: always(strategyOverwrite),
 	},
 	{
-		Use:    "codex",
-		Short:  "Install OpenAI Codex integration",
-		Name:   "Codex",
-		DotDir: ".codex",
+		Use:         "codex",
+		Short:       "Install OpenAI Codex AGENTS.md section",
+		Name:        "Codex",
+		PathFor:     pathCodex,
+		Content:     func() []byte { return []byte(skillBody) },
+		StrategyFor: always(strategyMarkedBlock),
 	},
 	{
-		Use:    "cursor",
-		Short:  "Install Cursor integration",
-		Name:   "Cursor",
-		DotDir: ".cursor",
+		Use:         "cursor",
+		Short:       "Install Cursor project rule",
+		Name:        "Cursor",
+		PathFor:     pathCursor,
+		Content:     func() []byte { return []byte(cursorFrontmatter + skillBody) },
+		StrategyFor: always(strategyOverwrite),
 	},
 	{
-		Use:    "windsurf",
-		Short:  "Install Windsurf integration",
-		Name:   "Windsurf",
-		DotDir: ".windsurf",
+		Use:     "windsurf",
+		Short:   "Install Windsurf integration",
+		Name:    "Windsurf",
+		PathFor: pathWindsurf,
+		Content: func() []byte { return []byte(skillBody) },
+		// User-level writes into the shared ~/.codeium/.../global_rules.md, so we
+		// must merge with a marker block. Project-level writes a dedicated file we own.
+		StrategyFor: func(sc scope) writeStrategy {
+			if sc == scopeUser {
+				return strategyMarkedBlock
+			}
+			return strategyOverwrite
+		},
 	},
 }
 
@@ -52,11 +102,9 @@ func newSetupCmd() *cobra.Command {
 		Short: "Install agent plugins",
 		Long:  "Install DeployHQ agent integration files for AI coding assistants.",
 	}
-
 	for _, a := range agents {
 		cmd.AddCommand(newAgentSetupCmd(a))
 	}
-
 	return cmd
 }
 
@@ -67,102 +115,237 @@ func newAgentSetupCmd(a agentSetup) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   a.Use,
 		Short: a.Short,
-		Long: fmt.Sprintf(`Install %s agent integration files.
-
-By default, files are installed in ~/%s/ (user-level) so the skill
-is available in all sessions. Use --project to install in the current
-directory's %s/ instead.`, a.Name, a.DotDir, a.DotDir),
+		Long:  longHelp(a),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sc := scopeUser
+			if project {
+				sc = scopeProject
+			}
+
+			path, err := a.PathFor(sc)
+			if err != nil {
+				if errors.Is(err, errUnsupportedScope) {
+					return &output.UserError{
+						Message: fmt.Sprintf("%s does not support %s-level install; rerun with --project", a.Name, sc),
+					}
+				}
+				return &output.InternalError{Message: "resolve install path", Cause: err}
+			}
+
 			env := cliCtx.Envelope
-
-			scope := "user"
-			dir := ""
-			if project {
-				dir = a.DotDir
-				scope = "project"
-			} else {
-				home, err := os.UserHomeDir()
-				if err != nil {
-					return &output.InternalError{Message: "find home directory", Cause: err}
-				}
-				dir = filepath.Join(home, a.DotDir)
-			}
-
-			// Collect the files this agent installs
-			files := installedFiles(a, dir)
-
+			strategy := a.StrategyFor(sc)
 			if uninstall {
-				return removeSetupFiles(files, dir, a.Name)
+				return runUninstall(env, a, path, strategy)
 			}
-
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return &output.InternalError{Message: fmt.Sprintf("create %s directory", a.DotDir), Cause: err}
-			}
-
-			// Write SKILL.md
-			if err := os.WriteFile(files["SKILL.md"], []byte(skillMD), 0644); err != nil {
-				return &output.InternalError{Message: "write SKILL.md", Cause: err}
-			}
-
-			// Write optional extra file
-			if a.ExtraFile != "" {
-				content := "# DeployHQ CLI Commands\n\nRun `dhq commands --json` to get the full command catalog.\n\nRun `dhq --help` for usage information.\n"
-				if err := os.WriteFile(files[a.ExtraFile], []byte(content), 0644); err != nil {
-					return &output.InternalError{Message: fmt.Sprintf("write %s", a.ExtraFile), Cause: err}
-				}
-			}
-
-			env.Status("Installed %s integration (%s-level):", a.Name, scope)
-			for _, p := range files {
-				env.Status("  %s", p)
-			}
-			uninstallFlag := ""
-			if project {
-				uninstallFlag = " --project"
-			}
-			env.Status("\nTo uninstall: dhq setup %s --uninstall%s", a.Use, uninstallFlag)
-			return nil
+			return runInstall(env, a, path, sc, project, strategy)
 		},
 	}
 
 	cmd.Flags().BoolVar(&uninstall, "uninstall", false, "Remove installed files")
 	cmd.Flags().BoolVar(&project, "project", false,
-		fmt.Sprintf("Install to %s/ (project-level) instead of ~/%s/ (user-level)", a.DotDir, a.DotDir))
+		"Install at project level (current directory) instead of user-global")
 	return cmd
 }
 
-// installedFiles returns a map of logical name → file path for the files an agent installs.
-func installedFiles(a agentSetup, dir string) map[string]string {
-	files := map[string]string{
-		"SKILL.md": filepath.Join(dir, "SKILL.md"),
+func longHelp(a agentSetup) string {
+	userPath, userErr := a.PathFor(scopeUser)
+	projPath, _ := a.PathFor(scopeProject)
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Install %s integration files.\n\n", a.Name)
+	if userErr == nil {
+		fmt.Fprintf(&b, "Default (user-global): %s\n", userPath)
+	} else {
+		fmt.Fprintf(&b, "User-global: not supported by %s\n", a.Name)
 	}
-	if a.ExtraFile != "" {
-		files[a.ExtraFile] = filepath.Join(dir, a.ExtraFile)
-	}
-	return files
+	fmt.Fprintf(&b, "With --project:        %s\n", projPath)
+	return b.String()
 }
 
-// removeSetupFiles removes only the files we installed, not the whole directory
-// (which may contain the user's own files like CLAUDE.md, memory, etc.).
-func removeSetupFiles(files map[string]string, dir, name string) error {
-	removed := 0
-	for _, f := range files {
-		if err := os.Remove(f); err == nil {
-			removed++
-		}
+func runInstall(env *output.Envelope, a agentSetup, path string, sc scope, project bool, strategy writeStrategy) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return &output.InternalError{Message: "create install directory", Cause: err}
 	}
 
-	if removed == 0 {
-		cliCtx.Envelope.Status("%s integration not found at %s", name, dir)
-	} else {
-		cliCtx.Envelope.Status("Removed %s integration from %s (%d files)", name, dir, removed)
+	switch strategy {
+	case strategyOverwrite:
+		if err := os.WriteFile(path, a.Content(), 0644); err != nil {
+			return &output.InternalError{Message: "write " + path, Cause: err}
+		}
+		env.Status("Installed %s integration (%s-level): %s", a.Name, sc, path)
+	case strategyMarkedBlock:
+		added, err := upsertBlock(path, string(a.Content()))
+		if err != nil {
+			return &output.InternalError{Message: "update " + path, Cause: err}
+		}
+		verb := "Updated"
+		if added {
+			verb = "Added"
+		}
+		env.Status("%s DeployHQ block in %s (%s-level): %s", verb, a.Name, sc, path)
+	}
+
+	uninstallFlag := ""
+	if project {
+		uninstallFlag = " --project"
+	}
+	env.Status("\nTo uninstall: dhq setup %s --uninstall%s", a.Use, uninstallFlag)
+	return nil
+}
+
+func runUninstall(env *output.Envelope, a agentSetup, path string, strategy writeStrategy) error {
+	switch strategy {
+	case strategyOverwrite:
+		if err := os.Remove(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				env.Status("%s integration not found at %s", a.Name, path)
+				return nil
+			}
+			return &output.InternalError{Message: "remove " + path, Cause: err}
+		}
+		// Best-effort cleanup of the deployhq-owned parent dir (e.g. .../skills/deployhq/).
+		_ = os.Remove(filepath.Dir(path))
+		env.Status("Removed %s integration: %s", a.Name, path)
+	case strategyMarkedBlock:
+		removed, err := removeBlock(path)
+		if err != nil {
+			return &output.InternalError{Message: "update " + path, Cause: err}
+		}
+		if !removed {
+			env.Status("No DeployHQ block found in %s", path)
+			return nil
+		}
+		env.Status("Removed DeployHQ block from %s", path)
 	}
 	return nil
 }
 
-// skillMD is the embedded SKILL.md content.
-// It can also be fetched remotely from the DeployHQ docs.
-const skillMD = `---
+// ----- Path resolvers ------------------------------------------------------
+
+func pathClaude(sc scope) (string, error) {
+	switch sc {
+	case scopeUser:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".claude", "skills", "deployhq", "SKILL.md"), nil
+	case scopeProject:
+		return filepath.Join(".claude", "skills", "deployhq", "SKILL.md"), nil
+	}
+	return "", errUnsupportedScope
+}
+
+func pathCodex(sc scope) (string, error) {
+	switch sc {
+	case scopeUser:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".codex", "AGENTS.md"), nil
+	case scopeProject:
+		return "AGENTS.md", nil
+	}
+	return "", errUnsupportedScope
+}
+
+func pathCursor(sc scope) (string, error) {
+	// Cursor has no user-level rules directory; rules live in .cursor/rules/ per project.
+	if sc == scopeUser {
+		return "", errUnsupportedScope
+	}
+	return filepath.Join(".cursor", "rules", "deployhq.mdc"), nil
+}
+
+func pathWindsurf(sc scope) (string, error) {
+	switch sc {
+	case scopeUser:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".codeium", "windsurf", "memories", "global_rules.md"), nil
+	case scopeProject:
+		return filepath.Join(".windsurf", "rules", "deployhq.md"), nil
+	}
+	return "", errUnsupportedScope
+}
+
+// ----- Marked-block helpers ------------------------------------------------
+
+// upsertBlock inserts or replaces the dhq-managed block in the file at path.
+// Returns true if the block was newly added (file created or block appended),
+// false if an existing block was replaced.
+func upsertBlock(path, content string) (added bool, err error) {
+	existing, readErr := os.ReadFile(path)
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return false, readErr
+	}
+
+	block := blockBegin + "\n" + strings.TrimRight(content, "\n") + "\n" + blockEnd
+
+	if errors.Is(readErr, os.ErrNotExist) {
+		return true, os.WriteFile(path, []byte(block+"\n"), 0644)
+	}
+
+	text := string(existing)
+	if start := strings.Index(text, blockBegin); start >= 0 {
+		rel := strings.Index(text[start:], blockEnd)
+		if rel < 0 {
+			return false, fmt.Errorf("found %s without matching %s", blockBegin, blockEnd)
+		}
+		end := start + rel + len(blockEnd)
+		return false, os.WriteFile(path, []byte(text[:start]+block+text[end:]), 0644)
+	}
+
+	if !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	text += "\n" + block + "\n"
+	return true, os.WriteFile(path, []byte(text), 0644)
+}
+
+// removeBlock removes the dhq-managed block from the file at path.
+// If the file becomes empty afterwards, it is deleted.
+func removeBlock(path string) (bool, error) {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	text := string(existing)
+	start := strings.Index(text, blockBegin)
+	if start < 0 {
+		return false, nil
+	}
+	rel := strings.Index(text[start:], blockEnd)
+	if rel < 0 {
+		return false, fmt.Errorf("found %s without matching %s", blockBegin, blockEnd)
+	}
+	end := start + rel + len(blockEnd)
+	if end < len(text) && text[end] == '\n' {
+		end++
+	}
+	// Also drop a leading blank line that we inserted to separate from prior content.
+	if start > 0 && text[start-1] == '\n' && start >= 2 && text[start-2] == '\n' {
+		start--
+	}
+	text = text[:start] + text[end:]
+	if strings.TrimSpace(text) == "" {
+		return true, os.Remove(path)
+	}
+	return true, os.WriteFile(path, []byte(text), 0644)
+}
+
+// ----- Skill content -------------------------------------------------------
+
+// skillFrontmatter is the Anthropic-format frontmatter used for the Claude Code
+// skill. Other agents either get a different frontmatter (Cursor) or none (Codex,
+// Windsurf — they embed the body into shared files like AGENTS.md).
+const skillFrontmatter = `---
 name: deployhq
 description: >
   Deploy code, manage servers, and automate infrastructure via the DeployHQ CLI (dhq).
@@ -176,7 +359,18 @@ metadata:
   repository: https://github.com/deployhq/deployhq-cli
 ---
 
-# DeployHQ CLI — Agent Skill Guide
+`
+
+// cursorFrontmatter is the .mdc rule frontmatter Cursor uses to know when to apply
+// a rule. alwaysApply=false means Cursor pulls it in only when relevant.
+const cursorFrontmatter = `---
+description: DeployHQ CLI usage guide — invoke when the user mentions deploys, DeployHQ projects/servers, or the dhq command
+alwaysApply: false
+---
+
+`
+
+const skillBody = `# DeployHQ CLI — Agent Skill Guide
 
 ## Identity
 DeployHQ is a deployment automation platform. The ` + "`dhq`" + ` CLI manages projects, servers, and deployments.
