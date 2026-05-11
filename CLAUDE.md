@@ -88,6 +88,6 @@ All handled by `FlexString` or `[]interface{}`.
 ## Distribution
 
 - GoReleaser: `.goreleaser.yaml` (linux/darwin/windows, amd64/arm64)
-- CI: `.github/workflows/ci.yml` (Go 1.23 + 1.24, lint, test -race)
+- CI: `.github/workflows/ci.yml` (Go 1.25, lint, test -race)
 - Release: `.github/workflows/release.yml` (tag push triggers GoReleaser)
 - Examples: `examples/github-actions/` (3 deployment workflow patterns)
