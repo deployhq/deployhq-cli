@@ -220,7 +220,10 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			if dryRun && wait {
-				return &output.UserError{Message: "--dry-run and --wait are mutually exclusive"}
+				return &output.UserError{
+					Message: "--dry-run and --wait are mutually exclusive",
+					Hint:    "--dry-run creates a preview that doesn't execute, so there's nothing to wait for. Drop --wait to preview, or drop --dry-run to deploy and watch.",
+				}
 			}
 
 			if full && startRevision != "" {
@@ -416,8 +419,8 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&revision, "revision", "r", "", "End revision (default: latest)")
 	cmd.Flags().StringVar(&startRevision, "start-revision", "", "Start revision (default: server's last deployed commit)")
 	cmd.Flags().BoolVar(&full, "full", false, "Deploy entire branch from the first commit (overrides the incremental default)")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be deployed without executing")
-	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be deployed without executing (cannot combine with --wait)")
+	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete (cannot combine with --dry-run)")
 	cmd.Flags().IntVar(&timeout, "timeout", 0, "Timeout in seconds when using --wait (0 = no timeout)")
 	return cmd
 }

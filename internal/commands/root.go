@@ -14,6 +14,7 @@ import (
 	"github.com/deployhq/deployhq-cli/internal/telemetry"
 	versionpkg "github.com/deployhq/deployhq-cli/internal/version"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -86,11 +87,13 @@ Support: support@deployhq.com`,
 			// Detect agent mode
 			agent := harness.Detect()
 
-			// Non-interactive: explicit flag or non-TTY (piped output).
-			// Agent detection alone does NOT force non-interactive — agents
-			// running in a real terminal keep interactive prompts unless
-			// they explicitly pass --non-interactive.
-			if flagNonInteractive || !env.IsTTY {
+			// Non-interactive: explicit flag, non-TTY stdout (piped output),
+			// or non-TTY stdin. Prompts read from stdin — if it isn't a TTY,
+			// the prompt fails immediately with EOF. Agent harnesses (Claude
+			// Code, Codex, Cursor, etc.) pipe stdin to subprocesses, so this
+			// covers agent contexts without an explicit agent check.
+			stdinIsTTY := term.IsTerminal(int(os.Stdin.Fd()))
+			if flagNonInteractive || !env.IsTTY || !stdinIsTTY {
 				env.NonInteractive = true
 			}
 

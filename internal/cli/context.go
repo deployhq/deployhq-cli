@@ -51,7 +51,9 @@ func (c *Context) Client() (*sdk.Client, error) {
 		if err != nil {
 			return nil, &output.AuthError{
 				Message: "Not logged in",
-				Hint:    "Run 'dhq auth login' to authenticate",
+				Hint: "Authenticate first:\n" +
+					"  dhq auth login                                                    (interactive)\n" +
+					"  export DEPLOYHQ_ACCOUNT=… DEPLOYHQ_EMAIL=… DEPLOYHQ_API_KEY=…    (CI / agents)",
 			}
 		}
 		if account == "" {
@@ -103,7 +105,10 @@ func (c *Context) RequireProject() (string, error) {
 	}
 	return "", &output.UserError{
 		Message: "No project specified",
-		Hint:    "Set via --project flag, DEPLOYHQ_PROJECT env var, or .deployhq.toml",
+		Hint: "Find your project identifier with 'dhq projects list', then set it:\n" +
+			"  dhq config set project <identifier>      (persist for this directory)\n" +
+			"  --project <identifier>                   (pass per command)\n" +
+			"  export DEPLOYHQ_PROJECT=<identifier>     (set for the shell session)",
 	}
 }
 
