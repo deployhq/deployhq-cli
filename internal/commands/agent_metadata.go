@@ -211,6 +211,27 @@ var commandMetadataTable = map[string]AgentMetadata{
 		SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"ssh_command"},
 	},
+	"dhq deployment-checks list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment_check"},
+	},
+	"dhq deployment-checks show": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment_check"},
+	},
+	"dhq deployment-checks create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment_check"},
+	},
+	"dhq deployment-checks update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment_check"},
+	},
+	"dhq deployment-checks delete": {
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment_check"},
+	},
 
 	// Repos
 	"dhq repos show": {
