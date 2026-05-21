@@ -103,7 +103,8 @@ dhq api POST /projects/<id>/config_files --body '{"config_file":{...}}'
 2. `dhq config-files list -p <project> --json` → config files
 3. `dhq build-commands list -p <project> --json` → build pipeline
 4. `dhq ssh-commands list -p <project> --json` → SSH commands
-5. `dhq servers list -p <project> --json` → servers
+5. `dhq deployment-checks list -p <project> --json` → pre_build / post_deploy gates
+6. `dhq servers list -p <project> --json` → servers
 
 ## Invariants
 - Always use `--json` for machine-readable output
