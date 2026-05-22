@@ -1,3 +1,15 @@
+---
+tags:
+  - environment variables
+  - config files
+  - build commands
+  - build configuration
+  - deployment checks
+tools:
+  - dhq
+  - snyk
+  - trivy
+---
 # Configuration Reference
 
 Project-level configuration: environment variables, config files, build commands, and exclusions.
@@ -154,6 +166,84 @@ dhq ssh-commands list -p my-app --json
 
 ```bash
 dhq ssh-commands create -p my-app --name "Restart" --command "sudo systemctl restart app" --json
+```
+
+## Deployment Checks
+
+Gate a deployment at a stage. A check has a `stage` (`pre_build` or `post_deploy`) and a `check_type`:
+- `ssh` — runs a command over SSH on selected servers
+- `http` — sends an HTTP request from the deployment worker
+- `vulnerability_scan` — runs a security scanner on the build server (pre_build only)
+
+### `dhq deployment-checks list`
+```bash
+dhq deployment-checks list -p my-app --json
+```
+
+### `dhq deployment-checks show <id>`
+```bash
+dhq deployment-checks show chk_abc123 -p my-app --json
+```
+
+### `dhq deployment-checks create`
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--name` | yes | Display name |
+| `--stage` | yes | `pre_build` or `post_deploy` |
+| `--check-type` | yes | `ssh`, `http`, or `vulnerability_scan` |
+| `--enabled` | no | Whether the check runs (default `true`) |
+| `--timeout` | no | Timeout in seconds |
+| `--description` | no | Description |
+| `--command` | ssh | Command to run on the target servers |
+| `--servers` | ssh | Server identifiers to target (repeat or comma-separate) |
+| `--http-method` | http | HTTP method (e.g. `GET`) |
+| `--http-url` | http | URL to probe |
+| `--http-expected-status` | http | Expected status code |
+| `--http-body-match` | http | Substring expected in the response body |
+| `--scanner` | vuln | `snyk`, `trivy`, or `custom` |
+| `--scan-target-kind` | vuln | Target kind |
+| `--scan-target` | vuln | Target path or identifier |
+| `--severity-threshold` | vuln | Minimum severity that fails the check |
+| `--fail-on-unfixed-only` | vuln | Only fail on findings with no available fix |
+| `--sarif-output-path` | vuln | Where the scanner writes SARIF output |
+
+SSH check:
+```bash
+dhq deployment-checks create -p my-app \
+  --name "Run migrations" --stage post_deploy --check-type ssh \
+  --command "bundle exec rails db:migrate" --servers srv_prod1,srv_prod2 --json
+```
+
+HTTP check:
+```bash
+dhq deployment-checks create -p my-app \
+  --name "Health check" --stage post_deploy --check-type http \
+  --http-method GET --http-url https://app.example.com/health --http-expected-status 200 --json
+```
+
+Vulnerability scan (pre_build only):
+```bash
+dhq deployment-checks create -p my-app \
+  --name "Snyk scan" --stage pre_build --check-type vulnerability_scan \
+  --scanner snyk --severity-threshold high --fail-on-unfixed-only --json
+```
+
+### `dhq deployment-checks update <id>`
+
+Partial update — only flags you pass are sent.
+
+```bash
+# Disable temporarily
+dhq deployment-checks update chk_abc123 -p my-app --enabled=false --json
+
+# Tighten the severity gate
+dhq deployment-checks update chk_abc123 -p my-app --severity-threshold critical --json
+```
+
+### `dhq deployment-checks delete <id>`
+```bash
+dhq deployment-checks delete chk_abc123 -p my-app
 ```
 
 ## Build Cache Files

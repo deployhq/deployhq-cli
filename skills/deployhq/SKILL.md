@@ -61,7 +61,7 @@ The only commands that **cannot** run non-interactively are: `dhq init`, `dhq he
 | **servers** | Manage deployment targets (SSH, FTP, S3, etc.) | [servers.md](references/servers.md) |
 | **deployments** | Create, monitor, rollback deployments | [deployments.md](references/deployments.md) |
 | **repos** | Repository configuration, branches, commits | [repos.md](references/repos.md) |
-| **configuration** | Env vars, config files, build commands, exclusions, cache files, build languages, known hosts | [configuration.md](references/configuration.md) |
+| **configuration** | Env vars, config files, build commands, exclusions, deployment checks, cache files, build languages, known hosts | [configuration.md](references/configuration.md) |
 | **global resources** | Global servers, env vars, config files, SSH keys, templates | [global-resources.md](references/global-resources.md) |
 | **operations** | Activity, status, test-access, doctor | [operations.md](references/operations.md) |
 | **auth & setup** | Authentication, CLI config, agent setup | [auth-setup.md](references/auth-setup.md) |
@@ -94,6 +94,7 @@ The only commands that **cannot** run non-interactively are: `dhq init`, `dhq he
 2. `dhq config-files create -p <project> --path .env --body "..." --json` — add config file
 3. `dhq excluded-files create -p <project> --pattern "node_modules" --json` — add exclusion
 4. `dhq build-commands create -p <project> --name "Install" --command "npm install" --json` — add build step
+5. `dhq deployment-checks create -p <project> --name "Health" --stage post_deploy --check-type http --http-url https://app.example.com/health --http-expected-status 200 --json` — gate the deploy
 
 ### "Escape hatch (any API endpoint)"
 ```

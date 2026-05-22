@@ -127,6 +127,7 @@ dhq config-files  list | show | create | update | delete
 dhq build-commands list | create | update | delete
 dhq build-configs list | show | default | create | update | delete
 dhq ssh-commands  list | show | create | update | delete
+dhq deployment-checks list | show | create | update | delete
 dhq excluded-files list | show | create | update | delete
 dhq integrations list | show | create | update | delete
 dhq templates     list | show | public | public-show | create | update | delete
