@@ -173,6 +173,43 @@ func resolveServerName(input string, servers []sdk.Server) (string, []sdk.Server
 	return "", servers
 }
 
+// resolveGroupName matches a user-provided name to a server-group identifier.
+// Mirrors resolveServerName's exact / normalized / contains tiers. Returns the
+// identifier on a unique match, or "" when ambiguous or no match. The group's
+// display name is also returned for user-facing status messages.
+func resolveGroupName(input string, groups []sdk.ServerGroup) (identifier, name string) {
+	normalized := normalize(input)
+
+	for _, g := range groups {
+		if strings.EqualFold(g.Name, input) {
+			return g.Identifier, g.Name
+		}
+	}
+
+	var normalizedMatches []sdk.ServerGroup
+	for _, g := range groups {
+		if normalize(g.Name) == normalized {
+			normalizedMatches = append(normalizedMatches, g)
+		}
+	}
+	if len(normalizedMatches) == 1 {
+		return normalizedMatches[0].Identifier, normalizedMatches[0].Name
+	}
+
+	lower := strings.ToLower(input)
+	var containsMatches []sdk.ServerGroup
+	for _, g := range groups {
+		if strings.Contains(strings.ToLower(g.Name), lower) {
+			containsMatches = append(containsMatches, g)
+		}
+	}
+	if len(containsMatches) == 1 {
+		return containsMatches[0].Identifier, containsMatches[0].Name
+	}
+
+	return "", ""
+}
+
 // normalize lowercases and collapses all non-alphanumeric chars.
 func normalize(s string) string {
 	var b strings.Builder
@@ -284,6 +321,7 @@ func newDeployCmd() *cobra.Command {
 				servers, err := client.ListServers(cliCtx.Background(), projectID, nil)
 				if err == nil {
 					resolved, candidates := resolveServerName(server, servers)
+					matched := false
 					if resolved != "" {
 						server = resolved
 						for i := range servers {
@@ -292,29 +330,46 @@ func newDeployCmd() *cobra.Command {
 								break
 							}
 						}
-					} else if len(candidates) > 0 && !env.NonInteractive {
-						items := make([]string, len(candidates))
-						for i, s := range candidates {
-							items[i] = fmt.Sprintf("%s (%s)", s.Name, s.ProtocolType)
+						matched = true
+					}
+					// Server groups are deployable targets too. Fall back to group-name
+					// resolution before the per-server picker so `-s "My Group"` works
+					// (documented at deployhq.com/support/cli/cli-deploying).
+					if !matched {
+						if groups, gerr := client.ListServerGroups(cliCtx.Background(), projectID, nil); gerr == nil {
+							if groupID, groupName := resolveGroupName(server, groups); groupID != "" {
+								server = groupID
+								resolvedServer = nil // groups don't map to a single Server
+								env.Status("Resolved to server group: %s", groupName)
+								matched = true
+							}
 						}
-						prompt := promptui.Select{
-							Label: fmt.Sprintf("Multiple servers match %q", server),
-							Items: items,
-						}
-						idx, _, err := prompt.Run()
-						if err != nil {
-							return &output.UserError{Message: "Server selection cancelled"}
-						}
-						server = candidates[idx].Identifier
-						resolvedServer = &candidates[idx]
-					} else if len(candidates) > 0 {
-						names := make([]string, len(candidates))
-						for i, s := range candidates {
-							names[i] = fmt.Sprintf("%s (%s)", s.Identifier, s.Name)
-						}
-						return &output.UserError{
-							Message: fmt.Sprintf("Multiple servers match %q — specify which one", server),
-							Hint:    fmt.Sprintf("Use the full identifier. Matches: %s", strings.Join(names, ", ")),
+					}
+					if !matched {
+						if len(candidates) > 0 && !env.NonInteractive {
+							items := make([]string, len(candidates))
+							for i, s := range candidates {
+								items[i] = fmt.Sprintf("%s (%s)", s.Name, s.ProtocolType)
+							}
+							prompt := promptui.Select{
+								Label: fmt.Sprintf("Multiple servers match %q", server),
+								Items: items,
+							}
+							idx, _, err := prompt.Run()
+							if err != nil {
+								return &output.UserError{Message: "Server selection cancelled"}
+							}
+							server = candidates[idx].Identifier
+							resolvedServer = &candidates[idx]
+						} else if len(candidates) > 0 {
+							names := make([]string, len(candidates))
+							for i, s := range candidates {
+								names[i] = fmt.Sprintf("%s (%s)", s.Identifier, s.Name)
+							}
+							return &output.UserError{
+								Message: fmt.Sprintf("Multiple servers match %q — specify which one", server),
+								Hint:    fmt.Sprintf("Use the full identifier. Matches: %s", strings.Join(names, ", ")),
+							}
 						}
 					}
 				}

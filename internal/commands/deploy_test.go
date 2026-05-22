@@ -300,6 +300,60 @@ func TestDeployStartRevisionFlagsRegistered(t *testing.T) {
 	assert.NotNil(t, deployCmd.Flags().Lookup("full"))
 }
 
+func TestResolveGroupName_ExactMatch(t *testing.T) {
+	// DHQ-586: passing the group's display name to -s must resolve to its identifier.
+	groups := []sdk.ServerGroup{
+		{Identifier: "grp-prod", Name: "Production"},
+		{Identifier: "grp-stag", Name: "Staging"},
+	}
+	id, name := resolveGroupName("Production", groups)
+	assert.Equal(t, "grp-prod", id)
+	assert.Equal(t, "Production", name)
+}
+
+func TestResolveGroupName_CaseInsensitive(t *testing.T) {
+	groups := []sdk.ServerGroup{{Identifier: "grp-prod", Name: "Production"}}
+	id, _ := resolveGroupName("production", groups)
+	assert.Equal(t, "grp-prod", id)
+}
+
+func TestResolveGroupName_NormalizedMatch(t *testing.T) {
+	// "us-prod" should match "US Prod" via the normalize tier.
+	groups := []sdk.ServerGroup{
+		{Identifier: "grp-us", Name: "US Prod"},
+		{Identifier: "grp-eu", Name: "EU Prod"},
+	}
+	id, name := resolveGroupName("us-prod", groups)
+	assert.Equal(t, "grp-us", id)
+	assert.Equal(t, "US Prod", name)
+}
+
+func TestResolveGroupName_ContainsMatch(t *testing.T) {
+	groups := []sdk.ServerGroup{
+		{Identifier: "grp-prod", Name: "Production Cluster"},
+		{Identifier: "grp-stag", Name: "Staging Cluster"},
+	}
+	id, _ := resolveGroupName("Production", groups)
+	assert.Equal(t, "grp-prod", id)
+}
+
+func TestResolveGroupName_AmbiguousReturnsEmpty(t *testing.T) {
+	// Multiple contains matches → don't auto-pick. Caller falls back to the
+	// existing server picker / "specify which one" error.
+	groups := []sdk.ServerGroup{
+		{Identifier: "grp-1", Name: "Production US"},
+		{Identifier: "grp-2", Name: "Production EU"},
+	}
+	id, _ := resolveGroupName("Production", groups)
+	assert.Equal(t, "", id)
+}
+
+func TestResolveGroupName_NoMatch(t *testing.T) {
+	groups := []sdk.ServerGroup{{Identifier: "grp-prod", Name: "Production"}}
+	id, _ := resolveGroupName("Nonexistent", groups)
+	assert.Equal(t, "", id)
+}
+
 func TestResolveBranchAndRevision_PreferredBranchEmptyFallsToBranchField(t *testing.T) {
 	// Some servers populate Branch but not PreferredBranch. Treat both as the
 	// same source of truth.
