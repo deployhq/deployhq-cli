@@ -65,6 +65,16 @@ func TestParseJSONFlag(t *testing.T) {
 		{"name", true, []string{"name"}},
 		{"name,permalink", true, []string{"name", "permalink"}},
 		{"name,permalink,zone", true, []string{"name", "permalink", "zone"}},
+
+		// Whitespace tolerance — quoted args can pick up stray spaces
+		{"name, permalink", true, []string{"name", "permalink"}},
+		{" name , permalink ", true, []string{"name", "permalink"}},
+		{"name,,permalink", true, []string{"name", "permalink"}},
+		{"name,permalink,", true, []string{"name", "permalink"}},
+
+		// Whitespace-only / commas-only → treat as bare --json
+		{"   ", true, nil},
+		{",,,", true, nil},
 	}
 	for _, tc := range cases {
 		t.Run("raw="+tc.raw, func(t *testing.T) {

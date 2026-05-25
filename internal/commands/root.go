@@ -253,23 +253,36 @@ Support: support@deployhq.com`,
 //   - ""                          → not set; auto behaviour (TTY=table, pipe=JSON)
 //   - "true"/"1"/"yes"/"on"       → force JSON, all fields
 //   - "false"/"0"/"no"/"off"      → explicit opt-out; auto behaviour
-//   - "name,permalink"            → force JSON, only those fields
+//   - "name, permalink"           → force JSON, only those fields (whitespace trimmed)
 //
 // The opt-out values matter because cobra parses --json=false as flagJSON="false"
 // (a string), not as a bool. Without this branch, "false" would be treated as a
 // field name and silently return {} from every command.
+//
+// Field tokens are trimmed and empty tokens dropped, so "--json= name , permalink ,"
+// becomes ["name", "permalink"] rather than silently losing a field to whitespace.
 func parseJSONFlag(raw string) (jsonMode bool, fields []string) {
 	if raw == "" {
 		return false, nil
 	}
-	switch strings.ToLower(raw) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "false", "0", "no", "off":
 		return false, nil
 	case "true", "1", "yes", "on":
 		return true, nil
-	default:
-		return true, strings.Split(raw, ",")
 	}
+	parts := strings.Split(raw, ",")
+	fields = fields[:0:0]
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			fields = append(fields, p)
+		}
+	}
+	if len(fields) == 0 {
+		// All tokens were whitespace — treat as bare --json
+		return true, nil
+	}
+	return true, fields
 }
 
 // IsJSONMode returns true if --json was passed or output is piped (non-TTY).
