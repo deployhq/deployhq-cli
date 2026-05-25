@@ -27,7 +27,7 @@ func newGlobalConfigFilesCmd() *cobra.Command {
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(files, fmt.Sprintf("%d global config files", len(files))))
 				}
 				rows := make([][]string, len(files))
@@ -50,7 +50,7 @@ func newGlobalConfigFilesCmd() *cobra.Command {
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(f, f.Name))
 				}
 				env.WriteTable([]string{"Field", "Value"}, [][]string{
@@ -100,7 +100,7 @@ func newGlobalConfigFilesCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(f, fmt.Sprintf("Created: %s", f.Name)))
 			}
 			env.Status("Created global config file: %s (%s)", f.Name, f.Identifier)

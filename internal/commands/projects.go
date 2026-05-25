@@ -59,13 +59,22 @@ func newProjectsListCmd() *cobra.Command {
 			})
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(projects,
 					fmt.Sprintf("%d projects", len(projects)),
 					output.Breadcrumb{Action: "show", Cmd: "dhq projects show <permalink>"},
 					output.Breadcrumb{Action: "create", Cmd: "dhq projects create --name <name>"},
 					output.Breadcrumb{Action: "star", Cmd: "dhq projects star <permalink>"},
 				))
+			}
+
+			if env.QuietMode {
+				permalinks := make([]string, len(projects))
+				for i, p := range projects {
+					permalinks[i] = p.Permalink
+				}
+				env.WriteQuiet(permalinks)
+				return nil
 			}
 
 			columns := []string{"*", "Name", "Permalink", "Zone", "Last Deployed"}
@@ -115,7 +124,7 @@ func newProjectsShowCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(project,
 					fmt.Sprintf("Project: %s", project.Name),
 					output.Breadcrumb{Action: "servers", Cmd: fmt.Sprintf("dhq servers list -p %s", project.Permalink)},
@@ -197,7 +206,7 @@ func newProjectsCreateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(project,
 					fmt.Sprintf("Created project: %s", project.Name),
 					output.Breadcrumb{Action: "servers", Cmd: fmt.Sprintf("dhq servers create -p %s --name <name> --protocol-type ssh", project.Permalink)},
@@ -275,7 +284,7 @@ func newProjectsUpdateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(project, fmt.Sprintf("Updated project: %s", project.Name)))
 			}
 			env.Status("Updated project: %s", project.Name)
@@ -408,7 +417,7 @@ func newProjectsUploadKeyCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(project, fmt.Sprintf("Uploaded key for project: %s", project.Name)))
 			}
 			env.Status("Uploaded custom key for project: %s", project.Name)
@@ -443,7 +452,7 @@ func newProjectsBadgeCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(
 					map[string]string{"svg": string(badge)},
 					fmt.Sprintf("Status badge for project: %s", projectID),

@@ -29,8 +29,16 @@ Manage agents at the account level here, then attach one to an individual server
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(agents, fmt.Sprintf("%d agents", len(agents))))
+				}
+				if env.QuietMode {
+					identifiers := make([]string, len(agents))
+					for i, a := range agents {
+						identifiers[i] = a.Identifier
+					}
+					env.WriteQuiet(identifiers)
+					return nil
 				}
 				rows := make([][]string, len(agents))
 				for i, a := range agents {

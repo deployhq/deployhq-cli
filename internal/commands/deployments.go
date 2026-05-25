@@ -63,7 +63,7 @@ func newDeploymentsListCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewPaginatedResponse(result.Records,
 					output.Pagination{
 						CurrentPage:  result.Pagination.CurrentPage,
@@ -75,6 +75,15 @@ func newDeploymentsListCmd() *cobra.Command {
 					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq deployments show <id> -p %s", projectID)},
 					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
 				))
+			}
+
+			if env.QuietMode {
+				identifiers := make([]string, len(result.Records))
+				for i, d := range result.Records {
+					identifiers[i] = d.Identifier
+				}
+				env.WriteQuiet(identifiers)
+				return nil
 			}
 
 			columns := []string{"Identifier", "Status", "Branch", "Deployer", "Queued"}
@@ -137,7 +146,7 @@ func newDeploymentsShowCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				crumbs := []output.Breadcrumb{
 					{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", dep.Identifier, projectID)},
 				}
@@ -263,7 +272,7 @@ func newDeploymentsCreateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Deployment %s queued", dep.Identifier),
 					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
@@ -306,7 +315,7 @@ func newDeploymentsRetryCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Retry deployment %s queued", dep.Identifier),
 					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
@@ -367,7 +376,7 @@ func newDeploymentsRollbackCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Rollback deployment %s queued", dep.Identifier),
 					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID)},
@@ -436,7 +445,7 @@ func newDeploymentsLogsCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(logs, fmt.Sprintf("%d log entries", len(logs))))
 			}
 

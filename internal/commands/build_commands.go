@@ -35,7 +35,7 @@ The output of build commands becomes the artifact that gets deployed. Each comma
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(cmds, fmt.Sprintf("%d build commands", len(cmds)),
 						output.Breadcrumb{Action: "update", Cmd: "dhq build-commands update <identifier> -p <project> --command <cmd>"},
 						output.Breadcrumb{Action: "delete", Cmd: "dhq build-commands delete <identifier> -p <project>"},

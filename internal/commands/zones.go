@@ -28,7 +28,7 @@ Pin a zone per project at creation: "dhq projects create --zone <id>", or change
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(zones, fmt.Sprintf("%d zones", len(zones))))
 				}
 				rows := make([][]string, len(zones))

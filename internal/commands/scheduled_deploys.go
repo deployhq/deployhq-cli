@@ -31,7 +31,7 @@ func newScheduledDeploysCmd() *cobra.Command {
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(result, fmt.Sprintf("%d scheduled deployments", len(result))))
 				}
 				rows := make([][]string, len(result))
@@ -138,7 +138,7 @@ func newScheduledDeploysUpdateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(s, fmt.Sprintf("Updated scheduled deployment: %s", s.Identifier)))
 			}
 			env.Status("Updated scheduled deployment: %s (%s at %s)", s.Identifier, s.Frequency, s.At)
@@ -202,7 +202,7 @@ func newScheduledDeploysCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(s, fmt.Sprintf("Created scheduled deployment: %s", s.Identifier)))
 			}
 			env.Status("Created scheduled deployment: %s (%s at %s)", s.Identifier, s.Frequency, s.At)

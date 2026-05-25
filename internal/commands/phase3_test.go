@@ -36,6 +36,22 @@ func TestCommandTree_AllRegistered(t *testing.T) {
 	assert.Contains(t, out, "doctor")
 }
 
+func TestGlobalOutputFlags_Registered(t *testing.T) {
+	cmd := NewRootCmd("test")
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"projects", "list", "--help"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	out := stdout.String()
+	assert.Contains(t, out, "--table", "table flag should be available globally")
+	assert.Contains(t, out, "--quiet", "quiet flag should be available globally")
+	assert.Contains(t, out, "-q,", "quiet should have -q shorthand")
+	assert.Contains(t, out, "--json=false to opt out", "json help should mention opt-out")
+}
+
 func TestProjectsSubcommands(t *testing.T) {
 	cmd := NewRootCmd("test")
 	var stdout bytes.Buffer

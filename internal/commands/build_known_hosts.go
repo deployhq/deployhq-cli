@@ -31,7 +31,7 @@ func newBuildKnownHostsCmd() *cobra.Command {
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(hosts, fmt.Sprintf("%d build known hosts", len(hosts))))
 				}
 				rows := make([][]string, len(hosts))
@@ -88,7 +88,7 @@ func newBuildKnownHostsCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(h, fmt.Sprintf("Created: %s", h.Hostname)))
 			}
 			env.Status("Created build known host: %s", h.Hostname)

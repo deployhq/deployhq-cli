@@ -96,7 +96,7 @@ All data stays on your machine — nothing is sent to external services.`,
 				return err
 			}
 
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(
 					map[string]string{"answer": response, "model": ollama.Model},
 					"assist response",

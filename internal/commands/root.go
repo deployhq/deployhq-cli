@@ -24,6 +24,8 @@ var (
 	flagAPIKey         string
 	flagProject        string
 	flagJSON           string
+	flagTable          bool
+	flagQuiet          bool
 	flagCwd            string
 	flagHost           string
 	flagNonInteractive bool
@@ -76,12 +78,29 @@ Support: support@deployhq.com`,
 			logger := output.NewLogger()
 			env := output.NewEnvelope(logger)
 
-			// Handle --json flag
+			// Handle --json flag. Bare --json or --json=true enables JSON
+			// mode; --json=field1,field2 picks fields; --json=false/0/no
+			// is an explicit opt-out (useful for shell aliases that default
+			// to JSON but occasionally want auto/table behaviour back).
 			if flagJSON != "" {
-				env.JSONMode = true
-				if flagJSON != "true" && flagJSON != "1" {
+				switch strings.ToLower(flagJSON) {
+				case "false", "0", "no", "off":
+					// explicit opt-out — fall through to auto behaviour
+				case "true", "1", "yes", "on":
+					env.JSONMode = true
+				default:
+					env.JSONMode = true
 					env.JSONFields = strings.Split(flagJSON, ",")
 				}
+			}
+
+			// --table forces table output even when piped. --quiet prints
+			// only key identifiers, one per line, suitable for piping to
+			// grep/xargs/etc. --quiet wins if both are set.
+			env.TableMode = flagTable
+			env.QuietMode = flagQuiet
+			if flagTable && flagQuiet {
+				env.TableMode = false
 			}
 
 			// Detect agent mode
@@ -151,8 +170,10 @@ Support: support@deployhq.com`,
 	pf.StringVar(&flagEmail, "email", "", "Authentication email")
 	pf.StringVar(&flagAPIKey, "api-key", "", "API key")
 	pf.StringVarP(&flagProject, "project", "p", "", "Project permalink or identifier")
-	pf.StringVar(&flagJSON, "json", "", "Output as JSON (optionally specify fields: --json name,status)")
+	pf.StringVar(&flagJSON, "json", "", "Output as JSON (optionally specify fields: --json name,status). Use --json=false to opt out.")
 	pf.Lookup("json").NoOptDefVal = "true"
+	pf.BoolVar(&flagTable, "table", false, "Force table output, even when piped")
+	pf.BoolVarP(&flagQuiet, "quiet", "q", false, "Print only the key identifier of each row, one per line (for grep/xargs)")
 	pf.StringVarP(&flagCwd, "cwd", "C", "", "Change working directory before running")
 	pf.BoolVar(&flagNonInteractive, "non-interactive", false, "Never prompt; fail with actionable errors on ambiguity")
 	pf.StringVar(&flagHost, "host", "", "API host override (e.g. deployhq.dev for staging)")
@@ -242,9 +263,10 @@ Support: support@deployhq.com`,
 }
 
 // IsJSONMode returns true if --json was passed or output is piped (non-TTY).
+// Respects --table and --quiet overrides via Envelope.WantsJSON().
 func IsJSONMode() bool {
 	if cliCtx != nil {
-		return cliCtx.Envelope.JSONMode || !cliCtx.Envelope.IsTTY
+		return cliCtx.Envelope.WantsJSON()
 	}
 	return flagJSON != ""
 }

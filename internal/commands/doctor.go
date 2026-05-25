@@ -75,7 +75,7 @@ func newDoctorCmd() *cobra.Command {
 			}
 
 			// Output
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(checks, "Health check complete"))
 			}
 

@@ -24,19 +24,35 @@ var (
 // Envelope is the output engine that routes data to stdout and messages to stderr.
 //
 // Behaviour modes:
-//   - TTY + no --json flag: table output to stdout, status to stderr
-//   - TTY + --json flag:    JSON to stdout, status to stderr
-//   - Pipe (non-TTY):       JSON to stdout, status to stderr
-//   - DEPLOYHQ_OUTPUT_FILE: JSONL appended to the specified file
+//   - TTY + no --json flag:  table output to stdout, status to stderr
+//   - TTY + --json flag:     JSON to stdout, status to stderr
+//   - Pipe (non-TTY):        JSON to stdout (auto-switch), status to stderr
+//   - --table:               force table output even when piped
+//   - --quiet:               print only the key column (one per line, no header)
+//   - DEPLOYHQ_OUTPUT_FILE:  JSONL appended to the specified file
 type Envelope struct {
 	Stdout         io.Writer
 	Stderr         io.Writer
 	Logger         *Logger
 	JSONMode       bool
 	JSONFields     []string // field selection for --json
+	TableMode      bool     // --table: force table output, override auto-JSON-on-pipe
+	QuietMode      bool     // --quiet/-q: only print key column, suitable for piping
 	OutputFile     *os.File // DEPLOYHQ_OUTPUT_FILE JSONL writer
 	IsTTY          bool
 	NonInteractive bool // when true, never prompt — fail with actionable errors
+}
+
+// WantsJSON reports whether output should be JSON.
+//
+// Precedence: --table and --quiet force non-JSON output (table or plain text).
+// Otherwise: --json (JSONMode) forces JSON, and a non-TTY stdout auto-switches
+// to JSON so piped output stays machine-readable by default.
+func (e *Envelope) WantsJSON() bool {
+	if e.TableMode || e.QuietMode {
+		return false
+	}
+	return e.JSONMode || !e.IsTTY
 }
 
 // NewEnvelope creates an Envelope with auto-detected TTY and output file.
@@ -214,10 +230,19 @@ func (e *Envelope) WriteTable(columns []string, rows [][]string) {
 	}
 }
 
+// WriteQuiet prints one identifier per line to stdout. Use for --quiet mode
+// when piping a list of permalinks/identifiers to other commands. No header,
+// no padding — just newline-separated values.
+func (e *Envelope) WriteQuiet(items []string) {
+	for _, item := range items {
+		fmt.Fprintln(e.Stdout, item) //nolint:errcheck // best-effort stdout
+	}
+}
+
 // WriteData writes data as either JSON or table depending on the mode.
 // If in JSON mode or non-TTY, outputs JSON. Otherwise, uses the table formatter.
 func (e *Envelope) WriteData(data interface{}, columns []string, toRow func(interface{}) []string) error {
-	if e.JSONMode || !e.IsTTY {
+	if e.WantsJSON() {
 		return e.WriteJSON(data)
 	}
 

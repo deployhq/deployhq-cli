@@ -36,7 +36,7 @@ Three check types are supported:
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(checks, fmt.Sprintf("%d deployment checks", len(checks))))
 				}
 				rows := make([][]string, len(checks))

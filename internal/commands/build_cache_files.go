@@ -33,7 +33,7 @@ The cache can be bypassed for a single deploy with "dhq deployments create --use
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(files, fmt.Sprintf("%d build cache files", len(files))))
 				}
 				rows := make([][]string, len(files))
@@ -91,7 +91,7 @@ func newBuildCacheFilesCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(f, fmt.Sprintf("Created: %s", f.Path)))
 			}
 			env.Status("Created build cache file: %s", f.Path)

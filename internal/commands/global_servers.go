@@ -29,7 +29,7 @@ Useful for shared infrastructure (e.g., a single CDN bucket or a shared Heroku s
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(servers, fmt.Sprintf("%d global servers", len(servers))))
 				}
 				rows := make([][]string, len(servers))
@@ -94,7 +94,7 @@ func newGlobalServersCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(s, fmt.Sprintf("Created: %s", s.Name)))
 			}
 			env.Status("Created global server: %s (%s)", s.Name, s.Identifier)
@@ -180,7 +180,7 @@ func newIntegrationsCmd() *cobra.Command {
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(integrations, fmt.Sprintf("%d integrations", len(integrations))))
 				}
 				rows := make([][]string, len(integrations))
@@ -256,7 +256,7 @@ func newIntegrationsCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(ig, fmt.Sprintf("Created: %s", ig.Name)))
 			}
 			env.Status("Created integration: %s (%s)", ig.Name, ig.Identifier)
