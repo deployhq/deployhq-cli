@@ -24,6 +24,8 @@ var (
 	flagAPIKey         string
 	flagProject        string
 	flagJSON           string
+	flagTable          bool
+	flagQuiet          bool
 	flagCwd            string
 	flagHost           string
 	flagNonInteractive bool
@@ -76,12 +78,15 @@ Support: support@deployhq.com`,
 			logger := output.NewLogger()
 			env := output.NewEnvelope(logger)
 
-			// Handle --json flag
-			if flagJSON != "" {
-				env.JSONMode = true
-				if flagJSON != "true" && flagJSON != "1" {
-					env.JSONFields = strings.Split(flagJSON, ",")
-				}
+			env.JSONMode, env.JSONFields = parseJSONFlag(flagJSON)
+
+			// --table forces table output even when piped. --quiet prints
+			// only key identifiers, one per line, suitable for piping to
+			// grep/xargs/etc. --quiet wins if both are set.
+			env.TableMode = flagTable
+			env.QuietMode = flagQuiet
+			if flagTable && flagQuiet {
+				env.TableMode = false
 			}
 
 			// Detect agent mode
@@ -151,8 +156,10 @@ Support: support@deployhq.com`,
 	pf.StringVar(&flagEmail, "email", "", "Authentication email")
 	pf.StringVar(&flagAPIKey, "api-key", "", "API key")
 	pf.StringVarP(&flagProject, "project", "p", "", "Project permalink or identifier")
-	pf.StringVar(&flagJSON, "json", "", "Output as JSON (optionally specify fields: --json name,status)")
+	pf.StringVar(&flagJSON, "json", "", "Output as JSON (optionally specify fields: --json name,status). Use --json=false to opt out.")
 	pf.Lookup("json").NoOptDefVal = "true"
+	pf.BoolVar(&flagTable, "table", false, "Force table output, even when piped")
+	pf.BoolVarP(&flagQuiet, "quiet", "q", false, "Print only the key identifier of each row, one per line (for grep/xargs)")
 	pf.StringVarP(&flagCwd, "cwd", "C", "", "Change working directory before running")
 	pf.BoolVar(&flagNonInteractive, "non-interactive", false, "Never prompt; fail with actionable errors on ambiguity")
 	pf.StringVar(&flagHost, "host", "", "API host override (e.g. deployhq.dev for staging)")
@@ -241,10 +248,48 @@ Support: support@deployhq.com`,
 	return root
 }
 
+// parseJSONFlag interprets the --json flag value.
+//
+//   - ""                          → not set; auto behaviour (TTY=table, pipe=JSON)
+//   - "true"/"1"/"yes"/"on"       → force JSON, all fields
+//   - "false"/"0"/"no"/"off"      → explicit opt-out; auto behaviour
+//   - "name, permalink"           → force JSON, only those fields (whitespace trimmed)
+//
+// The opt-out values matter because cobra parses --json=false as flagJSON="false"
+// (a string), not as a bool. Without this branch, "false" would be treated as a
+// field name and silently return {} from every command.
+//
+// Field tokens are trimmed and empty tokens dropped, so "--json= name , permalink ,"
+// becomes ["name", "permalink"] rather than silently losing a field to whitespace.
+func parseJSONFlag(raw string) (jsonMode bool, fields []string) {
+	if raw == "" {
+		return false, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "false", "0", "no", "off":
+		return false, nil
+	case "true", "1", "yes", "on":
+		return true, nil
+	}
+	parts := strings.Split(raw, ",")
+	fields = fields[:0:0]
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			fields = append(fields, p)
+		}
+	}
+	if len(fields) == 0 {
+		// All tokens were whitespace — treat as bare --json
+		return true, nil
+	}
+	return true, fields
+}
+
 // IsJSONMode returns true if --json was passed or output is piped (non-TTY).
+// Respects --table and --quiet overrides via Envelope.WantsJSON().
 func IsJSONMode() bool {
 	if cliCtx != nil {
-		return cliCtx.Envelope.JSONMode || !cliCtx.Envelope.IsTTY
+		return cliCtx.Envelope.WantsJSON()
 	}
 	return flagJSON != ""
 }

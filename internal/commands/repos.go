@@ -53,7 +53,7 @@ func newReposShowCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(repo,
 					fmt.Sprintf("Repository: %s (%s)", repo.URL, repo.ScmType),
 					output.Breadcrumb{Action: "branches", Cmd: fmt.Sprintf("dhq repos branches -p %s", projectID)},
@@ -116,7 +116,7 @@ func newReposCreateCmd() *cobra.Command {
 			project, projErr := client.GetProject(cliCtx.Background(), projectID)
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				breadcrumbs := []output.Breadcrumb{}
 				if projErr == nil && project.PublicKey != "" {
 					breadcrumbs = append(breadcrumbs, deployKeyBreadcrumbs(url, project.PublicKey, projectID)...)
@@ -165,7 +165,7 @@ func newReposUpdateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(repo, "Repository updated",
 					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq repos show -p %s", projectID)},
 					output.Breadcrumb{Action: "branches", Cmd: fmt.Sprintf("dhq repos branches -p %s", projectID)},
@@ -203,7 +203,7 @@ func newReposBranchesCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(branches, fmt.Sprintf("%d branches", len(branches))))
 			}
 
@@ -240,7 +240,7 @@ func newReposCommitsCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(result,
 					fmt.Sprintf("%d commits, %d tags", len(result.Commits), len(result.Tags))))
 			}
@@ -289,7 +289,7 @@ func newReposCommitInfoCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(commit,
 					fmt.Sprintf("Commit: %s", commit.Ref),
 					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s --revision %s", projectID, commit.Ref)},
@@ -335,7 +335,7 @@ func newReposLatestRevisionCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(map[string]string{"ref": rev}, rev,
 					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s --revision %s", projectID, rev)},
 				))

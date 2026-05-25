@@ -35,7 +35,7 @@ func newInsightsCmd() *cobra.Command {
 
 func renderInsights(insights map[string]interface{}, projectID string) error {
 	env := cliCtx.Envelope
-	if env.JSONMode || !env.IsTTY {
+	if env.WantsJSON() {
 		return env.WriteJSON(output.NewResponse(insights,
 			fmt.Sprintf("Insights for project: %s", projectID),
 		))

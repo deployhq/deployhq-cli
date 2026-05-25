@@ -46,7 +46,7 @@ Examples:
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(parsed, fmt.Sprintf("Parsed: %s", parsed.Resource)))
 			}
 

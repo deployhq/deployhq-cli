@@ -91,7 +91,7 @@ func newSignupCmd() *cobra.Command {
 				env.Status("API key: %s", result.APIKey)
 			}
 
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(result,
 					fmt.Sprintf("Account created: %s", result.Account.Subdomain),
 					output.Breadcrumb{Action: "login", Cmd: "dhq auth login"},

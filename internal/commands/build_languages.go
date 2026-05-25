@@ -55,7 +55,7 @@ func newBuildLanguagesSetCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(lang, lang.Name+" "+lang.Version))
 			}
 			env.Status("Set %s to version %s", lang.Name, lang.Version)

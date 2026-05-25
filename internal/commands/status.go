@@ -22,7 +22,7 @@ func newStatusCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(result, "Account status",
 					output.Breadcrumb{Action: "activity", Cmd: "dhq activity list"},
 					output.Breadcrumb{Action: "projects", Cmd: "dhq projects list"},

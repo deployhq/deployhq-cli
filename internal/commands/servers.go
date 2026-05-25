@@ -56,12 +56,21 @@ func newServersListCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(servers,
 					fmt.Sprintf("%d servers", len(servers)),
 					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq servers show <id> -p %s", projectID)},
 					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
 				))
+			}
+
+			if env.QuietMode {
+				identifiers := make([]string, len(servers))
+				for i, s := range servers {
+					identifiers[i] = s.Identifier
+				}
+				env.WriteQuiet(identifiers)
+				return nil
 			}
 
 			columns := []string{"Name", "Identifier", "Protocol", "Branch", "Enabled"}
@@ -109,7 +118,7 @@ func newServersShowCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server,
 					fmt.Sprintf("Server: %s", server.Name),
 					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
@@ -316,7 +325,7 @@ func newServersCreateCmd() *cobra.Command {
 				}
 			}
 
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Created server: %s", server.Name)))
 			}
 			env.Status("Created server: %s (%s)", server.Name, server.Identifier)
@@ -396,7 +405,7 @@ func newServersUpdateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Updated server: %s", server.Name)))
 			}
 			env.Status("Updated server: %s", server.Name)

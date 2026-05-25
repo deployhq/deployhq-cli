@@ -29,7 +29,7 @@ Centralizing keys here means rotation is one update instead of touching every se
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(keys, fmt.Sprintf("%d SSH keys", len(keys))))
 				}
 				rows := make([][]string, len(keys))
@@ -78,7 +78,7 @@ func newSSHKeysCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(k, fmt.Sprintf("Created: %s", k.Title)))
 			}
 			env.Status("Created SSH key: %s (%s)", k.Title, k.KeyType)

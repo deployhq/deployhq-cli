@@ -37,7 +37,7 @@ func newActivityListCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(events, fmt.Sprintf("%d events", len(events)),
 					output.Breadcrumb{Action: "stats", Cmd: "dhq activity stats"},
 				))
@@ -76,7 +76,7 @@ func newActivityStatsCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(result, "Account activity with stats",
 					output.Breadcrumb{Action: "events", Cmd: "dhq activity list"},
 				))

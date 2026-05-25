@@ -52,8 +52,17 @@ func newServerGroupsListCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(groups, fmt.Sprintf("%d server groups", len(groups))))
+			}
+
+			if env.QuietMode {
+				identifiers := make([]string, len(groups))
+				for i, g := range groups {
+					identifiers[i] = g.Identifier
+				}
+				env.WriteQuiet(identifiers)
+				return nil
 			}
 
 			columns := []string{"Name", "Identifier", "Servers", "Environment"}
@@ -96,7 +105,7 @@ func newServerGroupsShowCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(group, fmt.Sprintf("Server group: %s", group.Name)))
 			}
 
@@ -153,7 +162,7 @@ func newServerGroupsCreateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(group, fmt.Sprintf("Created server group: %s", group.Name)))
 			}
 			env.Status("Created server group: %s (%s)", group.Name, group.Identifier)
@@ -189,7 +198,7 @@ func newServerGroupsUpdateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(group, fmt.Sprintf("Updated server group: %s", group.Name)))
 			}
 			env.Status("Updated server group: %s", group.Name)

@@ -47,7 +47,7 @@ func newTemplatesListCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(templates,
 					fmt.Sprintf("%d templates", len(templates)),
 					output.Breadcrumb{Action: "create", Cmd: "dhq templates create --name <name>"},
@@ -88,7 +88,7 @@ func newTemplatesPublicCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(templates,
 					fmt.Sprintf("%d public templates", len(templates)),
 				))
@@ -195,7 +195,7 @@ func newTemplatesCreateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(tmpl,
 					fmt.Sprintf("Created template: %s", tmpl.Name),
 				))
@@ -241,7 +241,7 @@ func newTemplatesUpdateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(tmpl, fmt.Sprintf("Updated template: %s", tmpl.Name)))
 			}
 			env.Status("Updated template: %s", tmpl.Name)

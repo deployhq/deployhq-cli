@@ -13,7 +13,7 @@ const pollInterval = 3 * time.Second
 
 // watchDeployment uses the TUI in interactive terminals, falls back to append-only otherwise.
 func watchDeployment(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) error {
-	if env.IsTTY && !env.JSONMode {
+	if env.IsTTY && !env.WantsJSON() {
 		return watchDeploymentTUI(ctx, client, env, projectID, deploymentID)
 	}
 	return watchDeploymentPlain(ctx, client, env, projectID, deploymentID)

@@ -33,7 +33,7 @@ Patterns are evaluated against repository paths and apply per-project. Each excl
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(files, fmt.Sprintf("%d excluded files", len(files))))
 				}
 				rows := make([][]string, len(files))

@@ -32,7 +32,7 @@ func newBuildConfigsCmd() *cobra.Command {
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(configs, fmt.Sprintf("%d build configs", len(configs))))
 				}
 				rows := make([][]string, len(configs))
@@ -131,7 +131,7 @@ func newBuildConfigsCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(config, fmt.Sprintf("Created: %s", config.Identifier)))
 			}
 			env.Status("Created build config: %s", config.Identifier)

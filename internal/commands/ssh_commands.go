@@ -33,7 +33,7 @@ Build commands run on the build server; SSH commands run on the deploy target.`,
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(cmds, fmt.Sprintf("%d SSH commands", len(cmds))))
 				}
 				rows := make([][]string, len(cmds))

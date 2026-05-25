@@ -34,7 +34,7 @@ Use these commands to enable, disable, and list auto-deploy configuration per se
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(result, fmt.Sprintf("Auto deploy URL: %s", result.WebhookURL)))
 				}
 				env.Status("Webhook URL: %s", result.WebhookURL)
@@ -80,7 +80,7 @@ func newAutoDeploysEnableCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				action := "Enabled"
 				if disable {
 					action = "Disabled"

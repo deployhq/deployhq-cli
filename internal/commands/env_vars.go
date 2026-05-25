@@ -61,7 +61,7 @@ func newEnvVarsListCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(vars, fmt.Sprintf("%d environment variables", len(vars))))
 			}
 			rows := make([][]string, len(vars))
@@ -149,7 +149,7 @@ func newEnvVarsCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(v, fmt.Sprintf("Created: %s", v.Name)))
 			}
 			env.Status("Created environment variable: %s", v.Name)
@@ -238,7 +238,7 @@ Project-level variables ("dhq env-vars") with the same name override globals for
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(vars, fmt.Sprintf("%d global env vars", len(vars))))
 				}
 				rows := make([][]string, len(vars))
@@ -319,7 +319,7 @@ func newGlobalEnvVarsCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(v, fmt.Sprintf("Created: %s", v.Name)))
 			}
 			env.Status("Created global env var: %s", v.Name)

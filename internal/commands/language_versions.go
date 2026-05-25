@@ -32,7 +32,7 @@ func newLanguageVersionsCmd() *cobra.Command {
 					return err
 				}
 				env := cliCtx.Envelope
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(versions, fmt.Sprintf("%d languages available", len(versions))))
 				}
 

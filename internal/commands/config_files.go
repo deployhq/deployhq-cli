@@ -43,7 +43,7 @@ func newConfigFilesListCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(files, fmt.Sprintf("%d config files", len(files))))
 			}
 			rows := make([][]string, len(files))
@@ -73,7 +73,7 @@ func newConfigFilesShowCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(f, f.Path))
 			}
 			env.WriteTable([]string{"Field", "Value"}, [][]string{

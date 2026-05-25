@@ -99,6 +99,48 @@ func TestEnvelope_WriteJSON_ResponseEnvelopeFieldSelection(t *testing.T) {
 	assert.Nil(t, result[0]["status"], "status should be filtered out")
 }
 
+func TestEnvelope_WantsJSON(t *testing.T) {
+	cases := []struct {
+		name string
+		env  Envelope
+		want bool
+	}{
+		{"tty default", Envelope{IsTTY: true}, false},
+		{"pipe default", Envelope{IsTTY: false}, true},
+		{"tty + json", Envelope{IsTTY: true, JSONMode: true}, true},
+		{"tty + table", Envelope{IsTTY: true, TableMode: true}, false},
+		{"pipe + table", Envelope{IsTTY: false, TableMode: true}, false},
+		{"pipe + json + table", Envelope{IsTTY: false, JSONMode: true, TableMode: true}, false},
+		{"pipe + quiet", Envelope{IsTTY: false, QuietMode: true}, false},
+		{"pipe + json + quiet", Envelope{IsTTY: false, JSONMode: true, QuietMode: true}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.env.WantsJSON())
+		})
+	}
+}
+
+func TestEnvelope_WriteQuiet(t *testing.T) {
+	var stdout bytes.Buffer
+	env := &Envelope{Stdout: &stdout, Stderr: os.Stderr, Logger: &Logger{}}
+
+	env.WriteQuiet([]string{"alpha", "bravo", "charlie"})
+
+	assert.Equal(t, "alpha\nbravo\ncharlie\n", stdout.String())
+}
+
+func TestEnvelope_WriteQuiet_Empty(t *testing.T) {
+	var stdout bytes.Buffer
+	env := &Envelope{Stdout: &stdout, Stderr: os.Stderr, Logger: &Logger{}}
+
+	env.WriteQuiet(nil)
+	assert.Empty(t, stdout.String())
+
+	env.WriteQuiet([]string{})
+	assert.Empty(t, stdout.String())
+}
+
 func TestEnvelope_WriteTable(t *testing.T) {
 	var stdout bytes.Buffer
 	env := &Envelope{Stdout: &stdout, Stderr: os.Stderr, Logger: &Logger{}}

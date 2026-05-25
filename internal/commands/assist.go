@@ -85,7 +85,7 @@ All data stays on your machine — nothing is sent to external services.`,
 			messages := assist.BuildMessages(contextStr, question)
 
 			// Stream to TTY, or return complete response for JSON/pipe
-			if env.IsTTY && !env.JSONMode && !noStream {
+			if env.IsTTY && !env.WantsJSON() && !noStream {
 				env.Status("")
 				fmt.Fprint(env.Stderr, "✨ ") //nolint:errcheck
 				return ollama.ChatStream(cliCtx.Background(), messages, env.Stderr)
@@ -96,7 +96,7 @@ All data stays on your machine — nothing is sent to external services.`,
 				return err
 			}
 
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(
 					map[string]string{"answer": response, "model": ollama.Model},
 					"assist response",

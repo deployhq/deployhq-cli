@@ -58,7 +58,7 @@ func newTestAccessCmd() *cobra.Command {
 			}
 
 			if !wait {
-				if env.JSONMode || !env.IsTTY {
+				if env.WantsJSON() {
 					return env.WriteJSON(output.NewResponse(run,
 						fmt.Sprintf("Test access %s started", run.Identifier),
 						output.Breadcrumb{Action: "results", Cmd: fmt.Sprintf("dhq test-access show %s -p %s", run.Identifier, projectID)},
@@ -90,7 +90,7 @@ func newTestAccessCmd() *cobra.Command {
 			}
 
 			// Render results
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(run, formatTestSummary(run)))
 			}
 
@@ -129,7 +129,7 @@ func newTestAccessShowCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
-			if env.JSONMode || !env.IsTTY {
+			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(run, formatTestSummary(run)))
 			}
 
