@@ -36,6 +36,45 @@ func TestCommandTree_AllRegistered(t *testing.T) {
 	assert.Contains(t, out, "doctor")
 }
 
+func TestParseJSONFlag(t *testing.T) {
+	cases := []struct {
+		raw        string
+		wantJSON   bool
+		wantFields []string
+	}{
+		// Not set → auto behaviour
+		{"", false, nil},
+
+		// Truthy → force JSON, no field selection
+		{"true", true, nil},
+		{"TRUE", true, nil},
+		{"1", true, nil},
+		{"yes", true, nil},
+		{"on", true, nil},
+
+		// Falsy → explicit opt-out, preserves auto behaviour (the bug fix:
+		// previously --json=false silently filtered to {} because "false"
+		// was treated as a field name).
+		{"false", false, nil},
+		{"False", false, nil},
+		{"0", false, nil},
+		{"no", false, nil},
+		{"off", false, nil},
+
+		// Field selection → force JSON, pick fields
+		{"name", true, []string{"name"}},
+		{"name,permalink", true, []string{"name", "permalink"}},
+		{"name,permalink,zone", true, []string{"name", "permalink", "zone"}},
+	}
+	for _, tc := range cases {
+		t.Run("raw="+tc.raw, func(t *testing.T) {
+			gotJSON, gotFields := parseJSONFlag(tc.raw)
+			assert.Equal(t, tc.wantJSON, gotJSON, "JSON mode mismatch")
+			assert.Equal(t, tc.wantFields, gotFields, "fields mismatch")
+		})
+	}
+}
+
 func TestGlobalOutputFlags_Registered(t *testing.T) {
 	cmd := NewRootCmd("test")
 	var stdout bytes.Buffer

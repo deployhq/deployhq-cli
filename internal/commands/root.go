@@ -78,21 +78,7 @@ Support: support@deployhq.com`,
 			logger := output.NewLogger()
 			env := output.NewEnvelope(logger)
 
-			// Handle --json flag. Bare --json or --json=true enables JSON
-			// mode; --json=field1,field2 picks fields; --json=false/0/no
-			// is an explicit opt-out (useful for shell aliases that default
-			// to JSON but occasionally want auto/table behaviour back).
-			if flagJSON != "" {
-				switch strings.ToLower(flagJSON) {
-				case "false", "0", "no", "off":
-					// explicit opt-out — fall through to auto behaviour
-				case "true", "1", "yes", "on":
-					env.JSONMode = true
-				default:
-					env.JSONMode = true
-					env.JSONFields = strings.Split(flagJSON, ",")
-				}
-			}
+			env.JSONMode, env.JSONFields = parseJSONFlag(flagJSON)
 
 			// --table forces table output even when piped. --quiet prints
 			// only key identifiers, one per line, suitable for piping to
@@ -260,6 +246,30 @@ Support: support@deployhq.com`,
 	installAgentHelp(root)
 
 	return root
+}
+
+// parseJSONFlag interprets the --json flag value.
+//
+//   - ""                          → not set; auto behaviour (TTY=table, pipe=JSON)
+//   - "true"/"1"/"yes"/"on"       → force JSON, all fields
+//   - "false"/"0"/"no"/"off"      → explicit opt-out; auto behaviour
+//   - "name,permalink"            → force JSON, only those fields
+//
+// The opt-out values matter because cobra parses --json=false as flagJSON="false"
+// (a string), not as a bool. Without this branch, "false" would be treated as a
+// field name and silently return {} from every command.
+func parseJSONFlag(raw string) (jsonMode bool, fields []string) {
+	if raw == "" {
+		return false, nil
+	}
+	switch strings.ToLower(raw) {
+	case "false", "0", "no", "off":
+		return false, nil
+	case "true", "1", "yes", "on":
+		return true, nil
+	default:
+		return true, strings.Split(raw, ",")
+	}
 }
 
 // IsJSONMode returns true if --json was passed or output is piped (non-TTY).
