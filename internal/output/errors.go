@@ -10,8 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"syscall"
+
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
 
 // ExitCode constants for error classification.
@@ -121,6 +124,11 @@ func IsNetworkErr(err error) bool {
 }
 
 // ClassifyError returns the appropriate exit code for an error.
+//
+// Precedence: typed errors (UserError, InternalError, etc.) the command code
+// chose explicitly always win. Raw *sdk.APIError values returned without
+// wrapping fall back to a status-code mapping so 4xx doesn't get reported as
+// an internal CLI bug.
 func ClassifyError(err error) int {
 	if err == nil {
 		return ExitOK
@@ -134,6 +142,18 @@ func ClassifyError(err error) int {
 		return ExitAuthError
 	case *NetworkError:
 		return ExitNetworkError
+	}
+	var apiErr *sdk.APIError
+	if errors.As(err, &apiErr) {
+		switch {
+		case apiErr.StatusCode == http.StatusUnauthorized,
+			apiErr.StatusCode == http.StatusForbidden:
+			return ExitAuthError
+		case apiErr.StatusCode >= 400 && apiErr.StatusCode < 500:
+			return ExitUserError
+		case apiErr.StatusCode >= 500:
+			return ExitInternalError
+		}
 	}
 	if IsNetworkErr(err) {
 		return ExitNetworkError

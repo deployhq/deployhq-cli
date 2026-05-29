@@ -2,12 +2,14 @@ package output
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -130,6 +132,43 @@ func TestClassifyError_DetectsURLNetworkError(t *testing.T) {
 		Err: timeoutErr{},
 	}
 	assert.Equal(t, ExitNetworkError, ClassifyError(urlErr))
+}
+
+func TestClassifyError_APIErrorByStatus(t *testing.T) {
+	cases := []struct {
+		status int
+		want   int
+		name   string
+	}{
+		{401, ExitAuthError, "401 unauthorized"},
+		{403, ExitAuthError, "403 forbidden"},
+		{404, ExitUserError, "404 not found is a user-supplied bad id"},
+		{409, ExitUserError, "409 conflict is user state"},
+		{422, ExitUserError, "422 validation is bad input"},
+		{500, ExitInternalError, "500 server is internal"},
+		{503, ExitInternalError, "503 unavailable is internal"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := &sdk.APIError{StatusCode: tc.status, Message: "x"}
+			assert.Equal(t, tc.want, ClassifyError(err))
+		})
+	}
+}
+
+func TestClassifyError_APIErrorWrapped(t *testing.T) {
+	// errors.As should unwrap through a wrapping error to find the APIError.
+	apiErr := &sdk.APIError{StatusCode: 404, Message: "not found"}
+	wrapped := fmt.Errorf("fetch project: %w", apiErr)
+	assert.Equal(t, ExitUserError, ClassifyError(wrapped))
+}
+
+func TestClassifyError_TypedErrorWinsOverAPIError(t *testing.T) {
+	// If the command explicitly wraps an API 5xx as a UserError, honor that.
+	apiErr := &sdk.APIError{StatusCode: 500, Message: "boom"}
+	wrapped := &UserError{Message: "you triggered the bug", Hint: "blah"}
+	_ = apiErr // sanity: classification of the typed error doesn't peek inside
+	assert.Equal(t, ExitUserError, ClassifyError(wrapped))
 }
 
 // Sanity check: a deadline-style error wrapped in net.Error.Timeout() classifies

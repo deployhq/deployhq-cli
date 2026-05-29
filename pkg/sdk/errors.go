@@ -69,3 +69,11 @@ func IsUnauthorized(err error) bool {
 	}
 	return false
 }
+
+// IsForbidden checks whether err is an APIError with status 403.
+func IsForbidden(err error) bool {
+	if apiErr, ok := err.(*APIError); ok {
+		return apiErr.IsForbidden()
+	}
+	return false
+}
