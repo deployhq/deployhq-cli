@@ -22,7 +22,7 @@ type SSHCommand struct {
 // SSHCommandCreateRequest is the payload for creating/updating an SSH command.
 type SSHCommandCreateRequest struct {
 	Description string `json:"description,omitempty"`
-	Command     string `json:"command"`
+	Command     string `json:"command,omitempty"`
 	HaltOnError *bool  `json:"halt_on_error,omitempty"`
 	Timing      string `json:"timing,omitempty"`
 	Timeout     *int   `json:"timeout,omitempty"`
