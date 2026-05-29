@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/manifoldco/promptui"
@@ -69,6 +70,15 @@ The MCP server binary is searched in:
 				}
 			}
 
+			// The MCP server reads credentials from DEPLOYHQ_ACCOUNT / DEPLOYHQ_EMAIL /
+			// DEPLOYHQ_API_KEY and exits with status 1 if any is missing. Inject the
+			// resolved CLI credentials so users who logged in via keyring (the common
+			// case) don't have to re-export them just to start the server.
+			account, email, apiKey, err := cliCtx.Credentials()
+			if err != nil {
+				return err
+			}
+
 			cmdArgs := append(bin.args, args...)
 			cliCtx.Logger.Write("Starting MCP server: %s %v", bin.path, cmdArgs)
 
@@ -76,7 +86,11 @@ The MCP server binary is searched in:
 			c.Stdin = os.Stdin
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr
-			c.Env = os.Environ()
+			c.Env = mergeEnv(os.Environ(), map[string]string{
+				"DEPLOYHQ_ACCOUNT": account,
+				"DEPLOYHQ_EMAIL":   email,
+				"DEPLOYHQ_API_KEY": apiKey,
+			})
 
 			if err := c.Run(); err != nil {
 				return &output.InternalError{Message: "MCP server exited", Cause: err}
@@ -84,6 +98,46 @@ The MCP server binary is searched in:
 			return nil
 		},
 	}
+}
+
+// mergeEnv returns env with each key in overrides set to its value, only when
+// the key is not already present with a non-empty value. An exported-but-empty
+// variable (e.g. `DEPLOYHQ_API_KEY=`) is treated as missing and dropped from
+// the result — otherwise the MCP server would still crash at startup because
+// empty required vars fail its validation just like absent ones, and a stale
+// empty entry could shadow the override on platforms that take the first
+// occurrence.
+//
+// User-set non-empty values are preserved, so power users can still point the
+// server at a different account for one session.
+func mergeEnv(env []string, overrides map[string]string) []string {
+	out := make([]string, 0, len(env)+len(overrides))
+	occupied := make(map[string]struct{}, len(env))
+	for _, kv := range env {
+		i := strings.Index(kv, "=")
+		if i <= 0 {
+			out = append(out, kv)
+			continue
+		}
+		key, val := kv[:i], kv[i+1:]
+		if val == "" {
+			if _, willOverride := overrides[key]; willOverride {
+				continue
+			}
+		}
+		out = append(out, kv)
+		occupied[key] = struct{}{}
+	}
+	for k, v := range overrides {
+		if _, ok := occupied[k]; ok {
+			continue
+		}
+		if v == "" {
+			continue
+		}
+		out = append(out, k+"="+v)
+	}
+	return out
 }
 
 func findMCPBinary() *mcpBinary {

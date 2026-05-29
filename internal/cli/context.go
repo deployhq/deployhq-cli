@@ -34,22 +34,22 @@ func NewContext(cfg *config.Config, env *output.Envelope, logger *output.Logger)
 	}
 }
 
-// Client returns the SDK client, creating it on first use.
-// It merges credentials from config and auth store.
-func (c *Context) Client() (*sdk.Client, error) {
-	if c.client != nil {
-		return c.client, nil
-	}
+// Credentials returns the resolved (account, email, apiKey) triplet,
+// merging values from config (flags/env/files) with the auth store. It
+// returns the same AuthError/UserError shapes that Client() would.
+//
+// This is useful for code paths that need credentials but don't need
+// the full SDK client — e.g. shelling out to a child process that
+// reads them from environment variables.
+func (c *Context) Credentials() (account, email, apiKey string, err error) {
+	account = c.Config.Account
+	email = c.Config.Email
+	apiKey = c.Config.APIKey
 
-	account := c.Config.Account
-	email := c.Config.Email
-	apiKey := c.Config.APIKey
-
-	// Fill gaps from auth store (look up by account name if known)
 	if account == "" || email == "" || apiKey == "" {
-		creds, err := auth.LoadByAccount(account)
-		if err != nil {
-			return nil, &output.AuthError{
+		creds, loadErr := auth.LoadByAccount(account)
+		if loadErr != nil {
+			return "", "", "", &output.AuthError{
 				Message: "Not logged in",
 				Hint: "Authenticate first:\n" +
 					"  dhq auth login                                                    (interactive)\n" +
@@ -68,10 +68,24 @@ func (c *Context) Client() (*sdk.Client, error) {
 	}
 
 	if account == "" {
-		return nil, &output.UserError{
+		return "", "", "", &output.UserError{
 			Message: "Account not configured",
 			Hint:    "Set via --account flag, DEPLOYHQ_ACCOUNT env var, or 'dhq config set account <name>'",
 		}
+	}
+	return account, email, apiKey, nil
+}
+
+// Client returns the SDK client, creating it on first use.
+// It merges credentials from config and auth store.
+func (c *Context) Client() (*sdk.Client, error) {
+	if c.client != nil {
+		return c.client, nil
+	}
+
+	account, email, apiKey, err := c.Credentials()
+	if err != nil {
+		return nil, err
 	}
 
 	opts := []sdk.Option{}
