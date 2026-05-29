@@ -34,6 +34,18 @@ func TestMergeEnv(t *testing.T) {
 			wantHas:   []string{"PATH=/usr/bin"},
 			wantAbsent: []string{"DEPLOYHQ_API_KEY="},
 		},
+		{
+			name:      "empty exported key is treated as missing and dropped",
+			env:       []string{"DEPLOYHQ_API_KEY=", "PATH=/usr/bin"},
+			overrides: map[string]string{"DEPLOYHQ_API_KEY": "realkey"},
+			wantHas:   []string{"DEPLOYHQ_API_KEY=realkey", "PATH=/usr/bin"},
+		},
+		{
+			name:      "empty exported key for unrelated var is preserved",
+			env:       []string{"OTHER_THING=", "PATH=/usr/bin"},
+			overrides: map[string]string{"DEPLOYHQ_API_KEY": "realkey"},
+			wantHas:   []string{"OTHER_THING=", "DEPLOYHQ_API_KEY=realkey", "PATH=/usr/bin"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

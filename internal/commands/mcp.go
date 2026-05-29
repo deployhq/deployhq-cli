@@ -101,26 +101,43 @@ The MCP server binary is searched in:
 }
 
 // mergeEnv returns env with each key in overrides set to its value, only when
-// the key is not already present. This preserves the user's explicit env-var
-// overrides (e.g. pointing the MCP server at a different account) while still
-// providing sensible defaults from the keyring.
+// the key is not already present with a non-empty value. An exported-but-empty
+// variable (e.g. `DEPLOYHQ_API_KEY=`) is treated as missing and dropped from
+// the result — otherwise the MCP server would still crash at startup because
+// empty required vars fail its validation just like absent ones, and a stale
+// empty entry could shadow the override on platforms that take the first
+// occurrence.
+//
+// User-set non-empty values are preserved, so power users can still point the
+// server at a different account for one session.
 func mergeEnv(env []string, overrides map[string]string) []string {
-	present := make(map[string]struct{}, len(env))
+	out := make([]string, 0, len(env)+len(overrides))
+	occupied := make(map[string]struct{}, len(env))
 	for _, kv := range env {
-		if i := strings.Index(kv, "="); i > 0 {
-			present[kv[:i]] = struct{}{}
+		i := strings.Index(kv, "=")
+		if i <= 0 {
+			out = append(out, kv)
+			continue
 		}
+		key, val := kv[:i], kv[i+1:]
+		if val == "" {
+			if _, willOverride := overrides[key]; willOverride {
+				continue
+			}
+		}
+		out = append(out, kv)
+		occupied[key] = struct{}{}
 	}
 	for k, v := range overrides {
-		if _, ok := present[k]; ok {
+		if _, ok := occupied[k]; ok {
 			continue
 		}
 		if v == "" {
 			continue
 		}
-		env = append(env, k+"="+v)
+		out = append(out, k+"="+v)
 	}
-	return env
+	return out
 }
 
 func findMCPBinary() *mcpBinary {
