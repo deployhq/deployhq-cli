@@ -67,6 +67,29 @@ func newAuthLoginCmd() *cobra.Command {
 	return cmd
 }
 
+// normalizeAccount accepts user-supplied account values in any of these forms
+// and returns just the subdomain:
+//
+//	mycompany
+//	mycompany.deployhq.com
+//	https://mycompany.deployhq.com/
+//
+// host is the configured DeployHQ host (defaults to "deployhq.com") so the
+// same logic works for staging/self-hosted setups.
+func normalizeAccount(input, host string) string {
+	s := strings.TrimSpace(input)
+	s = strings.TrimPrefix(s, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	if i := strings.IndexAny(s, "/?#"); i >= 0 {
+		s = s[:i]
+	}
+	if host == "" {
+		host = "deployhq.com"
+	}
+	s = strings.TrimSuffix(s, "."+host)
+	return s
+}
+
 func runAuthLogin(opts *AuthLoginOptions) error {
 	env := cliCtx.Envelope
 	reader := bufio.NewReader(os.Stdin)
@@ -79,10 +102,11 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 				Hint:    "Use --account flag",
 			}
 		}
-		fmt.Fprint(env.Stderr, "Account subdomain: ") //nolint:errcheck // best-effort stderr
+		fmt.Fprint(env.Stderr, "Account subdomain (e.g. 'mycompany' for mycompany.deployhq.com): ") //nolint:errcheck // best-effort stderr
 		input, _ := reader.ReadString('\n')
 		opts.Account = strings.TrimSpace(input)
 	}
+	opts.Account = normalizeAccount(opts.Account, cliCtx.Config.Host)
 
 	if opts.Email == "" {
 		if env.NonInteractive {

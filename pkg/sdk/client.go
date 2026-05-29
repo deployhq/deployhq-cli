@@ -76,6 +76,10 @@ func New(account, email, apiKey string, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("deployhq: api key is required")
 	}
 
+	// Tolerate users passing a full hostname (e.g. "mycompany.deployhq.com")
+	// instead of just the subdomain — otherwise we'd build .deployhq.com.deployhq.com.
+	account = strings.TrimSuffix(account, ".deployhq.com")
+
 	base, err := url.Parse(fmt.Sprintf("https://%s.deployhq.com", account))
 	if err != nil {
 		return nil, fmt.Errorf("deployhq: invalid account name %q: %w", account, err)
