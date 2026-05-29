@@ -1,6 +1,12 @@
 package output
 
-import "strings"
+import (
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
+)
 
 // Breadcrumb represents a suggested next action.
 type Breadcrumb struct {
@@ -98,6 +104,31 @@ func ErrorResponseFromErr(err error) *Response {
 	case *InternalError:
 		code = "internal_error"
 		message = e.Message
+	case *NetworkError:
+		code = "network_error"
+		message = e.Message
+	}
+
+	// Mirror the status-code mapping from ClassifyError so a raw *sdk.APIError
+	// returned without wrapping produces a `code` field consistent with the
+	// exit_code agents already follow.
+	if code == "error" {
+		var apiErr *sdk.APIError
+		if errors.As(err, &apiErr) {
+			switch {
+			case apiErr.StatusCode == http.StatusUnauthorized,
+				apiErr.StatusCode == http.StatusForbidden:
+				code = "auth_error"
+			case apiErr.StatusCode == http.StatusNotFound:
+				code = "not_found"
+			case apiErr.StatusCode == http.StatusConflict:
+				code = "conflict"
+			case apiErr.StatusCode >= 400 && apiErr.StatusCode < 500:
+				code = "user_error"
+			case apiErr.StatusCode >= 500:
+				code = "internal_error"
+			}
+		}
 	}
 
 	// Enrich errors with actionable suggestions when no hint is set

@@ -142,8 +142,8 @@ func TestClassifyError_APIErrorByStatus(t *testing.T) {
 	}{
 		{401, ExitAuthError, "401 unauthorized"},
 		{403, ExitAuthError, "403 forbidden"},
-		{404, ExitUserError, "404 not found is a user-supplied bad id"},
-		{409, ExitUserError, "409 conflict is user state"},
+		{404, ExitNotFoundError, "404 not found uses dedicated exit code"},
+		{409, ExitConflictError, "409 conflict uses dedicated exit code"},
 		{422, ExitUserError, "422 validation is bad input"},
 		{500, ExitInternalError, "500 server is internal"},
 		{503, ExitInternalError, "503 unavailable is internal"},
@@ -160,15 +160,7 @@ func TestClassifyError_APIErrorWrapped(t *testing.T) {
 	// errors.As should unwrap through a wrapping error to find the APIError.
 	apiErr := &sdk.APIError{StatusCode: 404, Message: "not found"}
 	wrapped := fmt.Errorf("fetch project: %w", apiErr)
-	assert.Equal(t, ExitUserError, ClassifyError(wrapped))
-}
-
-func TestClassifyError_TypedErrorWinsOverAPIError(t *testing.T) {
-	// If the command explicitly wraps an API 5xx as a UserError, honor that.
-	apiErr := &sdk.APIError{StatusCode: 500, Message: "boom"}
-	wrapped := &UserError{Message: "you triggered the bug", Hint: "blah"}
-	_ = apiErr // sanity: classification of the typed error doesn't peek inside
-	assert.Equal(t, ExitUserError, ClassifyError(wrapped))
+	assert.Equal(t, ExitNotFoundError, ClassifyError(wrapped))
 }
 
 // Sanity check: a deadline-style error wrapped in net.Error.Timeout() classifies

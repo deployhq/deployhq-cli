@@ -149,6 +149,10 @@ func ClassifyError(err error) int {
 		case apiErr.StatusCode == http.StatusUnauthorized,
 			apiErr.StatusCode == http.StatusForbidden:
 			return ExitAuthError
+		case apiErr.StatusCode == http.StatusNotFound:
+			return ExitNotFoundError
+		case apiErr.StatusCode == http.StatusConflict:
+			return ExitConflictError
 		case apiErr.StatusCode >= 400 && apiErr.StatusCode < 500:
 			return ExitUserError
 		case apiErr.StatusCode >= 500:
