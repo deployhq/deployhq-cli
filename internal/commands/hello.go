@@ -2,7 +2,9 @@ package commands
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -176,7 +178,7 @@ func helloAuth(env *output.Envelope) (*auth.Credentials, error) {
 func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, error) {
 	env.Status("")
 
-	fmt.Fprint(env.Stderr, "Account subdomain: ") //nolint:errcheck
+	fmt.Fprint(env.Stderr, "Account subdomain (e.g. 'mycompany' for mycompany.deployhq.com): ") //nolint:errcheck
 	account, _ := reader.ReadString('\n')
 	account = strings.TrimSpace(account)
 
@@ -203,16 +205,10 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 	}
 
 	if _, err := client.ListProjects(cliCtx.Background(), nil); err != nil {
-		if sdk.IsUnauthorized(err) {
-			return nil, &output.AuthError{
-				Message: "Invalid credentials",
-				Hint:    "Check your email and API key at Profile > API Key in DeployHQ",
-			}
+		if userErr := classifyHelloValidateErr(err); userErr != nil {
+			return nil, userErr
 		}
-		if output.IsNetworkErr(err) {
-			return nil, &output.NetworkError{Message: "validate credentials", Cause: err}
-		}
-		return nil, &output.InternalError{Message: "validate credentials", Cause: err}
+		return nil, err
 	}
 
 	creds := &auth.Credentials{Account: account, Email: email, APIKey: apiKey}
@@ -230,6 +226,38 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 	env.Status("")
 	output.ColorGreen.Fprintf(env.Stderr, "Logged in as %s on %s.%s\n", email, account, host) //nolint:errcheck
 	return creds, nil
+}
+
+// classifyHelloValidateErr maps an error from the credential-validation API
+// call into a typed *output.AuthError / *output.UserError / *output.NetworkError
+// when the cause is recognizable. Returns nil when the caller should pass the
+// error through unchanged (which lets output.ClassifyError handle status-code
+// fallback for any remaining *sdk.APIError).
+func classifyHelloValidateErr(err error) error {
+	if output.IsNetworkErr(err) {
+		return &output.NetworkError{Message: "validate credentials", Cause: err}
+	}
+	var apiErr *sdk.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusUnauthorized:
+			return &output.AuthError{
+				Message: "Invalid credentials",
+				Hint:    "Check your email and API key at Profile > API Key in DeployHQ",
+			}
+		case http.StatusForbidden:
+			return &output.AuthError{
+				Message: "Access denied",
+				Hint:    "Your account may have API access restricted, or your user may not be a member of this account. Check Account Settings > API.",
+			}
+		case http.StatusNotFound:
+			return &output.UserError{
+				Message: "Account not found",
+				Hint:    "Double-check the account subdomain. List your accounts at https://www.deployhq.com/account.",
+			}
+		}
+	}
+	return nil
 }
 
 func helloSignup(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, error) {
