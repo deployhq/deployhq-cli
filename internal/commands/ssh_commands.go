@@ -86,11 +86,32 @@ Build commands run on the build server; SSH commands run on the deploy target.`,
 	return cmd
 }
 
+// validSSHTimings mirrors Command::TIMING in the DeployHQ Rails model.
+var validSSHTimings = []string{"all", "first", "after_first"}
+
+func validateSSHTiming(timing string) error {
+	if timing == "" {
+		return nil
+	}
+	for _, t := range validSSHTimings {
+		if timing == t {
+			return nil
+		}
+	}
+	return &output.UserError{
+		Message: fmt.Sprintf("Invalid --timing %q", timing),
+		Hint:    "Valid values: all, first, after_first",
+	}
+}
+
 func newSSHCommandsUpdateCmd() *cobra.Command {
 	var command, description, timing string
 	cmd := &cobra.Command{
 		Use: "update <id>", Short: "Update an SSH command", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateSSHTiming(timing); err != nil {
+				return err
+			}
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
 				return err
@@ -111,7 +132,7 @@ func newSSHCommandsUpdateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&command, "command", "", "SSH command")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
-	cmd.Flags().StringVar(&timing, "timing", "", "Timing: before or after")
+	cmd.Flags().StringVar(&timing, "timing", "", "Timing: all, first, or after_first")
 	return cmd
 }
 
@@ -122,6 +143,9 @@ func newSSHCommandsCreateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if command == "" {
 				return &output.UserError{Message: "--command is required"}
+			}
+			if err := validateSSHTiming(timing); err != nil {
+				return err
 			}
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -143,6 +167,6 @@ func newSSHCommandsCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&command, "command", "", "SSH command (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
-	cmd.Flags().StringVar(&timing, "timing", "after", "Timing: before or after")
+	cmd.Flags().StringVar(&timing, "timing", "all", "Timing: all, first, or after_first")
 	return cmd
 }

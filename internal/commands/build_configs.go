@@ -13,7 +13,9 @@ func newBuildConfigsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "build-configs",
 		Short: "Manage build configurations",
-		Long: `The build environment for a project — which language versions, OS image, and runtime tooling are available to build commands. Pair with "dhq language-versions" to discover what's pinnable.`,
+		Long: `The build environment for a project — which language versions, OS image, and runtime tooling are available to build commands. Pair with "dhq language-versions" to discover what's pinnable.
+
+Each project has one default build config (read-only) and may have overrides that customize the environment for specific servers. Only overrides can be updated or deleted. To customize the default, create an override with "dhq build-configs create".`,
 	}
 	cmd.AddCommand(
 		&cobra.Command{
@@ -37,13 +39,13 @@ func newBuildConfigsCmd() *cobra.Command {
 				}
 				rows := make([][]string, len(configs))
 				for i, c := range configs {
-					def := ""
+					kind := "(override)"
 					if c.Default {
-						def = "(default)"
+						kind = "(default)"
 					}
-					rows[i] = []string{c.Identifier, def}
+					rows[i] = []string{c.Identifier, kind}
 				}
-				env.WriteTable([]string{"Identifier", "Default"}, rows)
+				env.WriteTable([]string{"Identifier", "Type"}, rows)
 				return nil
 			},
 		},
