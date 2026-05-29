@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/manifoldco/promptui"
@@ -69,6 +70,15 @@ The MCP server binary is searched in:
 				}
 			}
 
+			// The MCP server reads credentials from DEPLOYHQ_ACCOUNT / DEPLOYHQ_EMAIL /
+			// DEPLOYHQ_API_KEY and exits with status 1 if any is missing. Inject the
+			// resolved CLI credentials so users who logged in via keyring (the common
+			// case) don't have to re-export them just to start the server.
+			account, email, apiKey, err := cliCtx.Credentials()
+			if err != nil {
+				return err
+			}
+
 			cmdArgs := append(bin.args, args...)
 			cliCtx.Logger.Write("Starting MCP server: %s %v", bin.path, cmdArgs)
 
@@ -76,7 +86,11 @@ The MCP server binary is searched in:
 			c.Stdin = os.Stdin
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr
-			c.Env = os.Environ()
+			c.Env = mergeEnv(os.Environ(), map[string]string{
+				"DEPLOYHQ_ACCOUNT": account,
+				"DEPLOYHQ_EMAIL":   email,
+				"DEPLOYHQ_API_KEY": apiKey,
+			})
 
 			if err := c.Run(); err != nil {
 				return &output.InternalError{Message: "MCP server exited", Cause: err}
@@ -84,6 +98,29 @@ The MCP server binary is searched in:
 			return nil
 		},
 	}
+}
+
+// mergeEnv returns env with each key in overrides set to its value, only when
+// the key is not already present. This preserves the user's explicit env-var
+// overrides (e.g. pointing the MCP server at a different account) while still
+// providing sensible defaults from the keyring.
+func mergeEnv(env []string, overrides map[string]string) []string {
+	present := make(map[string]struct{}, len(env))
+	for _, kv := range env {
+		if i := strings.Index(kv, "="); i > 0 {
+			present[kv[:i]] = struct{}{}
+		}
+	}
+	for k, v := range overrides {
+		if _, ok := present[k]; ok {
+			continue
+		}
+		if v == "" {
+			continue
+		}
+		env = append(env, k+"="+v)
+	}
+	return env
 }
 
 func findMCPBinary() *mcpBinary {
