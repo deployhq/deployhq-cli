@@ -160,6 +160,12 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 				Hint:    "Check your email and API key at Profile > API Key in DeployHQ",
 			}
 		}
+		if sdk.IsForbidden(err) {
+			return &output.AuthError{
+				Message: "Access denied",
+				Hint:    "Your account may have API access restricted, or your user may not be a member of this account. Check Account Settings > API.",
+			}
+		}
 		if output.IsNetworkErr(err) {
 			return &output.NetworkError{Message: "validate credentials", Cause: err}
 		}

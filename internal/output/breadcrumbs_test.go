@@ -2,8 +2,10 @@ package output
 
 import (
 	"encoding/json"
+	"net/http"
 	"testing"
 
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -114,6 +116,37 @@ func TestErrorResponseFromErr_Retryable(t *testing.T) {
 
 	data := resp.Data.(ErrorData)
 	assert.True(t, data.Retryable)
+}
+
+func TestErrorResponseFromErr_APIErrorByStatus(t *testing.T) {
+	cases := []struct {
+		status   int
+		wantCode string
+		wantExit int
+	}{
+		{401, "auth_error", ExitAuthError},
+		{403, "auth_error", ExitAuthError},
+		{404, "not_found", ExitNotFoundError},
+		{409, "conflict", ExitConflictError},
+		{422, "user_error", ExitUserError},
+		{500, "internal_error", ExitInternalError},
+		{503, "internal_error", ExitInternalError},
+	}
+	for _, tc := range cases {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			err := &sdk.APIError{StatusCode: tc.status, Message: "x"}
+			data := ErrorResponseFromErr(err).Data.(ErrorData)
+			assert.Equal(t, tc.wantCode, data.Code, "code mismatch")
+			assert.Equal(t, tc.wantExit, data.ExitCode, "exit_code mismatch")
+		})
+	}
+}
+
+func TestErrorResponseFromErr_NetworkError(t *testing.T) {
+	err := &NetworkError{Message: "validate credentials"}
+	data := ErrorResponseFromErr(err).Data.(ErrorData)
+	assert.Equal(t, "network_error", data.Code)
+	assert.Equal(t, ExitNetworkError, data.ExitCode)
 }
 
 func TestErrorData_JSONShape(t *testing.T) {
