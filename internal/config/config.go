@@ -126,6 +126,8 @@ func (cfg *Config) BaseURL(account string) string {
 	if cfg.Host == "" {
 		return ""
 	}
+	// Tolerate accounts saved with the host suffix already attached.
+	account = strings.TrimSuffix(account, "."+cfg.Host)
 	return fmt.Sprintf("https://%s.%s", account, cfg.Host)
 }
 
