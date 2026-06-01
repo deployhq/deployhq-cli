@@ -450,6 +450,7 @@ func TestResolveBranchAndRevision_UsesGroupPreferredBranch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "release", branch, "group's preferred_branch must be honored")
 	assert.Equal(t, "sha-of-release", revision, "must be release's tip, not main's")
+	assert.True(t, mux.branchesCalled, "should query /branches to map branch→sha")
 	assert.False(t, mux.latestRevCalled, "should NOT fall back to repo default")
 }
 
