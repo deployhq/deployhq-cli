@@ -19,7 +19,8 @@ func isUUID(s string) bool {
 
 // resolveBranchAndRevision determines the branch and end revision for a deployment.
 //
-// Branch resolution: explicit --branch → server's PreferredBranch (or Branch) → "" (use repo default).
+// Branch resolution: explicit --branch → server's PreferredBranch (or Branch) → group's
+// PreferredBranch → "" (use repo default).
 // Revision resolution: explicit --revision → tip SHA of the resolved branch → repo default tip.
 //
 // Sending end_revision without ensuring it matches the chosen branch was the source of two
@@ -30,25 +31,29 @@ func resolveBranchAndRevision(
 	client *sdk.Client,
 	projectID, serverIdentifier, flagBranch, flagRevision string,
 	knownServer *sdk.Server,
+	knownGroup *sdk.ServerGroup,
 ) (branch, revision string, err error) {
 	branch = flagBranch
 	revision = flagRevision
 
 	if branch == "" && serverIdentifier != "" {
 		srv := knownServer
-		if srv == nil {
-			// GetServer 404s for server-group identifiers; that's expected — we fall through.
+		grp := knownGroup
+		if srv == nil && grp == nil {
+			// GetServer 404s for server-group identifiers; fall through to GetServerGroup.
 			if s, gerr := client.GetServer(ctx, projectID, serverIdentifier); gerr == nil {
 				srv = s
+			} else if g, gerr := client.GetServerGroup(ctx, projectID, serverIdentifier); gerr == nil {
+				grp = g
 			}
 		}
-		if srv != nil {
-			switch {
-			case srv.PreferredBranch != "":
-				branch = srv.PreferredBranch
-			case srv.Branch != "":
-				branch = srv.Branch
-			}
+		switch {
+		case srv != nil && srv.PreferredBranch != "":
+			branch = srv.PreferredBranch
+		case srv != nil && srv.Branch != "":
+			branch = srv.Branch
+		case grp != nil && grp.PreferredBranch != "":
+			branch = grp.PreferredBranch
 		}
 	}
 
@@ -81,13 +86,16 @@ func resolveBranchAndRevision(
 // resolveStartRevision determines the start_revision for a deployment.
 //
 // Resolution order: --full → "" (deploy entire branch) → explicit --start-revision →
-// resolved server's LastRevision (incremental from last successful deploy) → "".
+// resolved server's LastRevision → resolved group's LastRevision → "".
 //
 // Sending an empty start_revision to the API means "deploy entire branch from the
-// first commit". That was the source of issue #5: dhq deploy never populated this
-// field, so every deploy looked like an initial one regardless of what the server
-// had previously deployed.
-func resolveStartRevision(server *sdk.Server, flagStart string, full bool) string {
+// first commit". That was the source of issue #5 (server case) and the DHQ-586
+// follow-up (group case): without populating this field every deploy looked like
+// an initial one. ServerGroup.LastRevision is the end_revision of the most recent
+// deployment that targeted the group (Rails: ServerGroup#last_revision), which is
+// the correct incremental baseline. Newly-created groups have an empty value, so
+// the first group deploy still falls through to a full deploy.
+func resolveStartRevision(server *sdk.Server, group *sdk.ServerGroup, flagStart string, full bool) string {
 	if full {
 		return ""
 	}
@@ -96,6 +104,9 @@ func resolveStartRevision(server *sdk.Server, flagStart string, full bool) strin
 	}
 	if server != nil && server.LastRevision != "" {
 		return server.LastRevision
+	}
+	if group != nil && group.LastRevision != "" {
+		return group.LastRevision
 	}
 	return ""
 }
@@ -274,9 +285,11 @@ func newDeployCmd() *cobra.Command {
 
 			env := cliCtx.Envelope
 
-			// Track the Server we resolved to, so branch/revision lookup can reuse it
-			// without an extra GetServer round-trip.
+			// Track the Server or ServerGroup we resolved to, so branch/revision lookup
+			// can reuse them without extra round-trips. Exactly one of these will be
+			// non-nil once the target is locked in (or both nil for a project-wide deploy).
 			var resolvedServer *sdk.Server
+			var resolvedGroup *sdk.ServerGroup
 
 			// Auto-select server if not specified
 			if server == "" {
@@ -337,10 +350,16 @@ func newDeployCmd() *cobra.Command {
 					// (documented at deployhq.com/support/cli/cli-deploying).
 					if !matched {
 						if groups, gerr := client.ListServerGroups(cliCtx.Background(), projectID, nil); gerr == nil {
-							if groupID, groupName := resolveGroupName(server, groups); groupID != "" {
+							if groupID, _ := resolveGroupName(server, groups); groupID != "" {
+								for i := range groups {
+									if groups[i].Identifier == groupID {
+										resolvedGroup = &groups[i]
+										break
+									}
+								}
 								server = groupID
 								resolvedServer = nil // groups don't map to a single Server
-								env.Status("Resolved to server group: %s", groupName)
+								env.Status("Resolved to server group: %s", resolvedGroup.Name)
 								matched = true
 							}
 						}
@@ -375,20 +394,22 @@ func newDeployCmd() *cobra.Command {
 				}
 			}
 
-			// Eagerly fetch the server when caller didn't already resolve it
-			// (e.g. user passed a UUID directly). We need its LastRevision for
-			// start_revision resolution. GetServer 404s for server-group
-			// identifiers — that's expected, we just leave resolvedServer nil.
-			if resolvedServer == nil && server != "" {
+			// Eagerly fetch the target when caller didn't already resolve it
+			// (e.g. user passed a UUID directly). We need either Server.LastRevision or
+			// ServerGroup.LastRevision for start_revision resolution. GetServer 404s for
+			// server-group identifiers, so fall back to GetServerGroup before giving up.
+			if resolvedServer == nil && resolvedGroup == nil && server != "" {
 				if s, gerr := client.GetServer(cliCtx.Background(), projectID, server); gerr == nil {
 					resolvedServer = s
+				} else if g, gerr := client.GetServerGroup(cliCtx.Background(), projectID, server); gerr == nil {
+					resolvedGroup = g
 				}
 			}
 
 			if branch == "" || revision == "" {
 				env.Status("Resolving branch and revision...")
 				resolvedBranch, resolvedRev, err := resolveBranchAndRevision(
-					cliCtx.Background(), client, projectID, server, branch, revision, resolvedServer,
+					cliCtx.Background(), client, projectID, server, branch, revision, resolvedServer, resolvedGroup,
 				)
 				if err != nil {
 					return err
@@ -398,7 +419,7 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			req := sdk.DeploymentCreateRequest{
-				StartRevision:    resolveStartRevision(resolvedServer, startRevision, full),
+				StartRevision:    resolveStartRevision(resolvedServer, resolvedGroup, startRevision, full),
 				Branch:           branch,
 				EndRevision:      revision,
 				ParentIdentifier: server,
