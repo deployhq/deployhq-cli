@@ -194,6 +194,13 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 	}
 	apiKey := strings.TrimSpace(string(key))
 
+	// Validate inputs before reaching sdk.New, which would otherwise surface
+	// raw "deployhq: <field> is required" messages with no guidance on what
+	// to do next. The hint text points users at where each value comes from.
+	if err := validateHelloLoginInputs(account, email, apiKey); err != nil {
+		return nil, err
+	}
+
 	env.Status("Validating credentials...")
 	var sdkOpts []sdk.Option
 	if baseURL := cliCtx.Config.BaseURL(account); baseURL != "" {
@@ -226,6 +233,33 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 	env.Status("")
 	output.ColorGreen.Fprintf(env.Stderr, "Logged in as %s on %s.%s\n", email, account, host) //nolint:errcheck
 	return creds, nil
+}
+
+// validateHelloLoginInputs catches empty fields before sdk.New would, so
+// users see actionable messages instead of the raw "deployhq: api key is
+// required" SDK error. The API-key hint is the most important one: telemetry
+// shows users hit Enter at the masked prompt without knowing where to find
+// the key.
+func validateHelloLoginInputs(account, email, apiKey string) error {
+	if account == "" {
+		return &output.UserError{
+			Message: "Account is required",
+			Hint:    "Enter the subdomain part of your DeployHQ URL (e.g. 'mycompany' for mycompany.deployhq.com).",
+		}
+	}
+	if email == "" {
+		return &output.UserError{
+			Message: "Email is required",
+			Hint:    "Use the email address you sign in to DeployHQ with.",
+		}
+	}
+	if apiKey == "" {
+		return &output.UserError{
+			Message: "API key is required",
+			Hint:    "Find your API key in DeployHQ → Profile → API Key, then re-run 'dhq hello'.",
+		}
+	}
+	return nil
 }
 
 // classifyHelloValidateErr maps an error from the credential-validation API

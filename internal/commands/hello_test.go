@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -50,6 +51,77 @@ func TestClassifyHelloValidateErr(t *testing.T) {
 				if _, ok := got.(*output.NetworkError); !ok {
 					t.Errorf("expected *NetworkError, got %T %v", got, got)
 				}
+			}
+		})
+	}
+}
+
+func TestValidateHelloLoginInputs(t *testing.T) {
+	tests := []struct {
+		name           string
+		account        string
+		email          string
+		apiKey         string
+		wantErr        bool
+		wantHeadline   string
+		wantHintSubstr string
+	}{
+		{
+			name:    "all set",
+			account: "acct", email: "u@e.com", apiKey: "k",
+			wantErr: false,
+		},
+		{
+			name:    "empty account",
+			account: "", email: "u@e.com", apiKey: "k",
+			wantErr: true, wantHeadline: "Account is required",
+			wantHintSubstr: "subdomain",
+		},
+		{
+			name:    "empty email",
+			account: "acct", email: "", apiKey: "k",
+			wantErr: true, wantHeadline: "Email is required",
+			wantHintSubstr: "sign in",
+		},
+		{
+			// Regression guard: the original bug was sdk.New returning a raw
+			// "deployhq: api key is required" message with no guidance.
+			name:    "empty api key",
+			account: "acct", email: "u@e.com", apiKey: "",
+			wantErr: true, wantHeadline: "API key is required",
+			wantHintSubstr: "Profile → API Key",
+		},
+		{
+			// First failure wins so users fix one thing at a time.
+			name:    "account checked before email",
+			account: "", email: "", apiKey: "",
+			wantErr: true, wantHeadline: "Account is required",
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateHelloLoginInputs(tt.account, tt.email, tt.apiKey)
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("expected nil, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			userErr, ok := err.(*output.UserError)
+			if !ok {
+				t.Fatalf("expected *UserError, got %T %v", err, err)
+			}
+			// Headline must survive telemetry sanitization (first line of err.Error()).
+			firstLine := strings.SplitN(userErr.Error(), "\n", 2)[0]
+			if firstLine != tt.wantHeadline {
+				t.Errorf("headline = %q, want %q", firstLine, tt.wantHeadline)
+			}
+			if tt.wantHintSubstr != "" && !strings.Contains(userErr.Hint, tt.wantHintSubstr) {
+				t.Errorf("hint %q does not contain %q", userErr.Hint, tt.wantHintSubstr)
 			}
 		})
 	}
