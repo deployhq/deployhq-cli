@@ -276,7 +276,7 @@
       "prompt": "Add an SSH command to restart the app service after deploy on my-app",
       "expected": {
         "command": "dhq ssh-commands create",
-        "flags": ["-p", "my-app", "--name", "--command"]
+        "flags": ["-p", "my-app", "--command"]
       }
     },
     {
