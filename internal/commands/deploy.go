@@ -2,7 +2,9 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -109,6 +111,55 @@ func resolveStartRevision(server *sdk.Server, group *sdk.ServerGroup, flagStart 
 		return group.LastRevision
 	}
 	return ""
+}
+
+// translateParentMustExistError detects the API's 422 "parent must exist"
+// validation failure and rewrites it as a UserError that explains the
+// situation and what to do.
+//
+// The API rejects a deployment when its start_revision doesn't trace to a
+// prior deployment's end_revision on the same target. Two real-world causes:
+//   - the SHA was force-pushed/rebased out of the repo while the server's
+//     LastRevision still points at it
+//   - the user passed --start-revision <sha> with a SHA that was never the
+//     end of a prior deploy on this target
+//
+// Without translation the user sees "deployhq api: 422 parent must exist",
+// which is opaque. The replacement names the SHA, explains the cause, and
+// offers --full as an escape hatch.
+func translateParentMustExistError(err error, startRevision string) error {
+	if err == nil {
+		return nil
+	}
+	var apiErr *sdk.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnprocessableEntity {
+		return err
+	}
+	if !mentionsParentMustExist(apiErr) {
+		return err
+	}
+	sha := startRevision
+	if sha == "" {
+		sha = "(none)"
+	}
+	return &output.UserError{
+		Message: fmt.Sprintf("No prior deployment matches start_revision %s on this target", sha),
+		Hint: "Incremental deploys need a prior deployment whose end_revision equals this SHA. Likely the SHA was force-pushed away or was never deployed here.\n" +
+			"  --full                          deploy the entire branch from the first commit\n" +
+			"  --start-revision <sha>          use a SHA that ended a prior deploy (see 'dhq deployments list')",
+	}
+}
+
+func mentionsParentMustExist(e *sdk.APIError) bool {
+	if strings.Contains(e.Message, "parent must exist") {
+		return true
+	}
+	for _, msg := range e.Errors {
+		if strings.Contains(msg, "parent must exist") {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveLatestRevision tries to find the latest revision for a project,
@@ -428,7 +479,7 @@ func newDeployCmd() *cobra.Command {
 			if dryRun {
 				preview, err := client.PreviewDeployment(cliCtx.Background(), projectID, req)
 				if err != nil {
-					return err
+					return translateParentMustExistError(err, req.StartRevision)
 				}
 
 				if env.WantsJSON() {
@@ -449,7 +500,7 @@ func newDeployCmd() *cobra.Command {
 
 			dep, err := client.CreateDeployment(cliCtx.Background(), projectID, req)
 			if err != nil {
-				return err
+				return translateParentMustExistError(err, req.StartRevision)
 			}
 
 			if env.WantsJSON() {
