@@ -162,6 +162,51 @@ func mentionsParentMustExist(e *sdk.APIError) bool {
 	return false
 }
 
+// resolveDeployProject returns the project identifier for a deploy.
+//
+// When the user did not pass --project (or set DEPLOYHQ_PROJECT / a
+// .deployhq.toml), we mirror the server auto-pick behaviour: if the account
+// has exactly one project, use it. Otherwise return a UserError that lists
+// the available projects so callers (including agents) can retry with a
+// concrete identifier.
+func resolveDeployProject(ctx context.Context, client *sdk.Client, configured string, env *output.Envelope) (string, error) {
+	if configured != "" {
+		return configured, nil
+	}
+
+	projects, err := client.ListProjects(ctx, nil)
+	if err != nil {
+		// Don't swallow the API error — but keep the original "No project
+		// specified" message as the headline so the failure bucket stays
+		// recognisable in telemetry.
+		return "", &output.UserError{
+			Message: "No project specified",
+			Hint:    fmt.Sprintf("Could not auto-detect a project: %v\nPass --project <identifier> or set DEPLOYHQ_PROJECT.", err),
+		}
+	}
+
+	switch len(projects) {
+	case 0:
+		return "", &output.UserError{
+			Message: "No project specified",
+			Hint:    "This account has no projects yet. Create one in the DeployHQ dashboard, then re-run with --project <identifier>.",
+		}
+	case 1:
+		env.Status("Auto-selected project: %s", projects[0].Name)
+		return projects[0].Identifier, nil
+	default:
+		items := make([]string, 0, len(projects))
+		for _, p := range projects {
+			items = append(items, fmt.Sprintf("%s (%s)", p.Identifier, p.Name))
+		}
+		return "", &output.UserError{
+			Message: "No project specified",
+			Hint: fmt.Sprintf("Account has %d projects — pass --project <identifier>. Available: %s",
+				len(projects), strings.Join(items, ", ")),
+		}
+	}
+}
+
 // resolveLatestRevision tries to find the latest revision for a project,
 // falling back to the most recent deployment's end revision if the
 // repository endpoint fails (e.g. empty repo, missing default branch).
@@ -183,12 +228,30 @@ func resolveLatestRevision(ctx context.Context, client *sdk.Client, projectID st
 	}
 
 	// Both failed — surface the primary error with an actionable hint.
+	// The status code is embedded in Message (not just Hint) because
+	// telemetry's SanitizeErrorMessage keeps only the first line, so
+	// anything in the Hint never reaches the dashboard.
+	message := "Could not fetch latest revision"
 	hint := "Specify a revision with --revision <sha>"
-	if primaryErr != nil {
+	var apiErr *sdk.APIError
+	if errors.As(primaryErr, &apiErr) {
+		message = fmt.Sprintf("Could not fetch latest revision (api: %d)", apiErr.StatusCode)
+		switch {
+		case apiErr.StatusCode == http.StatusNotFound:
+			hint = "The project's repository may not be configured or synced yet. Check `dhq repos show -p <project>`, or specify --revision <sha>."
+		case apiErr.StatusCode >= 500:
+			hint = "DeployHQ API is having trouble. Try again in a moment, or specify --revision <sha>."
+		default:
+			// 401/403/422/429 and other 4xx: preserve the real cause in the
+			// hint. Suggesting --revision alone would lead users astray —
+			// e.g. an auth failure isn't fixed by specifying a SHA.
+			hint = fmt.Sprintf("API error: %v\nSpecify a revision with --revision <sha>", primaryErr)
+		}
+	} else if primaryErr != nil {
 		hint = fmt.Sprintf("API error: %v\nSpecify a revision with --revision <sha>", primaryErr)
 	}
 	return "", &output.UserError{
-		Message: "Could not fetch latest revision",
+		Message: message,
 		Hint:    hint,
 	}
 }
@@ -291,7 +354,7 @@ func newDeployCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "Deploy to a server (shortcut for deployments create)",
-		Long:  "Create a deployment. Shortcut for 'dhq deployments create'.\n\nBy default deploys are incremental: the start revision defaults to the server's last successfully deployed commit. Use --full to deploy the entire branch from the first commit.\n\nUse --wait (-w) to watch the deployment until it completes or fails.",
+		Long:  "Create a deployment. Shortcut for 'dhq deployments create'.\n\nBy default deploys are incremental: the start revision defaults to the server's last successfully deployed commit. Use --full to deploy the entire branch from the first commit.\n\nUse --wait (-w) to watch the deployment until it completes or fails.\n\nWhen --project is not provided (and DEPLOYHQ_PROJECT / .deployhq.toml don't set it), `dhq deploy` auto-selects the only project on the account; if there are multiple, the error lists them so you can pick.",
 		Example: `  # Deploy the latest revision (auto-selects the only server, uses the server's preferred branch)
   dhq deploy
 
@@ -313,11 +376,6 @@ func newDeployCmd() *cobra.Command {
   # Deploy the entire branch from the first commit (overrides incremental default)
   dhq deploy --full`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projectID, err := cliCtx.RequireProject()
-			if err != nil {
-				return err
-			}
-
 			if dryRun && wait {
 				return &output.UserError{
 					Message: "--dry-run and --wait are mutually exclusive",
@@ -335,6 +393,11 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
+
+			projectID, err := resolveDeployProject(cliCtx.Background(), client, cliCtx.Config.Project, env)
+			if err != nil {
+				return err
+			}
 
 			// Track the Server or ServerGroup we resolved to, so branch/revision lookup
 			// can reuse them without extra round-trips. Exactly one of these will be

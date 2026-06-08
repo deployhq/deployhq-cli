@@ -160,12 +160,26 @@ dhq ssh-commands list -p my-app --json
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--name` | yes | Command name |
 | `--command` | yes | SSH command to execute |
-| `--description` | no | Description |
+| `--description` | no | Description shown in the UI |
+| `--timing` | no | When the command runs: `all` (default), `first`, or `after_first` |
 
 ```bash
-dhq ssh-commands create -p my-app --name "Restart" --command "sudo systemctl restart app" --json
+dhq ssh-commands create -p my-app --command "sudo systemctl restart app" --description "Restart" --json
+```
+
+### `dhq ssh-commands update <id>`
+
+Update fields on an existing SSH command. Only flags you pass are sent — omit `--timing` to leave the current value untouched.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--command` | no | New SSH command to execute |
+| `--description` | no | New description |
+| `--timing` | no | New timing: `all`, `first`, or `after_first` |
+
+```bash
+dhq ssh-commands update cmd_abc123 -p my-app --command "sudo systemctl reload app" --json
 ```
 
 ## Deployment Checks
