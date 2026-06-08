@@ -1,11 +1,15 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -502,4 +506,97 @@ func TestResolveBranchAndRevision_ServerPreferredBranchBeatsGroup(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, "server-branch", branch)
 	assert.Equal(t, "sha-of-server", revision)
+}
+
+// testEnvelope returns an Envelope wired to a bytes.Buffer so Status messages
+// are captured for assertion.
+func testEnvelope() (*output.Envelope, *bytes.Buffer) {
+	var buf bytes.Buffer
+	return &output.Envelope{Stdout: io.Discard, Stderr: &buf}, &buf
+}
+
+func TestResolveDeployProject_ConfiguredShortCircuits(t *testing.T) {
+	// No API server: a configured project must NOT trigger ListProjects.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+	client := newTestSDKClient(t, srv)
+	env, _ := testEnvelope()
+
+	id, err := resolveDeployProject(t.Context(), client, "my-app", env)
+	require.NoError(t, err)
+	assert.Equal(t, "my-app", id)
+}
+
+func TestResolveDeployProject_AutoPicksLoneProject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/projects", r.URL.Path)
+		_ = json.NewEncoder(w).Encode([]sdk.Project{{Identifier: "only-id", Name: "Only Project"}})
+	}))
+	defer srv.Close()
+	client := newTestSDKClient(t, srv)
+	env, stderr := testEnvelope()
+
+	id, err := resolveDeployProject(t.Context(), client, "", env)
+	require.NoError(t, err)
+	assert.Equal(t, "only-id", id)
+	assert.Contains(t, stderr.String(), "Auto-selected project: Only Project")
+}
+
+func TestResolveDeployProject_MultipleProjectsListsThem(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]sdk.Project{
+			{Identifier: "a-id", Name: "Alpha"},
+			{Identifier: "b-id", Name: "Beta"},
+			{Identifier: "c-id", Name: "Gamma"},
+		})
+	}))
+	defer srv.Close()
+	client := newTestSDKClient(t, srv)
+	env, _ := testEnvelope()
+
+	id, err := resolveDeployProject(t.Context(), client, "", env)
+	require.Error(t, err)
+	assert.Empty(t, id)
+	msg := err.Error()
+	// Headline preserved for telemetry continuity.
+	firstLine := strings.SplitN(msg, "\n", 2)[0]
+	assert.Equal(t, "No project specified", firstLine)
+	// Hint lists each project so agents can self-correct on retry.
+	assert.Contains(t, msg, "3 projects")
+	assert.Contains(t, msg, "a-id (Alpha)")
+	assert.Contains(t, msg, "b-id (Beta)")
+	assert.Contains(t, msg, "c-id (Gamma)")
+}
+
+func TestResolveDeployProject_ZeroProjects(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]sdk.Project{})
+	}))
+	defer srv.Close()
+	client := newTestSDKClient(t, srv)
+	env, _ := testEnvelope()
+
+	id, err := resolveDeployProject(t.Context(), client, "", env)
+	require.Error(t, err)
+	assert.Empty(t, id)
+	assert.Contains(t, err.Error(), "No project specified")
+	assert.Contains(t, err.Error(), "no projects yet")
+}
+
+func TestResolveDeployProject_APIErrorKeepsHeadline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	client := newTestSDKClient(t, srv)
+	env, _ := testEnvelope()
+
+	_, err := resolveDeployProject(t.Context(), client, "", env)
+	require.Error(t, err)
+	// The "No project specified" headline must survive telemetry sanitization
+	// (which keeps only the first line) so the failure bucket stays recognisable.
+	firstLine := strings.SplitN(err.Error(), "\n", 2)[0]
+	assert.Equal(t, "No project specified", firstLine)
 }
