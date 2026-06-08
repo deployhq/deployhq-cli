@@ -508,6 +508,54 @@ func TestResolveBranchAndRevision_ServerPreferredBranchBeatsGroup(t *testing.T) 
 	assert.Equal(t, "sha-of-server", revision)
 }
 
+func TestTranslateParentMustExistError_RewritesMessageField(t *testing.T) {
+	in := &sdk.APIError{StatusCode: 422, Message: "parent must exist"}
+	out := translateParentMustExistError(in, "abc123de")
+	require.Error(t, out)
+	// Sha must be in Message (telemetry preserves first line).
+	firstLine := strings.SplitN(out.Error(), "\n", 2)[0]
+	assert.Contains(t, firstLine, "No prior deployment matches start_revision abc123de")
+	assert.Contains(t, out.Error(), "--full")
+	assert.Contains(t, out.Error(), "--start-revision <sha>")
+}
+
+func TestTranslateParentMustExistError_RewritesErrorsArray(t *testing.T) {
+	// The Rails validator usually returns the message in the "errors" array,
+	// not the "error" field. The translation must catch both shapes.
+	in := &sdk.APIError{StatusCode: 422, Errors: []string{"parent must exist", "something else"}}
+	out := translateParentMustExistError(in, "deadbeef")
+	require.Error(t, out)
+	assert.Contains(t, out.Error(), "deadbeef")
+	assert.Contains(t, out.Error(), "--full")
+}
+
+func TestTranslateParentMustExistError_EmptyStartRevisionShownExplicitly(t *testing.T) {
+	in := &sdk.APIError{StatusCode: 422, Message: "parent must exist"}
+	out := translateParentMustExistError(in, "")
+	require.Error(t, out)
+	assert.Contains(t, out.Error(), "(none)",
+		"empty start_revision should be rendered as (none) so the user can tell")
+}
+
+func TestTranslateParentMustExistError_PassesThroughUnrelatedErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"nil", nil},
+		{"non-API error", assert.AnError},
+		{"422 but different validation", &sdk.APIError{StatusCode: 422, Message: "branch can't be blank"}},
+		{"parent-must-exist text on a non-422", &sdk.APIError{StatusCode: 500, Message: "parent must exist"}},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			out := translateParentMustExistError(tc.err, "abc123")
+			// Untouched: same value (including nil).
+			assert.Equal(t, tc.err, out)
+		})
+	}
+}
 // testEnvelope returns an Envelope wired to a bytes.Buffer so Status messages
 // are captured for assertion.
 func testEnvelope() (*output.Envelope, *bytes.Buffer) {
