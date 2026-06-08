@@ -2,7 +2,9 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -177,12 +179,30 @@ func resolveLatestRevision(ctx context.Context, client *sdk.Client, projectID st
 	}
 
 	// Both failed — surface the primary error with an actionable hint.
+	// The status code is embedded in Message (not just Hint) because
+	// telemetry's SanitizeErrorMessage keeps only the first line, so
+	// anything in the Hint never reaches the dashboard.
+	message := "Could not fetch latest revision"
 	hint := "Specify a revision with --revision <sha>"
-	if primaryErr != nil {
+	var apiErr *sdk.APIError
+	if errors.As(primaryErr, &apiErr) {
+		message = fmt.Sprintf("Could not fetch latest revision (api: %d)", apiErr.StatusCode)
+		switch {
+		case apiErr.StatusCode == http.StatusNotFound:
+			hint = "The project's repository may not be configured or synced yet. Check `dhq repos show -p <project>`, or specify --revision <sha>."
+		case apiErr.StatusCode >= 500:
+			hint = "DeployHQ API is having trouble. Try again in a moment, or specify --revision <sha>."
+		default:
+			// 401/403/422/429 and other 4xx: preserve the real cause in the
+			// hint. Suggesting --revision alone would lead users astray —
+			// e.g. an auth failure isn't fixed by specifying a SHA.
+			hint = fmt.Sprintf("API error: %v\nSpecify a revision with --revision <sha>", primaryErr)
+		}
+	} else if primaryErr != nil {
 		hint = fmt.Sprintf("API error: %v\nSpecify a revision with --revision <sha>", primaryErr)
 	}
 	return "", &output.UserError{
-		Message: "Could not fetch latest revision",
+		Message: message,
 		Hint:    hint,
 	}
 }

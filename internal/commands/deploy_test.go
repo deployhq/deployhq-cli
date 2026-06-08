@@ -600,3 +600,112 @@ func TestResolveDeployProject_APIErrorKeepsHeadline(t *testing.T) {
 	firstLine := strings.SplitN(err.Error(), "\n", 2)[0]
 	assert.Equal(t, "No project specified", firstLine)
 }
+
+// TestResolveLatestRevision_EmbedsStatusCodeInMessage guards the telemetry
+// regression: SanitizeErrorMessage keeps only the first line of err.Error(),
+// so anything in the Hint never reaches the dashboard. The status code must
+// be in the Message itself so we can distinguish 404 (repo not synced) from
+// 5xx (transient API) in the failure bucket.
+func TestResolveLatestRevision_EmbedsStatusCodeInMessage(t *testing.T) {
+	tests := []struct {
+		name           string
+		status         int
+		body           string
+		wantInMessage  string
+		wantInHintPart string
+	}{
+		{
+			name:           "404 → repo-config hint",
+			status:         http.StatusNotFound,
+			body:           `{"status":"not_found","error_code":"record_not_found"}`,
+			wantInMessage:  "(api: 404)",
+			wantInHintPart: "may not be configured or synced",
+		},
+		{
+			name:           "500 → transient hint",
+			status:         http.StatusInternalServerError,
+			body:           `{"error":"boom"}`,
+			wantInMessage:  "(api: 500)",
+			wantInHintPart: "Try again in a moment",
+		},
+		{
+			name:           "503 → transient hint",
+			status:         http.StatusServiceUnavailable,
+			body:           `{"error":"upstream"}`,
+			wantInMessage:  "(api: 503)",
+			wantInHintPart: "Try again in a moment",
+		},
+		{
+			// Regression guard for the codex/coderabbit feedback on #21:
+			// non-404/non-5xx 4xx (auth, validation, rate limit) must
+			// preserve the API error text in the hint so users see the
+			// real cause — suggesting --revision wouldn't fix an auth
+			// failure.
+			name:           "401 → preserves API error text",
+			status:         http.StatusUnauthorized,
+			body:           `{"error":"Unauthorized"}`,
+			wantInMessage:  "(api: 401)",
+			wantInHintPart: "deployhq api: 401",
+		},
+		{
+			name:           "422 → preserves API error text",
+			status:         http.StatusUnprocessableEntity,
+			body:           `{"error":"validation failed"}`,
+			wantInMessage:  "(api: 422)",
+			wantInHintPart: "validation failed",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/projects/p/repository/latest_revision":
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(tc.body))
+				case "/projects/p/deployments":
+					// Fallback also fails (no records); status 200 with empty list.
+					_, _ = w.Write([]byte(`{"pagination":{},"records":[]}`))
+				default:
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+			}))
+			defer srv.Close()
+
+			client := newTestSDKClient(t, srv)
+			rev, err := resolveLatestRevision(t.Context(), client, "p")
+			require.Error(t, err)
+			assert.Empty(t, rev)
+			// Mirror telemetry.SanitizeErrorMessage: it keeps only the first line.
+			// The status code MUST be on that line, not buried in the Hint.
+			firstLine := strings.SplitN(err.Error(), "\n", 2)[0]
+			assert.Contains(t, firstLine, tc.wantInMessage,
+				"status code must appear on the first line of err.Error() so telemetry preserves it; got %q", firstLine)
+			assert.Contains(t, err.Error(), tc.wantInHintPart,
+				"hint should be tailored to the failure mode")
+		})
+	}
+}
+
+// TestResolveLatestRevision_FallsBackToDeploymentRevision verifies that a
+// failed primary call doesn't surface an error when the deployment list
+// contains a usable end_revision.
+func TestResolveLatestRevision_FallsBackToDeploymentRevision(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/projects/p/repository/latest_revision":
+			w.WriteHeader(http.StatusInternalServerError)
+		case "/projects/p/deployments":
+			_, _ = w.Write([]byte(`{"pagination":{},"records":[{"end_revision":{"ref":"fallback-sha"}}]}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	client := newTestSDKClient(t, srv)
+	rev, err := resolveLatestRevision(t.Context(), client, "p")
+	require.NoError(t, err)
+	assert.Equal(t, "fallback-sha", rev)
+}
