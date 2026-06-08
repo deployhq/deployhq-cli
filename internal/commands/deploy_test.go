@@ -539,6 +539,25 @@ func TestResolveLatestRevision_EmbedsStatusCodeInMessage(t *testing.T) {
 			wantInMessage:  "(api: 503)",
 			wantInHintPart: "Try again in a moment",
 		},
+		{
+			// Regression guard for the codex/coderabbit feedback on #21:
+			// non-404/non-5xx 4xx (auth, validation, rate limit) must
+			// preserve the API error text in the hint so users see the
+			// real cause — suggesting --revision wouldn't fix an auth
+			// failure.
+			name:           "401 → preserves API error text",
+			status:         http.StatusUnauthorized,
+			body:           `{"error":"Unauthorized"}`,
+			wantInMessage:  "(api: 401)",
+			wantInHintPart: "deployhq api: 401",
+		},
+		{
+			name:           "422 → preserves API error text",
+			status:         http.StatusUnprocessableEntity,
+			body:           `{"error":"validation failed"}`,
+			wantInMessage:  "(api: 422)",
+			wantInHintPart: "validation failed",
+		},
 	}
 
 	for _, tc := range tests {

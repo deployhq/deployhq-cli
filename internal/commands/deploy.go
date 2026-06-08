@@ -147,6 +147,11 @@ func resolveLatestRevision(ctx context.Context, client *sdk.Client, projectID st
 			hint = "The project's repository may not be configured or synced yet. Check `dhq repos show -p <project>`, or specify --revision <sha>."
 		case apiErr.StatusCode >= 500:
 			hint = "DeployHQ API is having trouble. Try again in a moment, or specify --revision <sha>."
+		default:
+			// 401/403/422/429 and other 4xx: preserve the real cause in the
+			// hint. Suggesting --revision alone would lead users astray —
+			// e.g. an auth failure isn't fixed by specifying a SHA.
+			hint = fmt.Sprintf("API error: %v\nSpecify a revision with --revision <sha>", primaryErr)
 		}
 	} else if primaryErr != nil {
 		hint = fmt.Sprintf("API error: %v\nSpecify a revision with --revision <sha>", primaryErr)
