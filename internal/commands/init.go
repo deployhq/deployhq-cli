@@ -139,21 +139,30 @@ var protocolsAll = []string{
 	"Heroku",
 	"Netlify",
 	"Shopify",
+	// Managed offerings — require beta_features on the account.
+	// Prefer `dhq launch` for these; listed here for advanced users.
+	"Static Hosting (beta)",
+	"Managed VPS (beta)",
 }
 
 // protocolAPIType maps display names to API protocol_type values.
 var protocolAPIType = map[string]string{
-	"SSH/SFTP":               "ssh",
-	"FTP":                    "ftp",
+	"SSH/SFTP":              "ssh",
+	"FTP":                   "ftp",
 	"FTPS (SSL/TLS)":        "ftps",
-	"Rsync":                  "rsync",
-	"Amazon S3":              "s3",
-	"S3-Compatible Storage":  "s3_compatible",
-	"DigitalOcean":           "digitalocean",
-	"Hetzner Cloud":          "hetzner_cloud",
-	"Heroku":                 "heroku",
-	"Netlify":                "netlify",
-	"Shopify":                "shopify",
+	"Rsync":                 "rsync",
+	"Amazon S3":             "s3",
+	"S3-Compatible Storage": "s3_compatible",
+	"DigitalOcean":          "digitalocean",
+	"Hetzner Cloud":         "hetzner_cloud",
+	"Heroku":                "heroku",
+	"Netlify":               "netlify",
+	"Shopify":               "shopify",
+	// Managed offerings (beta) — backed by DeployHQ-managed infrastructure.
+	// static_hosting: Cloudflare CDN site at <subdomain>.deployhq-sites.com.
+	// managed_vps: DeployHQ-provisioned DigitalOcean droplet.
+	"Static Hosting (beta)": "static_hosting",
+	"Managed VPS (beta)":    "managed_vps",
 }
 
 // protocolSupportsSSHKeys returns true if the protocol supports SSH key authentication.

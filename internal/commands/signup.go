@@ -69,11 +69,12 @@ func newSignupCmd() *cobra.Command {
 
 			ua := cliUserAgent()
 			req := sdk.SignupRequest{
-				Email:       email,
-				Password:    password,
-				AccountName: accountName,
-				FullName:    fullName,
-				Client:      ua,
+				Email:         email,
+				Password:      password,
+				AccountName:   accountName,
+				FullName:      fullName,
+				Client:        "dhq-cli",
+				TermsAccepted: true,
 			}
 
 			result, err := sdk.Signup(req, ua, cliCtx.Config.SignupURL())
