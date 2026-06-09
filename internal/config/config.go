@@ -25,12 +25,18 @@ type Config struct {
 	OutputFmt string `mapstructure:"format"    json:"format,omitempty"`
 	Host      string `mapstructure:"host"      json:"host,omitempty"`
 
+	// Launch-persisted fields written by `dhq launch` to .deployhq.toml.
+	// Server is the identifier of the provisioned server (e.g. "srv-abc123").
+	Server string `mapstructure:"server" json:"server,omitempty"`
+	// Target is the protocol type used during provisioning (e.g. "static_hosting", "managed_vps").
+	Target string `mapstructure:"target" json:"target,omitempty"`
+
 	// Resolved metadata (not persisted)
 	Sources map[string]string `json:"sources,omitempty"` // field -> source layer
 }
 
 // Keys is the list of all config keys.
-var Keys = []string{"account", "email", "api_key", "project", "format", "host"}
+var Keys = []string{"account", "email", "api_key", "project", "format", "host", "server", "target"}
 
 // Load reads config from all 4 layers and returns the resolved Config.
 func Load() (*Config, error) {
