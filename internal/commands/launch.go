@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -36,6 +37,10 @@ type launchConfig struct {
 
 	// Project
 	projectID string // permalink / identifier
+
+	// Persisted server identifier from a previous launch (enables idempotency).
+	// When non-empty, re-runs skip provisioning and go straight to deploy.
+	serverID string
 
 	// Static Hosting params
 	subdomain    string
@@ -217,6 +222,17 @@ func resolveLaunchConfig(
 		cfg.projectID = cliCtx.Config.Project
 	}
 
+	// Server / target: read from .deployhq.toml so re-runs can skip provisioning.
+	if cliCtx != nil {
+		if cfg.serverID == "" {
+			cfg.serverID = cliCtx.Config.Server
+		}
+		// Only fall back to the persisted target when no flag was given.
+		if cfg.targetProtocol == "" {
+			cfg.targetProtocol = cliCtx.Config.Target
+		}
+	}
+
 	cfg.subdomain = flagSubdomain
 	cfg.region = flagRegion
 	cfg.size = flagSize
@@ -252,29 +268,30 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		cfg.targetProtocol = detection.SuggestedProtocol
 	}
 
-	// ── Step 3: Capability pre-flight ───────────────────────────────────────
-	caps, err := client.GetAccountCapabilities(ctx)
-	if err != nil {
-		// Treat 404 as "backend doesn't support this endpoint yet"
-		var apiErr *sdk.APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-			env.Warn("Capability check unavailable — beta status unknown. Visit https://app.deployhq.com/beta_features to enable.")
-			caps = &sdk.AccountCapabilities{}
-		} else {
-			return err
+	// ── Dry-run exit: before any mutation (Fix 2) ─────────────────────────────
+	// Read-only: caps and region/size listing for cost estimates are allowed,
+	// but beta enrollment, project creation, and provisioning must NOT happen.
+	if cfg.dryRun {
+		// Fetch caps for the dry-run cost/warning display (read-only).
+		caps, capsErr := client.GetAccountCapabilities(ctx)
+		if capsErr != nil {
+			var apiErr *sdk.APIError
+			if errors.As(capsErr, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+				caps = &sdk.AccountCapabilities{}
+			} else {
+				caps = &sdk.AccountCapabilities{}
+			}
 		}
+		return launchDryRun(ctx, env, cfg, client, caps)
 	}
 
-	// If a managed target is requested but beta is off, try to enroll.
-	isManagedTarget := cfg.targetProtocol == detect.ProtocolStaticHosting || cfg.targetProtocol == detect.ProtocolManagedVPS
-	if isManagedTarget && !caps.BetaFeatures {
-		if err := launchEnsureBetaEnrolled(ctx, env, cfg, client, accountSubdomain); err != nil {
-			return err
-		}
-		// Re-read caps after enrollment
-		if caps, err = client.GetAccountCapabilities(ctx); err != nil {
-			caps = &sdk.AccountCapabilities{}
-		}
+	// ── Step 3: Capability pre-flight ───────────────────────────────────────
+	// capsKnown tracks whether the backend returned capability data. When false
+	// (404 = older backend), the plan-limit gate is skipped and CreateServer
+	// acts as the authority (Fix 8).
+	caps, capsKnown, err := launchGetCaps(ctx, env, client)
+	if err != nil {
+		return err
 	}
 
 	// ── Step 4: Repo deployability pre-flight ───────────────────────────────
@@ -303,9 +320,18 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	}
 	env.Status("Target: %s", cfg.targetProtocol)
 
-	// ── Dry-run output (no side effects past this point) ─────────────────────
-	if cfg.dryRun {
-		return launchDryRun(env, cfg, client, caps)
+	// ── Step 3b: Beta enrollment (after target is known) (Fix 3) ─────────────
+	// isManagedTarget is now evaluated with the final resolved target so that
+	// interactive target selection is accounted for before we attempt enrollment.
+	isManagedTarget := cfg.targetProtocol == detect.ProtocolStaticHosting || cfg.targetProtocol == detect.ProtocolManagedVPS
+	if isManagedTarget && capsKnown && !caps.BetaFeatures {
+		if err := launchEnsureBetaEnrolled(ctx, env, cfg, client, accountSubdomain); err != nil {
+			return err
+		}
+		// Re-read caps after enrollment
+		if caps, _, err = launchGetCaps(ctx, env, client); err != nil {
+			caps = &sdk.AccountCapabilities{}
+		}
 	}
 
 	// ── Step 6: Project + repo ───────────────────────────────────────────────
@@ -315,15 +341,58 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	}
 	cfg.projectID = projectID
 
-	// ── Step 7: Plan / limit pre-flight ─────────────────────────────────────
-	if err := launchCheckPlanLimits(env, cfg, caps); err != nil {
-		return err
+	// ── Apply detection defaults for static hosting (Fix 7) ──────────────────
+	// Seed subdirectory and SPA mode from detection when flags were not set.
+	if cfg.targetProtocol == detect.ProtocolStaticHosting {
+		if cfg.subdirectory == "" && detection.OutputDir != "" {
+			cfg.subdirectory = detection.OutputDir
+		}
+		// Only override spaMode from detection when it hasn't been set by a flag.
+		// Since spaMode is a bool it defaults to false; we apply detection.SPA
+		// when detection actually had an opinion (SPA==true) and the user didn't
+		// explicitly prompt otherwise. False detection.SPA leaves cfg.spaMode alone.
+		if detection.SPA && !cfg.spaMode {
+			cfg.spaMode = true
+		}
 	}
 
-	// ── Step 8: Provision server ─────────────────────────────────────────────
-	server, err := launchProvision(ctx, env, cfg, client)
-	if err != nil {
-		return writeLaunchError(env, cfg, reasonProvisionFailed, err)
+	// ── Step 7: Plan / limit pre-flight ─────────────────────────────────────
+	// Only apply eligibility gates when we have real capability data (Fix 8).
+	if capsKnown {
+		if err := launchCheckPlanLimits(env, cfg, caps); err != nil {
+			return err
+		}
+	}
+
+	// ── Step 8: Provision server — idempotency check (Fix 1) ─────────────────
+	// If a server identifier was persisted from a previous run, verify it still
+	// exists. If it does, skip provisioning and go straight to deploy.
+	var server *sdk.Server
+	if cfg.serverID != "" {
+		existing, pollErr := client.GetServerProvisioningState(ctx, cfg.projectID, cfg.serverID)
+		if pollErr == nil {
+			env.Status("Found existing server %s — skipping provisioning.", cfg.serverID)
+			server = existing
+		} else {
+			// Server no longer exists (404) or there's an error — fall through to provision.
+			env.Status("Persisted server %s not found (%v) — provisioning new server.", cfg.serverID, pollErr)
+		}
+	}
+
+	if server == nil {
+		var provErr error
+		server, provErr = launchProvision(ctx, env, cfg, client)
+		if provErr != nil {
+			// Provision failure cleanup: run the same cleanup path as deploy failures
+			// so --cleanup-on-failure and resource naming apply (Fix 5).
+			if server != nil {
+				launchDeployFailureCleanup(ctx, env, cfg, client, server)
+			}
+			return writeLaunchError(env, cfg, reasonProvisionFailed, provErr)
+		}
+		// Persist the new server so re-runs are idempotent.
+		launchPersistConfig(env, cfg, server)
+		cfg.serverID = server.Identifier
 	}
 
 	// ── Step 9: Build config (static only) ───────────────────────────────────
@@ -367,6 +436,22 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	fmt.Fprintln(os.Stdout, liveURL) //nolint:errcheck
 
 	return nil
+}
+
+// launchGetCaps fetches account capabilities and reports whether the data is
+// authoritative. When the backend 404s (older/staging), capsKnown is false
+// and callers must not gate on the returned caps (Fix 8).
+func launchGetCaps(ctx context.Context, env *output.Envelope, client *sdk.Client) (caps *sdk.AccountCapabilities, capsKnown bool, err error) {
+	caps, err = client.GetAccountCapabilities(ctx)
+	if err != nil {
+		var apiErr *sdk.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			env.Warn("Capability check unavailable — beta status unknown. Visit https://app.deployhq.com/beta_features to enable.")
+			return &sdk.AccountCapabilities{}, false, nil
+		}
+		return nil, false, err
+	}
+	return caps, true, nil
 }
 
 // ── Auth / bootstrap ────────────────────────────────────────────────────────
@@ -591,8 +676,7 @@ func launchPromptTarget(env *output.Envelope) (string, error) {
 
 // ── Dry-run ───────────────────────────────────────────────────────────────────
 
-func launchDryRun(env *output.Envelope, cfg launchConfig, client *sdk.Client, caps *sdk.AccountCapabilities) error {
-	ctx := context.Background()
+func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, caps *sdk.AccountCapabilities) error {
 
 	dr := dryRunResult{
 		Would: dryRunWould{
@@ -674,8 +758,14 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	// Re-use an existing project if specified or already in .deployhq.toml
 	if cfg.projectID != "" {
 		env.Status("Using project: %s", cfg.projectID)
-		// Ensure a repo is connected
-		_ = launchEnsureRepo(ctx, env, cfg, client, cfg.projectID, gitRemote)
+		// Ensure a repo is connected — treat hard failures as terminal (Fix 6).
+		if err := launchEnsureRepo(ctx, env, cfg, client, cfg.projectID, gitRemote); err != nil {
+			return "", &launchError{
+				Reason:   reasonRepoUnreachable,
+				Message:  "Could not connect repository to project: " + err.Error(),
+				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
+			}
+		}
 		return cfg.projectID, nil
 	}
 
@@ -686,7 +776,14 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	}
 	if len(projects) == 1 {
 		env.Status("Auto-selected project: %s", projects[0].Name)
-		_ = launchEnsureRepo(ctx, env, cfg, client, projects[0].Permalink, gitRemote)
+		// Treat hard repo-connection failure as terminal (Fix 6).
+		if err := launchEnsureRepo(ctx, env, cfg, client, projects[0].Permalink, gitRemote); err != nil {
+			return "", &launchError{
+				Reason:   reasonRepoUnreachable,
+				Message:  "Could not connect repository to project: " + err.Error(),
+				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
+			}
+		}
 		return projects[0].Permalink, nil
 	}
 
@@ -720,7 +817,14 @@ func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg 
 	if idx > 0 {
 		p := existing[idx-1]
 		env.Status("Using project: %s", p.Name)
-		_ = launchEnsureRepo(ctx, env, cfg, client, p.Permalink, gitRemote)
+		// Treat hard repo-connection failure as terminal (Fix 6).
+		if err := launchEnsureRepo(ctx, env, cfg, client, p.Permalink, gitRemote); err != nil {
+			return "", &launchError{
+				Reason:   reasonRepoUnreachable,
+				Message:  "Could not connect repository to project: " + err.Error(),
+				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
+			}
+		}
 		return p.Permalink, nil
 	}
 
@@ -792,7 +896,10 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 	env.Status("Connecting repository %s...", gitRemote)
 	branch := cfg.branch
 	if branch == "" {
-		branch = "main"
+		// Detect the local default branch rather than hardcoding "main" (Fix 9).
+		// Try the local HEAD first, then the tracked remote HEAD. Fall back to
+		// omitting the branch so the DeployHQ API resolves the repo default.
+		branch = detectDefaultBranch()
 	}
 	_, err = client.CreateRepository(ctx, projectID, sdk.RepositoryCreateRequest{
 		ScmType: "git",
@@ -804,6 +911,26 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 	}
 	env.Status("Repository connected.")
 	return nil
+}
+
+// detectDefaultBranch returns the local HEAD branch name for the repository in
+// the current working directory. Returns "" when it cannot be determined so the
+// API can use its own default resolution.
+func detectDefaultBranch() string {
+	// Try local HEAD (works for checked-out repos)
+	if out, err := runGitCommand("symbolic-ref", "--short", "HEAD"); err == nil && out != "" {
+		return out
+	}
+	// Try remote tracking HEAD (works in detached-HEAD / CI clones)
+	if out, err := runGitCommand("rev-parse", "--abbrev-ref", "origin/HEAD"); err == nil && out != "" {
+		// Strip "origin/" prefix if present
+		if len(out) > 7 && out[:7] == "origin/" {
+			return out[7:]
+		}
+		return out
+	}
+	// Return empty — let the API decide
+	return ""
 }
 
 // projectNameFromRemote derives a human-readable project name from a git remote URL.
@@ -1158,7 +1285,20 @@ func pollProvisioningState(ctx context.Context, env *output.Envelope, client *sd
 
 		updated, err := client.GetServerProvisioningState(ctx, projectID, server.Identifier)
 		if err != nil {
-			// Non-fatal: keep polling unless context is cancelled
+			// Terminate immediately on non-retryable errors (401/403/404) to
+			// avoid burning the full timeout on a permanent failure.
+			var apiErr *sdk.APIError
+			if errors.As(err, &apiErr) {
+				switch apiErr.StatusCode {
+				case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+					return server, &launchError{
+						Reason:   reasonProvisionFailed,
+						Message:  fmt.Sprintf("Provisioning poll failed (status %d): %s", apiErr.StatusCode, apiErr.Error()),
+						NextStep: "Check your credentials and project access, then retry.",
+					}
+				}
+			}
+			// Transient error: keep polling
 			env.Warn("Poll error (will retry): %v", err)
 			continue
 		}
@@ -1290,6 +1430,23 @@ func launchPersistConfig(env *output.Envelope, cfg launchConfig, server *sdk.Ser
 	env.Status("Settings saved to %s", path)
 }
 
+// ── Git helpers ───────────────────────────────────────────────────────────────
+
+// runGitCommand runs a git sub-command and returns the trimmed stdout output.
+// Returns an error when the command fails or produces no output.
+func runGitCommand(args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	result := strings.TrimSpace(string(out))
+	if result == "" {
+		return "", fmt.Errorf("git %s: empty output", strings.Join(args, " "))
+	}
+	return result, nil
+}
+
 // ── Error helpers ─────────────────────────────────────────────────────────────
 
 // writeLaunchError emits a structured JSON error (in --json mode) or a human
@@ -1299,8 +1456,10 @@ func writeLaunchError(env *output.Envelope, cfg launchConfig, reason string, err
 		return err
 	}
 
-	// Build structured error payload
-	le, isLaunchErr := err.(*launchError)
+	// Build structured error payload using errors.As so wrapped errors keep their
+	// metadata (cheap correctness fix).
+	var le *launchError
+	isLaunchErr := errors.As(err, &le)
 
 	code := reason
 	message := err.Error()
