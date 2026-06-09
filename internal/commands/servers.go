@@ -177,6 +177,8 @@ func newServersCreateCmd() *cobra.Command {
 	var subdirectory string
 	// Managed VPS (beta)
 	var region, size, osImage string
+	// Billing guardrail (mirrors the gate in `dhq launch`)
+	var acceptCost bool
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -281,6 +283,25 @@ func newServersCreateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
+
+			// Billable-safety guardrail: managed_vps MUST be acknowledged before
+			// creation (mirrors the gate in `dhq launch --vps`) (Fix 4).
+			if protocolType == "managed_vps" && !acceptCost {
+				if !env.IsTTY || env.NonInteractive || env.JSONMode {
+					return &output.UserError{
+						Message: "Billable Managed VPS creation requires explicit cost acknowledgement in non-interactive mode",
+						Hint:    "Add --accept-cost to acknowledge the monthly charge before creating a Managed VPS server.",
+					}
+				}
+				// Interactive: prompt to confirm
+				fmt.Fprint(env.Stderr, "Creating a Managed VPS will incur a monthly charge. Continue? [y/N]: ") //nolint:errcheck
+				reader := bufio.NewReader(os.Stdin)
+				answer, _ := reader.ReadString('\n')
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					return &output.UserError{Message: "Managed VPS creation cancelled"}
+				}
+			}
 
 			var server *sdk.Server
 			for {
@@ -413,6 +434,9 @@ func newServersCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&region, "region", "", "DigitalOcean region slug, e.g. lon1, nyc3 (managed_vps)")
 	cmd.Flags().StringVar(&size, "size", "", "DigitalOcean droplet size slug, e.g. s-1vcpu-1gb (managed_vps)")
 	cmd.Flags().StringVar(&osImage, "os-image", "", "OS image slug (managed_vps, default: ubuntu-24-04-x64)")
+
+	// Billing guardrail — required for managed_vps in non-interactive mode
+	cmd.Flags().BoolVar(&acceptCost, "accept-cost", false, "Acknowledge the monthly VPS cost without prompting (required for non-interactive managed_vps creation)")
 
 	return cmd
 }
