@@ -57,6 +57,7 @@ The only commands that **cannot** run non-interactively are: `dhq init`, `dhq he
 
 | Group | Description | Reference |
 |-------|-------------|-----------|
+| **launch** | One command: provision + deploy to DeployHQ Static Hosting or a Managed VPS | [launch.md](references/launch.md) |
 | **projects** | Create, list, update, delete projects | [projects.md](references/projects.md) |
 | **servers** | Manage deployment targets (SSH, FTP, S3, etc.) | [servers.md](references/servers.md) |
 | **deployments** | Create, monitor, rollback deployments | [deployments.md](references/deployments.md) |
@@ -67,6 +68,14 @@ The only commands that **cannot** run non-interactively are: `dhq init`, `dhq he
 | **auth & setup** | Authentication, CLI config, agent setup | [auth-setup.md](references/auth-setup.md) |
 
 ## Decision Trees
+
+### "Deploy my project in one command (managed hosting)"
+The fastest path — provisions DeployHQ Static Hosting or a Managed VPS and deploys in one go:
+1. `dhq launch --json` — auto-detects the framework, picks a target, provisions, deploys, returns the live URL
+2. Force a target: `dhq launch --static --subdomain my-app --json`, or `dhq launch --vps --accept-cost --region lon1 --json` (a Managed VPS is billable — `--accept-cost` is required non-interactively)
+3. Preview cost/actions with no side effects: `dhq launch --vps --dry-run --json`
+
+See [launch.md](references/launch.md). After `launch` writes `.deployhq.toml`, use `dhq deploy` for subsequent deploys.
 
 ### "Deploy code"
 1. `dhq projects list --json` — find project permalink
@@ -133,4 +142,5 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - User mentions "rollback", "revert", "undo" → rollback workflow
 - User mentions "environment variable", "env var", "config", "secret" → configuration
 - User mentions "branch", "commit", "repository" → repo management
+- User mentions "one command", "just deploy this folder", "managed hosting", "managed VPS", "static hosting", "provision and deploy" → `dhq launch` (see [launch.md](references/launch.md))
 - User mentions "DeployHQ", "deployhq", "dhq" → general CLI usage
