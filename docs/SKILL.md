@@ -106,6 +106,44 @@ dhq api POST /projects/<id>/config_files --body '{"config_file":{...}}'
 5. `dhq deployment-checks list -p <project> --json` → pre_build / post_deploy gates
 6. `dhq servers list -p <project> --json` → servers
 
+### "Check account beta/managed-offerings eligibility"
+```
+dhq api GET /account/capabilities --json
+```
+Returns `beta_features`, `static_hosting_eligible`, `managed_vps_eligible`.
+
+### "Enable managed-resources beta from CLI"
+```
+dhq api POST /beta/enrollments --body '{"protocol":"static_hosting"}'
+```
+Admin required for first enrollment; already-enrolled accounts are idempotent.
+
+### "List Managed VPS regions and sizes"
+```
+dhq api GET /managed_hosting/regions --json
+dhq api GET /managed_hosting/sizes --json
+```
+Requires beta_features enabled.
+
+### "Create a Static Hosting server"
+```
+dhq servers create -p <project> --name "My Site" --protocol-type static_hosting \
+  --subdomain <name> --subdirectory dist --json
+```
+
+### "Create a Managed VPS server"
+```
+dhq servers create -p <project> --name "My VPS" --protocol-type managed_vps \
+  --region lon1 --size s-1vcpu-1gb --json
+```
+
+### "Poll provisioning status"
+```
+dhq servers show <server-id> -p <project> --json
+```
+Check `provisioning_status` ("provisioning" / "active" / "error"), `ip_address` (VPS),
+and `static_hosting.url` (static) in the response.
+
 ## Invariants
 - Always use `--json` for machine-readable output
 - JSON responses include `breadcrumbs` with suggested next commands

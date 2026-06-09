@@ -104,6 +104,9 @@ See `examples/github-actions/` for complete workflows:
 ```
 dhq projects      list | show | create | update | delete | star | insights | upload-key | badge
 dhq servers       list | show | create | update | delete | reset-host-key
+                  protocols: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean,
+                             hetzner_cloud, heroku, netlify, shopify,
+                             static_hosting (beta), managed_vps (beta)
 dhq server-groups list | show | create | update | delete
 dhq deployments   list | show | create | abort | rollback | logs | watch
 dhq repos         show | create | update | branches | commits | commit-info | latest-revision
