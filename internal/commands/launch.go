@@ -686,12 +686,13 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 		},
 	}
 
-	if cfg.targetProtocol == detect.ProtocolStaticHosting {
+	switch cfg.targetProtocol {
+	case detect.ProtocolStaticHosting:
 		dr.Would.Subdomain = cfg.subdomain
 		if dr.Would.Subdomain == "" {
 			dr.Would.Subdomain = "<repo-name>"
 		}
-	} else if cfg.targetProtocol == detect.ProtocolManagedVPS {
+	case detect.ProtocolManagedVPS:
 		region := cfg.region
 		if region == "" {
 			region = "lon1"
@@ -1397,12 +1398,6 @@ func launchDeploy(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 // ── Failure / cleanup ─────────────────────────────────────────────────────────
 
 func launchDeployFailureCleanup(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, server *sdk.Server) {
-	liveURL := sdk.LiveURL(server)
-	urlDisplay := liveURL
-	if urlDisplay == "" {
-		urlDisplay = server.Identifier
-	}
-
 	env.Status("")
 	env.Warn("Deploy failed. Your %s %q is running and billable.", cfg.targetProtocol, server.Name)
 	env.Status("To remove it: dhq servers delete -p %s %s", cfg.projectID, server.Identifier)

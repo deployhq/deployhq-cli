@@ -117,11 +117,9 @@ func Detect(dir string) Result {
 
 	// Python / Django
 	if has("requirements.txt", "Pipfile", "pyproject.toml") {
-		framework := FrameworkDjango
+		framework := FrameworkUnknown
 		if has("manage.py") && fileContains(readFile("requirements.txt"), "django") {
 			framework = FrameworkDjango
-		} else {
-			framework = FrameworkUnknown
 		}
 		return Result{
 			Framework:         framework,
