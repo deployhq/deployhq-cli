@@ -284,17 +284,19 @@ func newServersCreateCmd() *cobra.Command {
 
 			env := cliCtx.Envelope
 
-			// Billable-safety guardrail: managed_vps MUST be acknowledged before
-			// creation (mirrors the gate in `dhq launch --vps`) (Fix 4).
+			// Cost-acknowledgement guardrail: managed_vps MUST be acknowledged before
+			// creation (mirrors the gate in `dhq launch --vps`) (Fix 4). The exact
+			// wording is sourced from managedVPSAcknowledgePhrase() so it tracks the
+			// beta-vs-GA switch in metered.go.
 			if protocolType == "managed_vps" && !acceptCost {
 				if !env.IsTTY || env.NonInteractive || env.JSONMode {
 					return &output.UserError{
-						Message: "Billable Managed VPS creation requires explicit cost acknowledgement in non-interactive mode",
-						Hint:    "Add --accept-cost to acknowledge the monthly charge before creating a Managed VPS server.",
+						Message: "Managed VPS creation requires --accept-cost (" + managedVPSAcknowledgePhrase() + ")",
+						Hint:    "Add --accept-cost to acknowledge that a Managed VPS is " + managedVPSAcknowledgePhrase() + ".",
 					}
 				}
 				// Interactive: prompt to confirm
-				fmt.Fprint(env.Stderr, "Creating a Managed VPS will incur a monthly charge. Continue? [y/N]: ") //nolint:errcheck
+				fmt.Fprintf(env.Stderr, "Creating a Managed VPS — %s. Continue? [y/N]: ", managedVPSAcknowledgePhrase()) //nolint:errcheck
 				reader := bufio.NewReader(os.Stdin)
 				answer, _ := reader.ReadString('\n')
 				answer = strings.TrimSpace(strings.ToLower(answer))
@@ -435,8 +437,8 @@ func newServersCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&size, "size", "", "DigitalOcean droplet size slug, e.g. s-1vcpu-1gb (managed_vps)")
 	cmd.Flags().StringVar(&osImage, "os-image", "", "OS image slug (managed_vps, default: ubuntu-24-04-x64)")
 
-	// Billing guardrail — required for managed_vps in non-interactive mode
-	cmd.Flags().BoolVar(&acceptCost, "accept-cost", false, "Acknowledge the monthly VPS cost without prompting (required for non-interactive managed_vps creation)")
+	// Cost-acknowledgement guardrail — required for managed_vps in non-interactive mode
+	cmd.Flags().BoolVar(&acceptCost, "accept-cost", false, "Acknowledge Managed VPS provisioning — "+managedVPSAcknowledgePhrase()+" (required for non-interactive managed_vps creation)")
 
 	return cmd
 }

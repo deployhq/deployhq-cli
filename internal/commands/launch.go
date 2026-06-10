@@ -150,7 +150,7 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 		Example: `  # Interactive: auto-detect framework and prompt for anything missing
   dhq launch
 
-  # CI — static is safe under --yes; billable VPS REQUIRES --accept-cost
+  # CI — static is safe under --yes; a Managed VPS REQUIRES --accept-cost
   dhq launch --static --subdomain my-app
   dhq launch --vps --accept-cost --region lon1
 
@@ -181,13 +181,13 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 
 	cmd.Flags().BoolVar(&flagStatic, "static", false, "Force Static Hosting target")
 	cmd.Flags().BoolVar(&flagVPS, "vps", false, "Force Managed VPS target")
-	cmd.Flags().BoolVar(&flagAcceptCost, "accept-cost", false, "Acknowledge the monthly VPS cost without prompting (required for non-interactive VPS provisioning)")
+	cmd.Flags().BoolVar(&flagAcceptCost, "accept-cost", false, "Acknowledge Managed VPS provisioning — "+managedVPSAcknowledgePhrase()+" (required to provision a VPS non-interactively)")
 	cmd.Flags().StringVar(&flagSubdomain, "subdomain", "", "Static Hosting subdomain (default: repo / project name)")
 	cmd.Flags().StringVar(&flagRegion, "region", "", "Managed VPS region slug (e.g. lon1, nyc3)")
 	cmd.Flags().StringVar(&flagSize, "size", "", "Managed VPS size slug (e.g. s-1vcpu-1gb)")
 	cmd.Flags().StringVar(&flagBranch, "branch", "", "Branch to deploy (default: repo default)")
 	cmd.Flags().StringVar(&flagProject, "project", "", "Existing project permalink to reuse (skips project creation)")
-	cmd.Flags().BoolVar(&flagCleanupOnFail, "cleanup-on-failure", false, "Delete the provisioned server when the deploy fails (prevents orphaned billable resources)")
+	cmd.Flags().BoolVar(&flagCleanupOnFail, "cleanup-on-failure", false, "Delete the provisioned server when the deploy fails (prevents orphaned managed resources)")
 	cmd.Flags().BoolVar(&flagNonInteract, "non-interactive", false, "Never prompt; fail fast with structured errors on ambiguity (alias: --yes)")
 	cmd.Flags().BoolVar(&flagNonInteract, "yes", false, "Alias for --non-interactive")
 	cmd.Flags().BoolVar(&flagInteractive, "interactive", false, "Force interactive mode even in piped / agent contexts")
@@ -655,8 +655,8 @@ func launchPromptTarget(env *output.Envelope) (string, error) {
 	prompt := promptui.Select{
 		Label: "Deployment target",
 		Items: []string{
-			"Static Hosting (beta) — global CDN via Cloudflare, from $2/site",
-			"Managed VPS (beta) — DeployHQ provisions and manages a VPS for you",
+			"Static Hosting (beta) — global CDN via Cloudflare, from $2/site" + betaFreeSuffix(),
+			"Managed VPS (beta) — DeployHQ provisions and manages a VPS for you" + betaFreeSuffix(),
 			"Use my own server (SSH/FTP/…)",
 		},
 	}
@@ -698,7 +698,7 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 			region = "lon1"
 		}
 		size := cfg.size
-		monthlyCost := "$?"
+		monthlyCost := ""
 		if size == "" {
 			// Try to fetch first available size for cost estimate
 			sizes, sErr := client.ListManagedHostingSizes(ctx)
@@ -738,7 +738,7 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 	if dr.Would.Region != "" {
 		env.Status("  Region:        %s", dr.Would.Region)
 		env.Status("  Size:          %s", dr.Would.Size)
-		env.Status("  Monthly cost:  %s", dr.Would.MonthlyCost)
+		env.Status("  Cost:          %s", managedVPSCostDescription(dr.Would.MonthlyCost))
 	}
 	if len(dr.Requires) > 0 {
 		env.Status("")
@@ -1201,15 +1201,15 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 	env.Status("  Region: %s", regionName)
 	env.Status("  Size:   %s", size)
 	env.Status("  OS:     %s", osImage)
-	env.Status("  Cost:   ~%s", monthlyCostStr)
+	env.Status("  Cost:   %s", managedVPSCostDescription(monthlyCostStr))
 	env.Status("")
 
 	if !cfg.acceptCost {
 		if env.NonInteractive {
 			return nil, &launchError{
 				Reason:   reasonAcceptCostRequired,
-				Message:  "Billable VPS provisioning requires explicit cost acknowledgement in non-interactive mode",
-				NextStep: "Add --accept-cost to your command to acknowledge the monthly charge",
+				Message:  "Provisioning a Managed VPS requires --accept-cost (" + managedVPSAcknowledgePhrase() + ")",
+				NextStep: "Add --accept-cost to acknowledge that a Managed VPS is " + managedVPSAcknowledgePhrase(),
 				Details: map[string]string{
 					"monthly_cost": monthlyCostStr,
 					"region":       region,
@@ -1220,7 +1220,7 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 
 		// Interactive cost confirm
 		confirmPrompt := promptui.Select{
-			Label: fmt.Sprintf("This provisions a billable VPS (~%s). Continue?", monthlyCostStr),
+			Label: fmt.Sprintf("Provision a Managed VPS (%s)? Continue?", managedVPSCostDescription(monthlyCostStr)),
 			Items: []string{"No", "Yes, provision VPS"},
 		}
 		idx, _, cErr := confirmPrompt.Run()
@@ -1399,7 +1399,7 @@ func launchDeploy(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 
 func launchDeployFailureCleanup(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, server *sdk.Server) {
 	env.Status("")
-	env.Warn("Deploy failed. Your %s %q is running and billable.", cfg.targetProtocol, server.Name)
+	env.Warn("Deploy failed. Your %s %q is still running%s.", cfg.targetProtocol, server.Name, managedRunningCostTail())
 	env.Status("To remove it: dhq servers delete -p %s %s", cfg.projectID, server.Identifier)
 	env.Status("To re-deploy: dhq deploy -p %s -s %s", cfg.projectID, server.Identifier)
 

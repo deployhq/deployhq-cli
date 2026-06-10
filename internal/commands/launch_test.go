@@ -169,7 +169,7 @@ func TestLaunchVPS_AcceptCostRequired_NonInteractive(t *testing.T) {
 	var le *launchError
 	require.True(t, isLaunchErr(err, &le), "must be a launchError")
 	assert.Equal(t, reasonAcceptCostRequired, le.Reason)
-	assert.Contains(t, strings.ToLower(le.Message), "billable")
+	assert.Contains(t, le.Message, "--accept-cost")
 	assert.Contains(t, le.NextStep, "--accept-cost")
 }
 
