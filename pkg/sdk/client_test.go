@@ -110,6 +110,47 @@ func TestClient_APIError_MultipleErrors(t *testing.T) {
 	assert.True(t, apiErr.IsValidationError())
 }
 
+func TestClient_APIError_RateLimited_RetryAfter(t *testing.T) {
+	// A 429 with a Retry-After header must parse into IsRateLimited() + RetryAfter.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "42")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "provisioning rate limit reached"})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	_, err := c.CreateProject(context.Background(), ProjectCreateRequest{})
+	require.Error(t, err)
+
+	apiErr, ok := err.(*APIError)
+	require.True(t, ok)
+	assert.Equal(t, 429, apiErr.StatusCode)
+	assert.True(t, apiErr.IsRateLimited())
+	assert.True(t, IsRateLimited(err))
+	assert.Equal(t, 42, apiErr.RetryAfter)
+	// 429 must not be mistaken for the 422 cap.
+	assert.False(t, apiErr.IsValidationError())
+}
+
+func TestClient_APIError_RateLimited_NoRetryAfter(t *testing.T) {
+	// A 429 without a Retry-After header is still rate-limited; RetryAfter is 0.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "slow down"})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	_, err := c.CreateProject(context.Background(), ProjectCreateRequest{})
+	require.Error(t, err)
+
+	apiErr, ok := err.(*APIError)
+	require.True(t, ok)
+	assert.True(t, apiErr.IsRateLimited())
+	assert.Equal(t, 0, apiErr.RetryAfter)
+}
+
 func TestClient_APIError_Unauthorized(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
