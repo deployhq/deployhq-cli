@@ -72,7 +72,7 @@ The only commands that **cannot** run non-interactively are: `dhq init`, `dhq he
 ### "Deploy my project in one command (managed hosting)"
 The fastest path — provisions DeployHQ Static Hosting or a Managed VPS and deploys in one go:
 1. `dhq launch --json` — auto-detects the framework, picks a target, provisions, deploys, returns the live URL
-2. Force a target: `dhq launch --static --subdomain my-app --json`, or `dhq launch --vps --accept-cost --region lon1 --json` (a Managed VPS is billable — `--accept-cost` is required non-interactively)
+2. Force a target: `dhq launch --static --subdomain my-app --json`, or `dhq launch --vps --accept-cost --region lon1 --json` (a Managed VPS is a managed resource, free for early customers during beta and billed monthly afterwards — `--accept-cost` is required non-interactively)
 3. Preview cost/actions with no side effects: `dhq launch --vps --dry-run --json`
 
 See [launch.md](references/launch.md). After `launch` writes `.deployhq.toml`, use `dhq deploy` for subsequent deploys.

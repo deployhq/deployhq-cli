@@ -83,7 +83,8 @@ dhq launch --static --json
 dhq launch --vps --dry-run --json   # preview cost + actions, no side effects
 ```
 
-A Managed VPS is billable, so `--accept-cost` is required for non-interactive VPS
+A Managed VPS is a managed resource — free for early customers during the beta,
+billed monthly afterwards — so `--accept-cost` is required for non-interactive VPS
 provisioning (`--yes` alone never provisions one). After the first run, `launch`
 writes `.deployhq.toml` so subsequent deploys are just `dhq deploy`. See the
 [agent guide](skills/deployhq/references/launch.md) for the full flag set and the
