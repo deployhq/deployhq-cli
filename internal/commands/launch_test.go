@@ -123,6 +123,47 @@ func TestLaunchAuthRequired_JSONReason(t *testing.T) {
 	assert.Contains(t, data["error"].(string), "Not authenticated")
 }
 
+// ── Managed VPS size presentation ────────────────────────────────────────────
+
+func TestHumanMB(t *testing.T) {
+	assert.Equal(t, "1 GB", humanMB(1024))
+	assert.Equal(t, "2 GB", humanMB(2048))
+	assert.Equal(t, "512 MB", humanMB(512))
+	assert.Equal(t, "1.5 GB", humanMB(1536))
+}
+
+func TestManagedSizeRanksAndTiers(t *testing.T) {
+	// Deliberately out of price order to prove ranking is by price, not position.
+	sizes := []sdk.ManagedHostingSize{
+		{Slug: "mid", PriceMonthly: 12},
+		{Slug: "cheap", PriceMonthly: 6},
+		{Slug: "dear", PriceMonthly: 24},
+	}
+	ranks := managedSizeRanks(sizes)
+	assert.Equal(t, []int{1, 0, 2}, ranks)
+
+	assert.Equal(t, "Starter", managedSizeTier(0))
+	assert.Equal(t, "Standard", managedSizeTier(1))
+	assert.Equal(t, "Plus", managedSizeTier(2))
+	assert.Equal(t, "Pro", managedSizeTier(3))
+	assert.Equal(t, "", managedSizeTier(4), "ranks beyond named tiers fall back to spec-only")
+}
+
+func TestManagedSizeLabel(t *testing.T) {
+	s := sdk.ManagedHostingSize{Slug: "s-1vcpu-1gb", VCPUs: 1, Memory: 1024, Disk: 25, PriceMonthly: 6}
+	label := managedSizeLabel(s, 0)
+	assert.Contains(t, label, "Starter")
+	assert.Contains(t, label, "1 vCPU")
+	assert.Contains(t, label, "1 GB RAM")
+	assert.Contains(t, label, "25 GB SSD")
+	assert.Contains(t, label, "$6.00/mo")
+	assert.Contains(t, label, "(s-1vcpu-1gb)", "slug stays visible for --size discoverability")
+
+	// Missing structured specs → fall back to the API Description, no tier crash.
+	bare := sdk.ManagedHostingSize{Slug: "x", Description: "custom", PriceMonthly: 9}
+	assert.Contains(t, managedSizeLabel(bare, 9), "custom")
+}
+
 // ── rate_limited (429 provisioning rate limit) ───────────────────────────────
 
 func TestRateLimitLaunchError_Mapping(t *testing.T) {

@@ -462,6 +462,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	env.Status("")
 	output.ColorGreen.Fprintf(env.Stderr, "Live: %s\n", liveURL) //nolint:errcheck
 	env.Status("Saved settings to .deployhq.toml — next time just run 'dhq deploy'.")
+	env.Status("Roll back anytime with 'dhq rollback <deployment>' — redeploys the previous revision ('dhq deployments list' shows history).")
 	// Final stdout line = live URL (Vercel pattern, scriptable)
 	fmt.Fprintln(os.Stdout, liveURL) //nolint:errcheck
 
@@ -1102,6 +1103,87 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg launch
 	return server, nil
 }
 
+// ── Managed VPS size presentation ─────────────────────────────────────────────
+
+// humanMB renders a RAM figure (in MB) as a friendly "1 GB" / "512 MB" string.
+func humanMB(mb int) string {
+	switch {
+	case mb >= 1024 && mb%1024 == 0:
+		return fmt.Sprintf("%d GB", mb/1024)
+	case mb >= 1024:
+		return fmt.Sprintf("%.1f GB", float64(mb)/1024)
+	default:
+		return fmt.Sprintf("%d MB", mb)
+	}
+}
+
+// managedSizeTier returns a friendly tier name for a size given its zero-based
+// rank among the offered sizes ordered by price (cheapest first), or "" when the
+// rank is beyond the named tiers — those fall back to a spec-only label.
+func managedSizeTier(rank int) string {
+	switch rank {
+	case 0:
+		return "Starter"
+	case 1:
+		return "Standard"
+	case 2:
+		return "Plus"
+	case 3:
+		return "Pro"
+	default:
+		return ""
+	}
+}
+
+// managedSizeRanks returns the price-rank of each size aligned to the input
+// order (0 = cheapest). Ties are broken by original index for stability. O(n²)
+// but n is a handful of sizes, so no sort import is warranted.
+func managedSizeRanks(sizes []sdk.ManagedHostingSize) []int {
+	ranks := make([]int, len(sizes))
+	for i := range sizes {
+		rank := 0
+		for j := range sizes {
+			if j == i {
+				continue
+			}
+			if sizes[j].PriceMonthly < sizes[i].PriceMonthly ||
+				(sizes[j].PriceMonthly == sizes[i].PriceMonthly && j < i) {
+				rank++
+			}
+		}
+		ranks[i] = rank
+	}
+	return ranks
+}
+
+// managedSizeSpecs renders the hardware line for a size, e.g.
+// "1 vCPU · 1 GB RAM · 25 GB SSD". Falls back to the API's Description when the
+// structured fields are absent.
+func managedSizeSpecs(s sdk.ManagedHostingSize) string {
+	if s.VCPUs > 0 {
+		return fmt.Sprintf("%d vCPU · %s RAM · %d GB SSD", s.VCPUs, humanMB(s.Memory), s.Disk)
+	}
+	return s.Description
+}
+
+// managedSizeLabel renders a human-friendly one-line label for a size in the
+// interactive picker, with an optional tier prefix derived from its price rank:
+//
+//	Starter · 1 vCPU · 1 GB RAM · 25 GB SSD · $6.00/mo  (s-1vcpu-1gb)
+//
+// The slug stays visible so the equivalent --size flag is discoverable.
+func managedSizeLabel(s sdk.ManagedHostingSize, rank int) string {
+	parts := make([]string, 0, 3)
+	if tier := managedSizeTier(rank); tier != "" {
+		parts = append(parts, tier)
+	}
+	if specs := managedSizeSpecs(s); specs != "" {
+		parts = append(parts, specs)
+	}
+	parts = append(parts, fmt.Sprintf("$%.2f/mo", s.PriceMonthly))
+	return fmt.Sprintf("%s  (%s)", strings.Join(parts, " · "), s.Slug)
+}
+
 func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client) (*sdk.Server, error) {
 	// Resolve region and size defaults
 	region := cfg.region
@@ -1208,9 +1290,10 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 
 			sizes, sErr := client.ListManagedHostingSizes(ctx)
 			if sErr == nil && len(sizes) > 1 {
+				ranks := managedSizeRanks(sizes)
 				sizeItems := make([]string, len(sizes))
 				for i, s := range sizes {
-					sizeItems[i] = fmt.Sprintf("%s — %s ($%.2f/mo)", s.Slug, s.Description, s.PriceMonthly)
+					sizeItems[i] = managedSizeLabel(s, ranks[i])
 				}
 				sizePrompt := promptui.Select{
 					Label: fmt.Sprintf("Size [%s]", size),
@@ -1230,10 +1313,16 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 	if regionName == "" {
 		regionName = region
 	}
+	sizeDisplay := size
+	if selectedSize.Slug != "" {
+		if specs := managedSizeSpecs(selectedSize); specs != "" {
+			sizeDisplay = fmt.Sprintf("%s (%s)", specs, selectedSize.Slug)
+		}
+	}
 	env.Status("")
 	env.Status("Managed VPS configuration:")
 	env.Status("  Region: %s", regionName)
-	env.Status("  Size:   %s", size)
+	env.Status("  Size:   %s", sizeDisplay)
 	env.Status("  OS:     %s", osImage)
 	env.Status("  Cost:   %s", managedVPSCostDescription(monthlyCostStr))
 	env.Status("")

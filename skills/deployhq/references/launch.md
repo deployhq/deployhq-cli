@@ -72,5 +72,6 @@ On failure the error carries a stable `reason`, a `retryable` boolean, and a `ne
 ## Notes
 
 - Static Hosting deploys are git-based (a connected repo + DeployHQ's build pipeline). `launch` connects the repo for you; it does not yet upload a local build directory.
+- **Rollback:** both targets roll back the same way — `dhq rollback <deployment>` redeploys the previous revision through the same pipeline (`dhq deployments list` shows history). There's no separate static-vs-VPS rollback command.
 - Managed VPS and Static Hosting require the **managed-resources beta**. `launch` enrolls the account automatically when an admin runs it (the enrollment endpoint is idempotent and admin-gated); non-admins get `beta_enroll_required`.
 - **Pricing during beta:** Managed VPS and Static Hosting are free for early customers while in beta; the listed monthly rate applies once the beta ends. The CLI's runtime copy is gated by a single switch (`meteredResourcesInBeta` in `internal/commands/metered.go`) — flip it when the resources go GA, and update this beta wording in the same change.
