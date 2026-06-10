@@ -99,34 +99,28 @@ func TestProjectNameFromRemote_NoExtension(t *testing.T) {
 	assert.Equal(t, "service", name)
 }
 
-// ── Integration: auth_required in non-interactive mode ───────────────────────
+// ── auth_required structured error ────────────────────────────────────────────
+//
+// The full no-credentials flow in launchEnsureAuth depends on the OS keyring
+// (auth.LoadByAccount), so it cannot be unit-tested deterministically across
+// machines. We verify the observable contract instead: a non-interactive auth
+// failure surfaces as a structured auth_required error (and launchEnsureAuth
+// never attempts a headless signup in non-interactive mode — see launch.go).
+// Flag registration is covered separately by TestLaunchCommandFlagSet.
 
-func TestLaunchErrorAuthRequired_NonInteractive(t *testing.T) {
-	// When no credentials are available and env is non-interactive, launch must
-	// return a structured auth_required error — never attempt headless signup.
+func TestLaunchAuthRequired_JSONReason(t *testing.T) {
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	authErr := &output.AuthError{Message: "Not authenticated"}
 
-	// Save and restore cliCtx state
-	origCtx := cliCtx
-	defer func() { cliCtx = origCtx }()
+	result := writeLaunchError(env, launchConfig{}, reasonAuthRequired, authErr)
+	assert.Equal(t, authErr, result, "must return the original error for exit-code purposes")
 
-	// Set up a minimal cliCtx that returns an auth error
-	cmd := NewRootCmd("test")
-	cmd.SetArgs([]string{"launch", "--non-interactive", "--static", "--subdomain", "testapp"})
-	// Don't actually run — just check the flag is registered
-	launchCmd, _, _ := cmd.Find([]string{"launch"})
-	require.NotNil(t, launchCmd)
-	assert.NotNil(t, launchCmd.Flags().Lookup("non-interactive"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("accept-cost"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("static"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("vps"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("dry-run"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("subdomain"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("region"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("size"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("branch"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("cleanup-on-failure"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("yes"))
-	assert.NotNil(t, launchCmd.Flags().Lookup("interactive"))
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
+	assert.Equal(t, false, resp["ok"])
+	data := resp["data"].(map[string]interface{})
+	assert.Equal(t, reasonAuthRequired, data["reason"])
+	assert.Contains(t, data["error"].(string), "Not authenticated")
 }
 
 // ── Integration: accept_cost_required ────────────────────────────────────────
