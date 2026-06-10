@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -96,6 +97,7 @@ const (
 	reasonRepoUnreachable    = "repo_unreachable"
 	reasonPlanLimitReached   = "plan_limit_reached"
 	reasonSubdomainTaken     = "subdomain_taken"
+	reasonRateLimited        = "rate_limited"
 	reasonProvisionFailed    = "provision_failed"
 	reasonDeployFailed       = "deploy_failed"
 )
@@ -107,6 +109,10 @@ type launchError struct {
 	Message  string
 	NextStep string
 	Details  map[string]string
+	// Retryable marks an error an agent/CI can safely re-attempt after backing
+	// off (e.g. a 429 provisioning rate limit), as opposed to a hard wall like
+	// plan_limit_reached. Surfaced as `retryable` in --json output.
+	Retryable bool
 }
 
 func (e *launchError) Error() string {
@@ -115,6 +121,30 @@ func (e *launchError) Error() string {
 		msg += "\n\nNext step: " + e.NextStep
 	}
 	return msg
+}
+
+// rateLimitLaunchError converts a 429 provisioning-rate-limit API error into a
+// structured, retryable launchError carrying the Retry-After backoff hint. It
+// returns nil when err is not a 429, so callers can fall through to their
+// existing error handling.
+func rateLimitLaunchError(err error) *launchError {
+	var apiErr *sdk.APIError
+	if !errors.As(err, &apiErr) || !apiErr.IsRateLimited() {
+		return nil
+	}
+	details := map[string]string{}
+	nextStep := "Wait a moment, then re-run the same command — this is a temporary provisioning rate limit, not a hard cap."
+	if apiErr.RetryAfter > 0 {
+		details["retry_after"] = strconv.Itoa(apiErr.RetryAfter)
+		nextStep = fmt.Sprintf("Wait %ds, then re-run the same command (provisioning rate limit; Retry-After: %ds).", apiErr.RetryAfter, apiErr.RetryAfter)
+	}
+	return &launchError{
+		Reason:    reasonRateLimited,
+		Message:   "Provisioning rate limit reached for this account",
+		NextStep:  nextStep,
+		Details:   details,
+		Retryable: true,
+	}
 }
 
 // newLaunchCmd builds the `dhq launch` Cobra command.
@@ -1031,6 +1061,10 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg launch
 
 	server, err := client.CreateServer(ctx, cfg.projectID, req)
 	if err != nil {
+		// 429 provisioning rate limit — retryable, distinct from the 422 cap.
+		if rl := rateLimitLaunchError(err); rl != nil {
+			return nil, rl
+		}
 		var apiErr *sdk.APIError
 		if errors.As(err, &apiErr) && apiErr.IsValidationError() {
 			msg := apiErr.Error()
@@ -1245,6 +1279,10 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 
 	server, err := client.CreateServer(ctx, cfg.projectID, req)
 	if err != nil {
+		// 429 provisioning rate limit — retryable, distinct from the 422 cap.
+		if rl := rateLimitLaunchError(err); rl != nil {
+			return nil, rl
+		}
 		return nil, err
 	}
 
@@ -1460,29 +1498,39 @@ func writeLaunchError(env *output.Envelope, cfg launchConfig, reason string, err
 	message := err.Error()
 	nextStep := ""
 	details := map[string]string{}
+	retryable := false
 
 	if isLaunchErr {
+		// The wrapped error's own Reason is authoritative — a rate_limited or
+		// subdomain_taken error surfaced through a generic call site (e.g.
+		// provision_failed) must keep its true reason and retryable flag.
+		if le.Reason != "" {
+			code = le.Reason
+		}
 		message = le.Message
 		nextStep = le.NextStep
+		retryable = le.Retryable
 		for k, v := range le.Details {
 			details[k] = v
 		}
 	}
 
 	type structuredErr struct {
-		Error    string            `json:"error"`
-		Reason   string            `json:"reason"`
-		NextStep string            `json:"next_step,omitempty"`
-		Details  map[string]string `json:"details,omitempty"`
+		Error     string            `json:"error"`
+		Reason    string            `json:"reason"`
+		Retryable bool              `json:"retryable"`
+		NextStep  string            `json:"next_step,omitempty"`
+		Details   map[string]string `json:"details,omitempty"`
 	}
 
 	resp := &output.Response{
 		OK: false,
 		Data: structuredErr{
-			Error:    message,
-			Reason:   code,
-			NextStep: nextStep,
-			Details:  details,
+			Error:     message,
+			Reason:    code,
+			Retryable: retryable,
+			NextStep:  nextStep,
+			Details:   details,
 		},
 	}
 	_ = env.WriteJSON(resp)

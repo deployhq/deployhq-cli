@@ -55,7 +55,7 @@ dhq launch --vps --dry-run --json
 
 ### Structured error reasons
 
-On failure the error carries a stable `reason` (and `next_step`) an agent can branch on:
+On failure the error carries a stable `reason`, a `retryable` boolean, and a `next_step` an agent can branch on:
 
 | Reason | Meaning / next step |
 |--------|---------------------|
@@ -65,6 +65,7 @@ On failure the error carries a stable `reason` (and `next_step`) an agent can br
 | `repo_unreachable` | No git remote DeployHQ can deploy from — push a remote / connect a provider first |
 | `plan_limit_reached` | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
 | `subdomain_taken` | Static Hosting subdomain already in use — choose another `--subdomain` |
+| `rate_limited` | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
 | `provision_failed` | The server failed to provision — check the named resource; retry |
 | `deploy_failed` | Provisioning succeeded but the deploy failed — the managed-resource server is named with its teardown command; `--cleanup-on-failure` removes it automatically |
 

@@ -123,6 +123,49 @@ func TestLaunchAuthRequired_JSONReason(t *testing.T) {
 	assert.Contains(t, data["error"].(string), "Not authenticated")
 }
 
+// ── rate_limited (429 provisioning rate limit) ───────────────────────────────
+
+func TestRateLimitLaunchError_Mapping(t *testing.T) {
+	// 429 with Retry-After → retryable rate_limited error carrying the backoff.
+	withRA := rateLimitLaunchError(&sdk.APIError{StatusCode: http.StatusTooManyRequests, RetryAfter: 30})
+	require.NotNil(t, withRA)
+	assert.Equal(t, reasonRateLimited, withRA.Reason)
+	assert.True(t, withRA.Retryable)
+	assert.Equal(t, "30", withRA.Details["retry_after"])
+	assert.Contains(t, withRA.NextStep, "30s")
+
+	// 429 without Retry-After → still retryable, no retry_after detail.
+	noRA := rateLimitLaunchError(&sdk.APIError{StatusCode: http.StatusTooManyRequests})
+	require.NotNil(t, noRA)
+	assert.True(t, noRA.Retryable)
+	_, hasRA := noRA.Details["retry_after"]
+	assert.False(t, hasRA)
+
+	// A 422 cap is NOT a rate limit — must fall through (nil).
+	assert.Nil(t, rateLimitLaunchError(&sdk.APIError{StatusCode: http.StatusUnprocessableEntity}))
+	// A non-API error is not a rate limit either.
+	assert.Nil(t, rateLimitLaunchError(errors.New("boom")))
+}
+
+func TestLaunchRateLimited_JSONReason(t *testing.T) {
+	// A rate_limited error surfaced through the generic provision_failed call
+	// site must keep its true reason and retryable flag in --json output —
+	// agents branch on `reason` + `retryable`, not the call site.
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	rl := rateLimitLaunchError(&sdk.APIError{StatusCode: http.StatusTooManyRequests, RetryAfter: 12})
+	require.NotNil(t, rl)
+
+	_ = writeLaunchError(env, launchConfig{}, reasonProvisionFailed, rl)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
+	data := resp["data"].(map[string]interface{})
+	assert.Equal(t, reasonRateLimited, data["reason"], "reason must be rate_limited, not the provision_failed call site")
+	assert.Equal(t, true, data["retryable"])
+	details := data["details"].(map[string]interface{})
+	assert.Equal(t, "12", details["retry_after"])
+}
+
 // ── Integration: accept_cost_required ────────────────────────────────────────
 
 func TestLaunchVPS_AcceptCostRequired_NonInteractive(t *testing.T) {
