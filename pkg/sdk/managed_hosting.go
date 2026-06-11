@@ -7,7 +7,7 @@ import (
 )
 
 // GetAccountCapabilities returns the beta/eligibility status for the current account.
-// The capability flags live on the account sub-object of GET /profile (P0.2), which —
+// The capability flags live on the account sub-object of GET /profile, which —
 // unlike GET /account — is readable by ANY authenticated account member (not admin-gated).
 //
 // Returns AccountCapabilities with beta_features, static_hosting_eligible, and
@@ -26,11 +26,11 @@ func (c *Client) GetAccountCapabilities(ctx context.Context) (*AccountCapabiliti
 	return &profile.Account, nil
 }
 
-// EnrollBeta enrolls the current account in the managed-resources beta (P0.1).
+// EnrollBeta enrolls the current account in the managed-resources beta.
 // This calls POST /beta/enrollments with the given protocol ("static_hosting",
 // "managed_vps", or "" to enroll in all managed-resources protocols).
 //
-// Authorization (matches PR #915 / D8):
+// Authorization:
 //   - Admin users: can flip beta from false to true.
 //   - Non-admin users who are already enrolled: pass idempotently.
 //   - Non-admin users who are not yet enrolled: receive a 403 with a structured
@@ -75,7 +75,7 @@ func (c *Client) ListManagedHostingSizes(ctx context.Context) ([]ManagedHostingS
 }
 
 // GetServerProvisioningState returns the current server record from the
-// project-scoped server show endpoint (P0.3 / GET /projects/:id/servers/:id).
+// project-scoped server show endpoint (GET /projects/:id/servers/:id).
 //
 // This is the correct polling target for Managed VPS and Static Hosting servers
 // during provisioning. The endpoint is gated by project config permission (not

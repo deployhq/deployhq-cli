@@ -9,14 +9,16 @@
 #
 # Usage:
 #   script/update-openapi-fixture.sh                 # local dev backend
-#   DHQ_DOCS_URL=https://host/docs.json script/update-openapi-fixture.sh
+#   DHQ_SPEC_URL=https://host/docs.json script/update-openapi-fixture.sh
 #
-# Requires a running backend (local: `bin/dev` in the deployhq repo). Never run
-# in CI — tests read only the committed fixture, keeping them hermetic.
+# DHQ_SPEC_URL is the same variable the drift-check workflow uses
+# (.github/workflows/openapi-drift.yml); DHQ_DOCS_URL is accepted as a legacy
+# alias. Requires a running backend (local: `bin/dev` in the deployhq repo).
+# Never run in CI — tests read only the committed fixture, keeping them hermetic.
 
 set -euo pipefail
 
-DOCS_URL="${DHQ_DOCS_URL:-https://api.deploy.localhost/docs.json}"
+DOCS_URL="${DHQ_SPEC_URL:-${DHQ_DOCS_URL:-https://api.deploy.localhost/docs.json}}"
 FIXTURE="$(cd "$(dirname "$0")/.." && pwd)/internal/commands/testdata/openapi.json"
 
 echo "Fetching ${DOCS_URL} ..."

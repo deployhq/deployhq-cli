@@ -681,7 +681,8 @@ func TestLaunchBetaEnroll_AlreadyEnrolled_Idempotent(t *testing.T) {
 
 	client := newTestClient(t, srv)
 	// An already-enrolled account must succeed idempotently on EnrollBeta,
-	// regardless of admin status (D8). Verify that round-trip directly.
+	// regardless of admin status (admin is required only for the first
+	// not-enrolled→enrolled flip). Verify that round-trip directly.
 	_, enrollErr := client.EnrollBeta(t.Context(), "static_hosting")
 	require.NoError(t, enrollErr, "already-enrolled account must succeed idempotently")
 }
@@ -967,7 +968,7 @@ func isLaunchErr(err error, le **launchError) bool {
 	return errors.As(err, le)
 }
 
-// ── Fix 1: Idempotent re-run — two launches → exactly ONE POST /servers ───────
+// ── Idempotent re-run — two launches → exactly ONE POST /servers ───────
 
 func TestLaunchIdempotent_SecondRunSkipsProvision(t *testing.T) {
 	// Simulate a re-run where the server was already persisted in cfg.serverID.
@@ -1018,7 +1019,7 @@ func TestLaunchIdempotent_SecondRunSkipsProvision(t *testing.T) {
 	_ = env // env is wired but not exercised in this unit test
 }
 
-// ── Fix 2: --dry-run must not call POST /beta/enrollments ─────────────────────
+// ── --dry-run must not call POST /beta/enrollments ─────────────────────
 
 func TestLaunchDryRun_NoBetaEnroll(t *testing.T) {
 	// When --dry-run is set, NO POST to /beta/enrollments must happen even if
@@ -1071,7 +1072,7 @@ func TestLaunchDryRun_NoBetaEnroll(t *testing.T) {
 	assert.False(t, enrollCalled, "--dry-run must not POST /beta/enrollments")
 }
 
-// ── Fix 4: dhq servers create managed_vps without --accept-cost → error ───────
+// ── dhq servers create managed_vps without --accept-cost → error ───────
 
 func TestServersCreate_ManagedVPS_RequiresAcceptCost_NonInteractive(t *testing.T) {
 	// In non-interactive / non-TTY mode, creating a managed_vps without
@@ -1102,7 +1103,7 @@ func TestServersCreate_ManagedVPS_RequiresAcceptCost_NonInteractive(t *testing.T
 	assert.False(t, apiCalled, "no API calls expected before flag check")
 }
 
-// ── Fix 5: Provision failure with --cleanup-on-failure → issues a DELETE ──────
+// ── Provision failure with --cleanup-on-failure → issues a DELETE ──────
 
 func TestLaunchProvisionFailure_CleanupOnFailure_DeletesCalled(t *testing.T) {
 	// When a server is partially provisioned (returned by CreateServer) but
@@ -1147,7 +1148,7 @@ func TestLaunchProvisionFailure_CleanupOnFailure_DeletesCalled(t *testing.T) {
 	assert.True(t, deleteCalled, "DELETE /servers/:id must be called when --cleanup-on-failure is set")
 }
 
-// ── Fix 6: Repo-connect failure is terminal before provision ──────────────────
+// ── Repo-connect failure is terminal before provision ──────────────────
 
 func TestLaunchEnsureProject_RepoConnectFailure_IsTerminal(t *testing.T) {
 	// When the only project exists but CreateRepository returns an error,

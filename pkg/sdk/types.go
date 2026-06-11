@@ -104,7 +104,7 @@ type Server struct {
 
 	// Managed-resource provisioning state, populated for managed_vps and
 	// static_hosting servers by the project-scoped server show endpoint
-	// (P0.3 / GET /projects/:id/servers/:id). The backend nests provisioning
+	// (GET /projects/:id/servers/:id). The backend nests provisioning
 	// detail under a protocol-specific block; use ProvisioningStatus(server)
 	// to read the lifecycle status uniformly across protocols.
 	StaticHosting *StaticHostingInfo `json:"static_hosting,omitempty"`
@@ -403,8 +403,9 @@ type ListOptions struct {
 	PerPage int
 }
 
-// AccountCapabilities is the response from GET /account/capabilities (P0.2).
-// All authenticated account members can read this endpoint — it is not admin-gated.
+// AccountCapabilities holds the managed-resource capability flags carried on the
+// account sub-object of GET /profile.
+// All authenticated account members can read /profile — it is not admin-gated.
 type AccountCapabilities struct {
 	// BetaFeatures indicates whether the managed-resources beta is enabled for this account.
 	BetaFeatures bool `json:"beta_features"`
@@ -414,7 +415,7 @@ type AccountCapabilities struct {
 	ManagedVPSEligible bool `json:"managed_vps_eligible"`
 }
 
-// BetaEnrollmentRequest is the body for POST /beta/enrollments (P0.1).
+// BetaEnrollmentRequest is the body for POST /beta/enrollments.
 // Protocol is optional — omit to enroll in all managed-resources protocols.
 type BetaEnrollmentRequest struct {
 	// Protocol is the managed protocol to enroll in, e.g. "static_hosting" or "managed_vps".
@@ -459,7 +460,7 @@ type ManagedHostingSize struct {
 }
 
 // ManagedVPSInfo is the nested `managed_vps` object within a server response for
-// managed_vps servers (P0.3). It carries the provisioning state and droplet
+// managed_vps servers. It carries the provisioning state and droplet
 // detail that live on the backing HostedResource rather than on the server row.
 type ManagedVPSInfo struct {
 	// HostedResourceIdentifier is the opaque identifier of the backing HostedResource.
@@ -485,11 +486,6 @@ type StaticHostingInfo struct {
 	// Status is the provisioning status of the underlying HostedWebsite.
 	Status string `json:"status,omitempty"`
 }
-
-// SignupResponse extended fields — the API always returns api_key and may also
-// return email_verified indicating whether the account email has been confirmed.
-// A false value is non-blocking; the account and API key are still usable.
-// A 422 with error containing "two-factor" signals an existing account with 2FA — fall back to browser login.
 
 // TwoFactorError is a sentinel returned by Signup when the API responds with 422
 // and the error body indicates an existing account with 2FA enabled.
