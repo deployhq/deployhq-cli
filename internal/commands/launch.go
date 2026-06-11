@@ -1389,6 +1389,11 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 	return server, nil
 }
 
+// provisionPollInitialBackoff is the first poll delay in pollProvisioningState.
+// It is a variable (not a constant) only as a test seam — tests shrink it to
+// ~1ms so the provisioning→active sequence runs without real waits.
+var provisionPollInitialBackoff = 5 * time.Second
+
 // pollProvisioningState polls GET /projects/:id/servers/:id until the managed
 // resource reaches "active" or "error". It prints a progress message on the
 // first call and an "async, safe to Ctrl-C" hint.
@@ -1401,7 +1406,7 @@ func pollProvisioningState(ctx context.Context, env *output.Envelope, client *sd
 	env.Status("Waiting for active status...")
 
 	deadline := time.Now().Add(maxWait)
-	backoff := 5 * time.Second
+	backoff := provisionPollInitialBackoff
 	const maxBackoff = 30 * time.Second
 
 	for {

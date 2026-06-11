@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deployhq/deployhq-cli/internal/detect"
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -148,7 +150,7 @@ func TestLaunchApplyBuildCommand_CreatesViaBuildCommandsEndpoint(t *testing.T) {
 	defer srv.Close()
 
 	env, _, _ := testLaunchEnvelope()
-	client := newTestClient(t, srv)
+	client := newSpecValidatingClient(t, srv)
 	cfg := launchConfig{projectID: "my-app", targetProtocol: "static_hosting"}
 	detection := detect.Result{BuildCommand: "npm run build", OutputDir: "dist"}
 
@@ -175,7 +177,7 @@ func TestLaunchApplyBuildCommand_SkipsWhenBuildCommandsExist(t *testing.T) {
 	defer srv.Close()
 
 	env, _, _ := testLaunchEnvelope()
-	client := newTestClient(t, srv)
+	client := newSpecValidatingClient(t, srv)
 	cfg := launchConfig{projectID: "my-app"}
 	launchApplyBuildCommand(t.Context(), env, cfg, client, detect.Result{BuildCommand: "npm run build"})
 
@@ -192,7 +194,7 @@ func TestLaunchApplyBuildCommand_EmptyCommandIsNoop(t *testing.T) {
 	defer srv.Close()
 
 	env, _, _ := testLaunchEnvelope()
-	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newTestClient(t, srv), detect.Result{BuildCommand: ""})
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newSpecValidatingClient(t, srv), detect.Result{BuildCommand: ""})
 	assert.False(t, called)
 }
 
@@ -214,7 +216,7 @@ func TestLaunchApplyBuildCommand_ListErrorStillCreates(t *testing.T) {
 	defer srv.Close()
 
 	env, _, _ := testLaunchEnvelope()
-	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newTestClient(t, srv), detect.Result{BuildCommand: "npm run build"})
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newSpecValidatingClient(t, srv), detect.Result{BuildCommand: "npm run build"})
 	assert.True(t, postCalled, "list error must not prevent the create attempt")
 }
 
@@ -234,7 +236,7 @@ func TestLaunchApplyBuildCommand_CreateErrorWarnsWithHint(t *testing.T) {
 
 	env, _, stderr := testLaunchEnvelope()
 	// Must not panic / must return normally despite the API error.
-	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "my-app"}, newTestClient(t, srv),
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "my-app"}, newSpecValidatingClient(t, srv),
 		detect.Result{BuildCommand: "npm run build"})
 
 	warn := stderr.String()
@@ -260,7 +262,7 @@ func TestLaunchApplyBuildCommand_TruncatesLongDescription(t *testing.T) {
 	defer srv.Close()
 
 	env, _, _ := testLaunchEnvelope()
-	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newTestClient(t, srv),
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newSpecValidatingClient(t, srv),
 		detect.Result{BuildCommand: longCmd})
 
 	var parsed struct {
@@ -304,7 +306,7 @@ func TestLaunchStatic_ProvisionThenBuildCommand_Integration(t *testing.T) {
 	defer srv.Close()
 
 	env, _, _ := testLaunchEnvelope()
-	client := newTestClient(t, srv)
+	client := newSpecValidatingClient(t, srv)
 	cfg := launchConfig{
 		projectID:      "my-app",
 		targetProtocol: "static_hosting",
@@ -326,6 +328,86 @@ func TestLaunchStatic_ProvisionThenBuildCommand_Integration(t *testing.T) {
 	assert.Contains(t, buildCmdPath, "/projects/my-app/build_commands")
 	assert.Contains(t, buildCmdBody, `"command":"npm run build"`)
 	assert.NotContains(t, buildCmdBody, "build_config")
+}
+
+// ── Provisioning poll (provisioning → active / error) ────────────────────────
+
+// shrinkPollBackoff makes pollProvisioningState's first delay ~instant for the
+// duration of the test, restoring the production value afterwards.
+func shrinkPollBackoff(t *testing.T) {
+	t.Helper()
+	old := provisionPollInitialBackoff
+	provisionPollInitialBackoff = time.Millisecond
+	t.Cleanup(func() { provisionPollInitialBackoff = old })
+}
+
+// pollStateServer returns an httptest server whose GET /servers/:id responses
+// walk the given status sequence (clamping on the last one), plus a counter.
+func pollStateServer(t *testing.T, statuses []string) (*httptest.Server, *int) {
+	t.Helper()
+	polls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.Contains(r.URL.Path, "/servers/") {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		idx := polls
+		if idx >= len(statuses) {
+			idx = len(statuses) - 1
+		}
+		polls++
+		_, _ = fmt.Fprintf(w, `{"identifier":"srv-1","protocol_type":"static_hosting",`+
+			`"static_hosting":{"url":"https://my-app.deployhq-sites.com","subdomain":"my-app","status":%q}}`, statuses[idx])
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &polls
+}
+
+func TestPollProvisioningState_ProvisioningThenActive(t *testing.T) {
+	// The poll loop must keep polling through "provisioning" and terminate as
+	// soon as the resource reports "active" — the core async-provisioning path
+	// `dhq launch` relies on for both Static Hosting and Managed VPS.
+	shrinkPollBackoff(t)
+	srv, polls := pollStateServer(t, []string{"provisioning", "provisioning", "active"})
+
+	env, _, _ := testLaunchEnvelope()
+	client := newSpecValidatingClient(t, srv)
+	pending := &sdk.Server{
+		Identifier:    "srv-1",
+		ProtocolType:  "static_hosting",
+		StaticHosting: &sdk.StaticHostingInfo{Status: "provisioning"},
+	}
+
+	got, err := pollProvisioningState(t.Context(), env, client, "my-app", pending, 10*time.Second)
+	require.NoError(t, err)
+	assert.True(t, sdk.IsProvisioningActive(got), "must return the active server")
+	assert.Equal(t, 3, *polls, "must poll exactly until the first active status")
+}
+
+// (The already-active short-circuit is covered by the pre-existing
+// TestPollProvisioningState_AlreadyActive_NoRequests further down.)
+
+func TestPollProvisioningState_ErrorStatusFailsWithProvisionReason(t *testing.T) {
+	// A resource that lands in "error" must stop polling and surface a
+	// structured provision_failed error — not spin until the timeout.
+	shrinkPollBackoff(t)
+	srv, polls := pollStateServer(t, []string{"provisioning", "error"})
+
+	env, _, _ := testLaunchEnvelope()
+	client := newSpecValidatingClient(t, srv)
+	pending := &sdk.Server{
+		Identifier:    "srv-1",
+		ProtocolType:  "static_hosting",
+		StaticHosting: &sdk.StaticHostingInfo{Status: "provisioning"},
+	}
+
+	_, err := pollProvisioningState(t.Context(), env, client, "my-app", pending, 10*time.Second)
+	require.Error(t, err)
+	var le *launchError
+	require.ErrorAs(t, err, &le)
+	assert.Equal(t, reasonProvisionFailed, le.Reason)
+	assert.Equal(t, 2, *polls, "must stop on the first error status")
 }
 
 // ── Managed VPS size presentation ────────────────────────────────────────────
