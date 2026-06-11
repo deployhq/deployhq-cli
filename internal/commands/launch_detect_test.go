@@ -5,12 +5,62 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/deployhq/deployhq-cli/internal/detect"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestResolveLaunchRevision_BranchResolvesBranchTip(t *testing.T) {
+	// With --branch set, the deploy must use THAT branch's tip — not the repo
+	// default from /latest_revision (which would deploy the wrong commit).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/repository/branches"):
+			_, _ = w.Write([]byte(`{"main":"defaultsha","feature-x":"featuresha"}`))
+		case strings.HasSuffix(r.URL.Path, "/latest_revision"):
+			t.Errorf("must not call latest_revision when a branch is set")
+			_, _ = w.Write([]byte(`{"ref":"defaultsha"}`))
+		}
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	got := resolveLaunchRevision(t.Context(), env, newTestClient(t, srv),
+		launchConfig{projectID: "p", branch: "feature-x"})
+	assert.Equal(t, "featuresha", got)
+}
+
+func TestResolveLaunchRevision_NoBranchUsesLatest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/latest_revision") {
+			_, _ = w.Write([]byte(`{"ref":"defaultsha"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	got := resolveLaunchRevision(t.Context(), env, newTestClient(t, srv), launchConfig{projectID: "p"})
+	assert.Equal(t, "defaultsha", got)
+}
+
+func TestResolveLaunchRevision_UnknownBranchOmitsRevision(t *testing.T) {
+	// Branch not in the list → return "" so the backend resolves the branch HEAD,
+	// rather than sending a stale/wrong SHA.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"main":"defaultsha"}`))
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	got := resolveLaunchRevision(t.Context(), env, newTestClient(t, srv),
+		launchConfig{projectID: "p", branch: "does-not-exist"})
+	assert.Equal(t, "", got)
+}
 
 func TestDetectionResultFromAPI_MapsAllFields(t *testing.T) {
 	resp := &sdk.DetectionResponse{

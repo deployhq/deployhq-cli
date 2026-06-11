@@ -1,7 +1,7 @@
 package commands
 
 // launch.go implements `dhq launch` — the one-command deploy flow for
-// Static Hosting and Managed VPS. It is designed non-interactive-first (D7):
+// Static Hosting and Managed VPS. It is designed non-interactive-first:
 // the core logic takes a fully-resolved launchConfig and executes with zero
 // prompts; interactive prompts only fill *missing* values when a TTY is present.
 //
@@ -302,7 +302,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		cfg.targetProtocol = detection.SuggestedProtocol
 	}
 
-	// ── Dry-run exit: before any mutation (Fix 2) ─────────────────────────────
+	// ── Dry-run exit: before any mutation ─────────────────────────────
 	// Read-only: caps and region/size listing for cost estimates are allowed,
 	// but beta enrollment, project creation, and provisioning must NOT happen.
 	if cfg.dryRun {
@@ -322,7 +322,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// ── Step 3: Capability pre-flight ───────────────────────────────────────
 	// capsKnown tracks whether the backend returned capability data. When false
 	// (404 = older backend), the plan-limit gate is skipped and CreateServer
-	// acts as the authority (Fix 8).
+	// acts as the authority.
 	caps, capsKnown, err := launchGetCaps(ctx, env, client)
 	if err != nil {
 		return err
@@ -354,7 +354,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	}
 	env.Status("Target: %s", cfg.targetProtocol)
 
-	// ── Step 3b: Beta enrollment (after target is known) (Fix 3) ─────────────
+	// ── Step 6: Beta enrollment (after target is known) ─────────────
 	// isManagedTarget is now evaluated with the final resolved target so that
 	// interactive target selection is accounted for before we attempt enrollment.
 	isManagedTarget := cfg.targetProtocol == detect.ProtocolStaticHosting || cfg.targetProtocol == detect.ProtocolManagedVPS
@@ -368,14 +368,14 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		}
 	}
 
-	// ── Step 6: Project + repo ───────────────────────────────────────────────
+	// ── Step 7: Project + repo ───────────────────────────────────────────────
 	projectID, err := launchEnsureProject(ctx, env, cfg, client, gitRemote)
 	if err != nil {
 		return err
 	}
 	cfg.projectID = projectID
 
-	// ── Apply detection defaults for static hosting (Fix 7) ──────────────────
+	// ── Apply detection defaults for static hosting ──────────────────
 	// Seed subdirectory and SPA mode from detection when flags were not set.
 	if cfg.targetProtocol == detect.ProtocolStaticHosting {
 		if cfg.subdirectory == "" && detection.OutputDir != "" {
@@ -390,15 +390,15 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		}
 	}
 
-	// ── Step 7: Plan / limit pre-flight ─────────────────────────────────────
-	// Only apply eligibility gates when we have real capability data (Fix 8).
+	// ── Step 8: Plan / limit pre-flight ─────────────────────────────────────
+	// Only apply eligibility gates when we have real capability data.
 	if capsKnown {
 		if err := launchCheckPlanLimits(env, cfg, caps); err != nil {
 			return err
 		}
 	}
 
-	// ── Step 8: Provision server — idempotency check (Fix 1) ─────────────────
+	// ── Step 9: Provision server — idempotency check ─────────────────
 	// If a server identifier was persisted from a previous run, verify it still
 	// exists. If it does, skip provisioning and go straight to deploy.
 	var server *sdk.Server
@@ -418,7 +418,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		server, provErr = launchProvision(ctx, env, cfg, client)
 		if provErr != nil {
 			// Provision failure cleanup: run the same cleanup path as deploy failures
-			// so --cleanup-on-failure and resource naming apply (Fix 5).
+			// so --cleanup-on-failure and resource naming apply.
 			if server != nil {
 				launchDeployFailureCleanup(ctx, env, cfg, client, server)
 			}
@@ -429,12 +429,12 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		cfg.serverID = server.Identifier
 	}
 
-	// ── Step 9: Build command (static only) ──────────────────────────────────
+	// ── Step 10: Build command (static only) ──────────────────────────────────
 	if cfg.targetProtocol == detect.ProtocolStaticHosting && detection.BuildCommand != "" {
 		launchApplyBuildCommand(ctx, env, cfg, client, detection)
 	}
 
-	// ── Step 10: Deploy ───────────────────────────────────────────────────────
+	// ── Step 11: Deploy ───────────────────────────────────────────────────────
 	dep, liveURL, err := launchDeploy(ctx, env, cfg, client, server)
 	if err != nil {
 		// Provision succeeded but deploy failed — name the resource
@@ -465,7 +465,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 
 	env.Status("")
 	output.ColorGreen.Fprintf(env.Stderr, "Live: %s\n", liveURL) //nolint:errcheck
-	env.Status("Saved settings to .deployhq.toml — next time just run 'dhq deploy'.")
+	env.Status("Saved settings to .deployhq.toml — redeploy with 'dhq deploy -s %s'.", server.Identifier)
 	env.Status("Roll back anytime with 'dhq rollback <deployment>' — redeploys the previous revision ('dhq deployments list' shows history).")
 	// Final stdout line = live URL (Vercel pattern, scriptable)
 	fmt.Fprintln(os.Stdout, liveURL) //nolint:errcheck
@@ -515,7 +515,7 @@ func detectionResultFromAPI(resp *sdk.DetectionResponse) detect.Result {
 
 // launchGetCaps fetches account capabilities and reports whether the data is
 // authoritative. When the backend 404s (older/staging), capsKnown is false
-// and callers must not gate on the returned caps (Fix 8).
+// and callers must not gate on the returned caps.
 func launchGetCaps(ctx context.Context, env *output.Envelope, client *sdk.Client) (caps *sdk.AccountCapabilities, capsKnown bool, err error) {
 	caps, err = client.GetAccountCapabilities(ctx)
 	if err != nil {
@@ -834,7 +834,7 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	// Re-use an existing project if specified or already in .deployhq.toml
 	if cfg.projectID != "" {
 		env.Status("Using project: %s", cfg.projectID)
-		// Ensure a repo is connected — treat hard failures as terminal (Fix 6).
+		// Ensure a repo is connected — treat hard failures as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, cfg.projectID, gitRemote); err != nil {
 			return "", &launchError{
 				Reason:   reasonRepoUnreachable,
@@ -852,7 +852,7 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	}
 	if len(projects) == 1 {
 		env.Status("Auto-selected project: %s", projects[0].Name)
-		// Treat hard repo-connection failure as terminal (Fix 6).
+		// Treat hard repo-connection failure as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, projects[0].Permalink, gitRemote); err != nil {
 			return "", &launchError{
 				Reason:   reasonRepoUnreachable,
@@ -893,7 +893,7 @@ func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg 
 	if idx > 0 {
 		p := existing[idx-1]
 		env.Status("Using project: %s", p.Name)
-		// Treat hard repo-connection failure as terminal (Fix 6).
+		// Treat hard repo-connection failure as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, p.Permalink, gitRemote); err != nil {
 			return "", &launchError{
 				Reason:   reasonRepoUnreachable,
@@ -972,7 +972,7 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 	env.Status("Connecting repository %s...", gitRemote)
 	branch := cfg.branch
 	if branch == "" {
-		// Detect the local default branch rather than hardcoding "main" (Fix 9).
+		// Detect the local default branch rather than hardcoding "main".
 		// Try the local HEAD first, then the tracked remote HEAD. Fall back to
 		// omitting the branch so the DeployHQ API resolves the repo default.
 		branch = detectDefaultBranch()
@@ -1308,9 +1308,15 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 		// Interactive: allow region/size selection
 		if !env.NonInteractive {
 			if len(regions) > 1 {
+				// Keep a parallel slice of the available regions: the prompt only
+				// lists those, so the selected index must map back through this
+				// filtered slice — indexing the full `regions` slice would pick the
+				// wrong region whenever an unavailable one precedes an available one.
+				availableRegions := make([]sdk.ManagedHostingRegion, 0, len(regions))
 				regionItems := make([]string, 0, len(regions))
 				for _, r := range regions {
 					if r.Available {
+						availableRegions = append(availableRegions, r)
 						regionItems = append(regionItems, fmt.Sprintf("%s (%s)", r.Name, r.Slug))
 					}
 				}
@@ -1318,17 +1324,9 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 					Label: fmt.Sprintf("Region [%s]", region),
 					Items: regionItems,
 				}
-				if rIdx, _, rErr := regionPrompt.Run(); rErr == nil {
-					// find slug from items
-					for i, r := range regions {
-						if r.Available {
-							if i == rIdx {
-								region = r.Slug
-								selectedRegion = r
-								break
-							}
-						}
-					}
+				if rIdx, _, rErr := regionPrompt.Run(); rErr == nil && rIdx < len(availableRegions) {
+					region = availableRegions[rIdx].Slug
+					selectedRegion = availableRegions[rIdx]
 				}
 			}
 
@@ -1352,7 +1350,7 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 		}
 	}
 
-	// Cost confirmation gate (D-spec VPS guardrail)
+	// Cost confirmation gate
 	regionName := selectedRegion.Name
 	if regionName == "" {
 		regionName = region
@@ -1547,20 +1545,32 @@ func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg laun
 
 // ── Deploy ────────────────────────────────────────────────────────────────────
 
+// resolveLaunchRevision picks the end_revision for the launch deploy. With a
+// branch set it resolves THAT branch's tip — resolveLatestRevision only knows the
+// repository default, so pairing its SHA with a different Branch would deploy the
+// wrong commit. Returns "" to let the backend resolve the branch/repo HEAD from
+// the Branch field (e.g. when the branch tip can't be looked up).
+func resolveLaunchRevision(ctx context.Context, env *output.Envelope, client *sdk.Client, cfg launchConfig) string {
+	if cfg.branch != "" {
+		if branches, err := client.ListBranches(ctx, cfg.projectID, nil); err == nil {
+			return branches[cfg.branch]
+		}
+		return ""
+	}
+	rev, err := resolveLatestRevision(ctx, client, cfg.projectID)
+	if err != nil {
+		env.Warn("Could not fetch latest revision, deploying HEAD: %v", err)
+		return ""
+	}
+	return rev
+}
+
 func launchDeploy(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, server *sdk.Server) (*sdk.Deployment, string, error) {
 	env.Status("Deploying...")
 
-	// Resolve the latest revision
-	rev, err := resolveLatestRevision(ctx, client, cfg.projectID)
-	if err != nil {
-		// Non-fatal: deploy without an explicit revision (API will use HEAD)
-		env.Warn("Could not fetch latest revision, deploying HEAD: %v", err)
-		rev = ""
-	}
-
 	req := sdk.DeploymentCreateRequest{
 		ParentIdentifier: server.Identifier,
-		EndRevision:      rev,
+		EndRevision:      resolveLaunchRevision(ctx, env, client, cfg),
 		Branch:           cfg.branch,
 	}
 
