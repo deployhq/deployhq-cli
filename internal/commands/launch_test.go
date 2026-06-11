@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deployhq/deployhq-cli/internal/detect"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
@@ -121,6 +122,210 @@ func TestLaunchAuthRequired_JSONReason(t *testing.T) {
 	data := resp["data"].(map[string]interface{})
 	assert.Equal(t, reasonAuthRequired, data["reason"])
 	assert.Contains(t, data["error"].(string), "Not authenticated")
+}
+
+// ── Build command application (static) ───────────────────────────────────────
+
+func TestLaunchApplyBuildCommand_CreatesViaBuildCommandsEndpoint(t *testing.T) {
+	// The detected build command must be created through POST /build_commands
+	// with a {build_command: {command}} body — not the old /build_configs path —
+	// so the first static deploy publishes built output, not unbuilt sources.
+	var postPath, postBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			_, _ = w.Write([]byte("[]")) // no existing build commands
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			postPath = r.URL.Path
+			b, _ := io.ReadAll(r.Body)
+			postBody = string(b)
+			_, _ = w.Write([]byte(`{"identifier":"bc-1","command":"npm run build"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	client := newTestClient(t, srv)
+	cfg := launchConfig{projectID: "my-app", targetProtocol: "static_hosting"}
+	detection := detect.Result{BuildCommand: "npm run build", OutputDir: "dist"}
+
+	launchApplyBuildCommand(t.Context(), env, cfg, client, detection)
+
+	assert.Contains(t, postPath, "/projects/my-app/build_commands")
+	assert.Contains(t, postBody, `"build_command"`)
+	assert.Contains(t, postBody, `"command":"npm run build"`)
+	assert.NotContains(t, postBody, "build_config", "must not use the wrong build_config payload")
+}
+
+func TestLaunchApplyBuildCommand_SkipsWhenBuildCommandsExist(t *testing.T) {
+	// An idempotent re-run / reused --project must not duplicate build commands.
+	postCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			_, _ = w.Write([]byte(`[{"identifier":"bc-existing","command":"npm run build"}]`))
+		case r.Method == http.MethodPost:
+			postCalled = true
+			t.Errorf("must not POST when build commands already exist")
+		}
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	client := newTestClient(t, srv)
+	cfg := launchConfig{projectID: "my-app"}
+	launchApplyBuildCommand(t.Context(), env, cfg, client, detect.Result{BuildCommand: "npm run build"})
+
+	assert.False(t, postCalled)
+}
+
+func TestLaunchApplyBuildCommand_EmptyCommandIsNoop(t *testing.T) {
+	// No detected build command → no HTTP calls at all.
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		t.Errorf("no request expected for an empty build command: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newTestClient(t, srv), detect.Result{BuildCommand: ""})
+	assert.False(t, called)
+}
+
+func TestLaunchApplyBuildCommand_ListErrorStillCreates(t *testing.T) {
+	// If listing existing build commands fails, the guard must NOT skip — it's
+	// best-effort, so we still attempt to create the detected command.
+	postCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			w.WriteHeader(http.StatusInternalServerError)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			postCalled = true
+			_, _ = w.Write([]byte(`{"identifier":"bc-1","command":"npm run build"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newTestClient(t, srv), detect.Result{BuildCommand: "npm run build"})
+	assert.True(t, postCalled, "list error must not prevent the create attempt")
+}
+
+func TestLaunchApplyBuildCommand_CreateErrorWarnsWithHint(t *testing.T) {
+	// A failed create is non-fatal but must surface a discoverable manual hint —
+	// otherwise the static site silently deploys unbuilt sources.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			_, _ = w.Write([]byte("[]"))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":"command is invalid"}`))
+		}
+	}))
+	defer srv.Close()
+
+	env, _, stderr := testLaunchEnvelope()
+	// Must not panic / must return normally despite the API error.
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "my-app"}, newTestClient(t, srv),
+		detect.Result{BuildCommand: "npm run build"})
+
+	warn := stderr.String()
+	assert.Contains(t, warn, "dhq build-commands create", "must point the user at the manual fix")
+	assert.Contains(t, warn, "npm run build")
+}
+
+func TestLaunchApplyBuildCommand_TruncatesLongDescription(t *testing.T) {
+	// Description is capped at 100 runes (mirrors the web wizard) while the full
+	// command is preserved.
+	longCmd := strings.Repeat("a", 150)
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			_, _ = w.Write([]byte("[]"))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			b, _ := io.ReadAll(r.Body)
+			body = string(b)
+			_, _ = w.Write([]byte(`{"identifier":"bc-1"}`))
+		}
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newTestClient(t, srv),
+		detect.Result{BuildCommand: longCmd})
+
+	var parsed struct {
+		BuildCommand struct {
+			Command     string `json:"command"`
+			Description string `json:"description"`
+		} `json:"build_command"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &parsed))
+	assert.Equal(t, 150, len([]rune(parsed.BuildCommand.Command)), "command preserved in full")
+	assert.Equal(t, 100, len([]rune(parsed.BuildCommand.Description)), "description capped at 100 runes")
+}
+
+// TestLaunchStatic_ProvisionThenBuildCommand_Integration exercises the static
+// branch as the orchestrator runs it: provision the Static Hosting server (Step
+// 8), then apply the detected build command (Step 9), against one routed server.
+// It proves the build command lands on /build_commands during a real static
+// launch — the core regression the P1 finding flagged.
+func TestLaunchStatic_ProvisionThenBuildCommand_Integration(t *testing.T) {
+	var serverCreated, buildCmdPath, buildCmdBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/servers"):
+			b, _ := io.ReadAll(r.Body)
+			serverCreated = string(b)
+			// Return an already-active static server so provisioning doesn't poll.
+			_, _ = w.Write([]byte(`{"identifier":"srv-1","protocol_type":"static_hosting",` +
+				`"static_hosting":{"url":"https://my-app.deployhq-sites.com","subdomain":"my-app","status":"active"}}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			_, _ = w.Write([]byte("[]"))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			buildCmdPath = r.URL.Path
+			b, _ := io.ReadAll(r.Body)
+			buildCmdBody = string(b)
+			_, _ = w.Write([]byte(`{"identifier":"bc-1","command":"npm run build"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	client := newTestClient(t, srv)
+	cfg := launchConfig{
+		projectID:      "my-app",
+		targetProtocol: "static_hosting",
+		subdomain:      "my-app",
+		subdirectory:   "dist",
+	}
+	detection := detect.Result{BuildCommand: "npm run build", OutputDir: "dist"}
+
+	// Step 8: provision the static server.
+	server, err := launchProvisionStatic(t.Context(), env, cfg, client)
+	require.NoError(t, err)
+	require.NotNil(t, server)
+	assert.Equal(t, "srv-1", server.Identifier)
+	assert.Contains(t, serverCreated, "static_hosting")
+	assert.Contains(t, serverCreated, `"subdomain":"my-app"`)
+
+	// Step 9: apply the detected build command (the static-only branch).
+	launchApplyBuildCommand(t.Context(), env, cfg, client, detection)
+	assert.Contains(t, buildCmdPath, "/projects/my-app/build_commands")
+	assert.Contains(t, buildCmdBody, `"command":"npm run build"`)
+	assert.NotContains(t, buildCmdBody, "build_config")
 }
 
 // ── Managed VPS size presentation ────────────────────────────────────────────

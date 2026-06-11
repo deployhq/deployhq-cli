@@ -425,9 +425,9 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		cfg.serverID = server.Identifier
 	}
 
-	// ── Step 9: Build config (static only) ───────────────────────────────────
+	// ── Step 9: Build command (static only) ──────────────────────────────────
 	if cfg.targetProtocol == detect.ProtocolStaticHosting && detection.BuildCommand != "" {
-		launchApplyBuildConfig(ctx, env, cfg, client, detection)
+		launchApplyBuildCommand(ctx, env, cfg, client, detection)
 	}
 
 	// ── Step 10: Deploy ───────────────────────────────────────────────────────
@@ -1462,28 +1462,37 @@ func pollProvisioningState(ctx context.Context, env *output.Envelope, client *sd
 	}
 }
 
-// ── Build config ──────────────────────────────────────────────────────────────
+// ── Build command ─────────────────────────────────────────────────────────────
 
-func launchApplyBuildConfig(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, detection detect.Result) {
+// launchApplyBuildCommand sets the detected build command on the project so the
+// first Static Hosting deploy publishes the built output (dist/public/…) rather
+// than unbuilt sources. It mirrors the web onboarding wizard
+// (Onboarding::ProjectCreator), which creates project build commands via
+// POST /projects/:id/build_commands — no separate build environment is needed.
+func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, detection detect.Result) {
 	if detection.BuildCommand == "" {
 		return
 	}
-	// Only set build config if the project doesn't already have build commands.
-	// We use a best-effort approach: list build commands and skip if any exist.
-	// The SDK doesn't expose build commands directly from this list, so we use
-	// a simple POST attempt and ignore validation errors (don't clobber existing).
-	env.Status("Setting build command from detection: %s", detection.BuildCommand)
-	// Note: build command creation uses the build_configs or build_commands endpoint.
-	// We call the API directly to avoid importing unrelated command packages.
-	req := map[string]interface{}{
-		"build_config": map[string]interface{}{
-			"build_commands": detection.BuildCommand,
-		},
+	// Don't clobber or duplicate: if the project already has build commands
+	// (an idempotent re-run, or a reused --project), leave them as-is.
+	if existing, err := client.ListBuildCommands(ctx, cfg.projectID, nil); err == nil && len(existing) > 0 {
+		return
 	}
-	err := client.Do(ctx, "POST", fmt.Sprintf("/projects/%s/build_configs", cfg.projectID), req, nil)
+
+	env.Status("Setting build command from detection: %s", detection.BuildCommand)
+	desc := detection.BuildCommand
+	if r := []rune(desc); len(r) > 100 {
+		desc = string(r[:100])
+	}
+	_, err := client.CreateBuildCommand(ctx, cfg.projectID, sdk.BuildCommandCreateRequest{
+		Command:     detection.BuildCommand,
+		Description: desc,
+	})
 	if err != nil {
-		// Non-fatal: log and continue; manual setup is the fallback
-		env.Warn("Could not auto-set build config: %v", err)
+		// Non-fatal: the site still provisions, but without a build step the
+		// first deploy may publish unbuilt sources — make the fix discoverable.
+		env.Warn("Could not set the detected build command (%q): %v", detection.BuildCommand, err)
+		env.Warn("Add it manually: dhq build-commands create -p %s --command %q", cfg.projectID, detection.BuildCommand)
 	}
 }
 
