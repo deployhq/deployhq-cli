@@ -1,10 +1,16 @@
-// Package detect provides local project framework detection for the dhq launch flow.
+// Package detect provides local framework detection for the dhq launch flow.
+//
+// This is the OFFLINE FALLBACK. The primary path is the backend's POST /detection
+// endpoint (see launchDetect), which runs the same StackDetector pipeline as the
+// web onboarding wizard over an uploaded manifest, keeping the CLI's recommendation
+// in lockstep with the server. This local heuristic only runs when that endpoint is
+// unavailable (older backend, offline, transient error), so the CLI still works
+// without it. CollectManifest (manifest.go) gathers the upload for the primary path.
 //
 // Detection reads files in the project root directory and returns a best-guess
 // recommendation for the deployment target (static_hosting, managed_vps, or none)
-// along with pre-filled build configuration defaults.
-//
-// The mapping mirrors the one used in the DeployHQ web onboarding wizard (PR #915):
+// along with pre-filled build configuration defaults. The mapping approximates the
+// wizard's:
 //   - Node apps that produce a static build artifact → static_hosting
 //   - Any app with a server-runtime signal (Gemfile, requirements.txt, go.mod, etc.) → managed_vps
 //   - No signal detected → empty (own-server / user's choice)
