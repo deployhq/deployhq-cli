@@ -287,8 +287,12 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	}
 
 	// ── Step 2: Detect ──────────────────────────────────────────────────────
+	// Prefer backend detection (same StackDetector pipeline as the web
+	// onboarding wizard) so the CLI's recommendation stays in lockstep with the
+	// server. Fall back to the local heuristic when the endpoint is
+	// unavailable (older backend, offline, transient error).
 	cwd, _ := os.Getwd()
-	detection := detect.Detect(cwd)
+	detection := launchDetect(ctx, env, client, cwd)
 	if detection.Framework != detect.FrameworkUnknown && detection.Framework != "" {
 		env.Status("Detected: %s", string(detection.Framework))
 	} else {
@@ -467,6 +471,46 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	fmt.Fprintln(os.Stdout, liveURL) //nolint:errcheck
 
 	return nil
+}
+
+// ── Detection (remote-first, local fallback) ──────────────────────────────────
+
+// launchDetect runs framework detection for dir. It prefers the backend's
+// /detection endpoint (the same StackDetector pipeline the web onboarding
+// wizard uses, so the CLI's recommendation matches the server), and falls back
+// to the local heuristic when the endpoint is unavailable — an older backend
+// that 404s, an offline run, or any transient error. The fallback is silent at
+// normal verbosity: detection is advisory, and the local result is good.
+func launchDetect(ctx context.Context, env *output.Envelope, client *sdk.Client, dir string) detect.Result {
+	filenames, files := detect.CollectManifest(dir)
+	resp, err := client.DetectFramework(ctx, sdk.DetectionPayload{Filenames: filenames, Files: files})
+	if err != nil {
+		// Silent to the user (detection is advisory and the local result is
+		// good); recorded for debugging.
+		env.Logger.Write("remote detection unavailable (%v) — using local detection", err)
+		return detect.Detect(dir)
+	}
+	return detectionResultFromAPI(resp)
+}
+
+// detectionResultFromAPI maps a backend /detection response into the Result
+// shape the launch flow consumes. Multiple suggested build commands are joined
+// into a single shell command (the backend runs build commands as shell steps,
+// so "install && build" is equivalent to two ordered commands).
+func detectionResultFromAPI(resp *sdk.DetectionResponse) detect.Result {
+	cmds := make([]string, 0, len(resp.BuildCommands))
+	for _, bc := range resp.BuildCommands {
+		if bc.Command != "" {
+			cmds = append(cmds, bc.Command)
+		}
+	}
+	return detect.Result{
+		Framework:         detect.Framework(resp.Stack),
+		SuggestedProtocol: resp.SuggestedProtocol,
+		BuildCommand:      strings.Join(cmds, " && "),
+		OutputDir:         resp.StaticHosting.RootPath,
+		SPA:               resp.StaticHosting.SPAMode,
+	}
 }
 
 // launchGetCaps fetches account capabilities and reports whether the data is
