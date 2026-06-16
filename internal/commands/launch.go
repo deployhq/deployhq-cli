@@ -986,7 +986,53 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 		return err
 	}
 	env.Status("Repository connected.")
+	// Surface the project's public deploy key so a private repo can be granted
+	// read access before the first clone. proj was fetched above (may be nil if
+	// that lookup failed — the helper re-fetches in that case).
+	launchSurfaceDeployKey(ctx, env, client, projectID, proj)
 	return nil
+}
+
+// launchSurfaceDeployKey prints the project's PUBLIC deploy key after a
+// repository is connected, so the user can grant a private git host read access
+// before the first clone. The key shown is the project's public key (safe to
+// display); the matching private key never leaves the server. In interactive
+// mode it pauses so the user can install the key first; non-interactively it
+// prints a warning and continues (a private repo missing the key surfaces as a
+// clone error at deploy time, which the structured error flow reports).
+func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *sdk.Client, projectID string, proj *sdk.Project) {
+	publicKey := ""
+	if proj != nil {
+		publicKey = proj.PublicKey
+	}
+	if publicKey == "" {
+		// The earlier project lookup failed or omitted the key — fetch it now.
+		if fresh, err := client.GetProject(ctx, projectID); err == nil && fresh != nil {
+			publicKey = fresh.PublicKey
+		}
+	}
+	if publicKey == "" {
+		return // nothing to surface (best-effort)
+	}
+
+	env.Status("")
+	env.Status("Deploy key for this project:")
+	env.Status("")
+	env.Status("%s", publicKey)
+	env.Status("")
+	env.Status("Add this public key as a deploy key on your repository host so DeployHQ can")
+	env.Status("clone the repo (required for private repositories; read access is enough).")
+	env.Status("DeployHQ does not add it automatically for repositories connected by URL.")
+
+	if env.NonInteractive {
+		env.Warn("Private repo? Add the deploy key above to your git host (e.g. GitHub: Settings -> Deploy keys) before deploying, then re-run if the clone fails.")
+		return
+	}
+
+	env.Status("")
+	fmt.Fprint(env.Stderr, "Press Enter once the key is added (or now, if the repo is public)... ") //nolint:errcheck
+	reader := bufio.NewReader(os.Stdin)
+	_, _ = reader.ReadString('\n')
 }
 
 // detectDefaultBranch returns the local HEAD branch name for the repository in

@@ -1195,6 +1195,68 @@ func TestLaunchEnsureProject_RepoConnectFailure_IsTerminal(t *testing.T) {
 	assert.Equal(t, reasonRepoUnreachable, le.Reason)
 }
 
+// ── Public deploy key surfaced after repo connect (private-repo support) ──────
+
+func TestLaunchEnsureRepo_SurfacesPublicDeployKey(t *testing.T) {
+	// After connecting a repository, the project's PUBLIC deploy key must be
+	// surfaced so a private repo can be granted read access before the clone.
+	const pubKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABexamplekey deployhq-my-app"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/my-app":
+			// Project with no repo connected yet, carrying its public deploy key.
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"name":       "my-app",
+				"permalink":  "my-app",
+				"public_key": pubKey,
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/projects/my-app/repository":
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"scm_type": "git", "url": "git@github.com:acme/my-app.git", "branch": "main",
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	env, _, stderr := testLaunchEnvelope() // NonInteractive: surfaces without pausing
+
+	cfg := launchConfig{targetProtocol: "static_hosting", branch: "main"}
+	err := launchEnsureRepo(t.Context(), env, cfg, client, "my-app", "git@github.com:acme/my-app.git")
+	require.NoError(t, err)
+	assert.Contains(t, stderr.String(), pubKey, "public deploy key must be surfaced after connecting the repo")
+}
+
+func TestLaunchEnsureRepo_AlreadyConnected_NoKeyNoise(t *testing.T) {
+	// When the repo is already connected, launchEnsureRepo returns early and must
+	// NOT re-print the deploy key (avoids noise on idempotent re-runs).
+	const pubKey = "ssh-rsa AAAAB3already-connected-key"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/projects/my-app" {
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"name": "my-app", "permalink": "my-app", "public_key": pubKey,
+				"repository": map[string]interface{}{
+					"scm_type": "git", "url": "git@github.com:acme/my-app.git", "branch": "main",
+				},
+			})
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	env, _, stderr := testLaunchEnvelope()
+
+	err := launchEnsureRepo(t.Context(), env, launchConfig{}, client, "my-app", "git@github.com:acme/my-app.git")
+	require.NoError(t, err)
+	assert.NotContains(t, stderr.String(), pubKey, "no deploy-key output when the repo is already connected")
+}
+
 // testLaunchEnvelope uses io.Discard for the Logger so tests don't need a
 // real log file. We define a Logger inline since output.Logger has exported
 // fields but the constructor creates a file.
