@@ -10,7 +10,7 @@ import (
 )
 
 // fixtureDir creates a temporary directory populated with the given files and returns
-// the path. The caller must defer os.RemoveAll on the returned path.
+// the path. t.TempDir handles cleanup.
 func fixtureDir(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -29,17 +29,73 @@ func TestDetect_Empty(t *testing.T) {
 	assert.Equal(t, ProtocolNone, result.SuggestedProtocol)
 	assert.Empty(t, result.BuildCommand)
 	assert.Empty(t, result.OutputDir)
+	assert.False(t, result.SPA)
 }
 
 func TestDetect_DefaultsToCurrentDir(t *testing.T) {
-	// Detect("") should not panic
+	// Detect("") should not panic.
 	result := Detect("")
 	// We can't assert the exact output since it depends on the test runner's cwd,
 	// but we assert it returns a valid (non-panicking) result.
 	_ = result
 }
 
-// --- Static hosting: Node/JS frameworks ---
+// --- Server-runtime manifests → Managed VPS ---
+
+func TestDetect_Gemfile(t *testing.T) {
+	dir := fixtureDir(t, map[string]string{
+		"Gemfile": `source "https://rubygems.org"` + "\n" + `gem "rails", "~> 7.1"`,
+	})
+	result := Detect(dir)
+	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
+	// Local detection no longer identifies the framework or build config.
+	assert.Equal(t, FrameworkUnknown, result.Framework)
+	assert.Empty(t, result.BuildCommand)
+	assert.Empty(t, result.OutputDir)
+}
+
+func TestDetect_RequirementsTxt(t *testing.T) {
+	dir := fixtureDir(t, map[string]string{
+		"requirements.txt": "django==4.2\ngunicorn==21.2",
+	})
+	assert.Equal(t, ProtocolManagedVPS, Detect(dir).SuggestedProtocol)
+}
+
+func TestDetect_Pipfile(t *testing.T) {
+	dir := fixtureDir(t, map[string]string{"Pipfile": "[packages]\nflask = \"*\""})
+	assert.Equal(t, ProtocolManagedVPS, Detect(dir).SuggestedProtocol)
+}
+
+func TestDetect_PyprojectToml(t *testing.T) {
+	dir := fixtureDir(t, map[string]string{"pyproject.toml": "[project]\nname = \"app\""})
+	assert.Equal(t, ProtocolManagedVPS, Detect(dir).SuggestedProtocol)
+}
+
+func TestDetect_ComposerJSON(t *testing.T) {
+	// PHP via Composer (Laravel, Symfony, …).
+	dir := fixtureDir(t, map[string]string{
+		"composer.json": `{"require": {"laravel/framework": "^10.0"}}`,
+	})
+	assert.Equal(t, ProtocolManagedVPS, Detect(dir).SuggestedProtocol)
+}
+
+func TestDetect_IndexPHP(t *testing.T) {
+	// Composer-less / legacy PHP (plain PHP, WordPress) has no composer.json but a
+	// root index.php entrypoint — still a server runtime.
+	dir := fixtureDir(t, map[string]string{
+		"index.php": "<?php echo 'hello'; ?>",
+	})
+	assert.Equal(t, ProtocolManagedVPS, Detect(dir).SuggestedProtocol)
+}
+
+func TestDetect_GoMod(t *testing.T) {
+	dir := fixtureDir(t, map[string]string{
+		"go.mod": "module example.com/myapp\n\ngo 1.21",
+	})
+	assert.Equal(t, ProtocolManagedVPS, Detect(dir).SuggestedProtocol)
+}
+
+// --- package.json with a static framework/bundler → Static Hosting ---
 
 func TestDetect_NextJS(t *testing.T) {
 	dir := fixtureDir(t, map[string]string{
@@ -50,14 +106,14 @@ func TestDetect_NextJS(t *testing.T) {
 		}`,
 	})
 	result := Detect(dir)
-	assert.Equal(t, FrameworkNextJS, result.Framework)
 	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "npm run build", result.BuildCommand)
-	assert.Equal(t, "out", result.OutputDir)
+	// Build config comes from the backend, not local detection.
+	assert.Empty(t, result.BuildCommand)
+	assert.Empty(t, result.OutputDir)
 	assert.False(t, result.SPA)
 }
 
-func TestDetect_Vite_React(t *testing.T) {
+func TestDetect_Vite_DevDependency(t *testing.T) {
 	dir := fixtureDir(t, map[string]string{
 		"package.json": `{
 			"name": "react-app",
@@ -66,70 +122,7 @@ func TestDetect_Vite_React(t *testing.T) {
 			"scripts": { "build": "vite build" }
 		}`,
 	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkReact, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "npm run build", result.BuildCommand)
-	assert.Equal(t, "dist", result.OutputDir)
-	assert.True(t, result.SPA, "React+Vite apps need SPA routing")
-}
-
-func TestDetect_Astro(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"package.json": `{
-			"name": "my-astro-site",
-			"devDependencies": { "astro": "4.0.0" },
-			"scripts": { "build": "astro build" }
-		}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkAstro, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "dist", result.OutputDir)
-	assert.False(t, result.SPA)
-}
-
-func TestDetect_Gatsby(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"package.json": `{
-			"name": "my-gatsby-site",
-			"dependencies": { "gatsby": "5.0.0" },
-			"scripts": { "build": "gatsby build" }
-		}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkGatsby, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "public", result.OutputDir)
-}
-
-func TestDetect_Nuxt(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"package.json": `{
-			"name": "my-nuxt-app",
-			"devDependencies": { "nuxt": "3.0.0" },
-			"scripts": { "build": "nuxt build" }
-		}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkNuxt, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, ".output/public", result.OutputDir)
-}
-
-func TestDetect_Vue_Vite(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"package.json": `{
-			"name": "vue-app",
-			"dependencies": { "vue": "3.0.0" },
-			"devDependencies": { "vite": "5.0.0" },
-			"scripts": { "build": "vite build" }
-		}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkVueJS, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "dist", result.OutputDir)
+	assert.Equal(t, ProtocolStaticHosting, Detect(dir).SuggestedProtocol)
 }
 
 func TestDetect_Angular(t *testing.T) {
@@ -140,207 +133,78 @@ func TestDetect_Angular(t *testing.T) {
 			"scripts": { "build": "ng build" }
 		}`,
 	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkAngular, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "dist", result.OutputDir)
-	assert.True(t, result.SPA, "Angular apps are SPAs")
+	assert.Equal(t, ProtocolStaticHosting, Detect(dir).SuggestedProtocol)
 }
 
-func TestDetect_Svelte(t *testing.T) {
+func TestDetect_Astro(t *testing.T) {
 	dir := fixtureDir(t, map[string]string{
+		"package.json": `{"name": "site", "devDependencies": { "astro": "4.0.0" }}`,
+	})
+	assert.Equal(t, ProtocolStaticHosting, Detect(dir).SuggestedProtocol)
+}
+
+// --- Precedence: server manifest wins over a static package.json ---
+
+func TestDetect_ServerManifestWinsOverStaticPackageJSON(t *testing.T) {
+	// A Rails app that ships a package.json with Vite for asset bundling must be
+	// classified as managed_vps — the Gemfile is the stronger signal. This is the
+	// core reason server manifests are checked first.
+	dir := fixtureDir(t, map[string]string{
+		"Gemfile": `gem "rails"`,
 		"package.json": `{
-			"name": "svelte-app",
-			"devDependencies": { "svelte": "4.0.0" },
-			"scripts": { "build": "npm run build" }
+			"name": "rails-app",
+			"devDependencies": { "vite": "5.0.0", "@vitejs/plugin-react": "4.0.0" }
 		}`,
 	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkSvelte, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
+	assert.Equal(t, ProtocolManagedVPS, Detect(dir).SuggestedProtocol,
+		"a server manifest must outrank a static package.json")
 }
 
-// --- Static hosting: traditional generators ---
+// --- No confident signal → no suggestion ---
 
-func TestDetect_Hugo(t *testing.T) {
+func TestDetect_NodeServerWithoutStaticDep(t *testing.T) {
+	// An Express API (package.json, no static framework, no server manifest file)
+	// yields no confident signal — the user is prompted to choose.
 	dir := fixtureDir(t, map[string]string{
-		"hugo.toml": `baseURL = "https://example.com"`,
+		"package.json": `{"name": "api", "dependencies": { "express": "4.18.0" }}`,
 	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkHugo, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "hugo", result.BuildCommand)
-	assert.Equal(t, "public", result.OutputDir)
-	assert.False(t, result.SPA)
+	assert.Equal(t, ProtocolNone, Detect(dir).SuggestedProtocol)
 }
 
-func TestDetect_Jekyll(t *testing.T) {
+func TestDetect_PackageJSONNoDeps(t *testing.T) {
 	dir := fixtureDir(t, map[string]string{
-		"_config.yml": `title: My Blog`,
+		"package.json": `{"name": "my-tool", "scripts": { "build": "tsc" }, "dependencies": {}}`,
 	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkJekyll, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "bundle exec jekyll build", result.BuildCommand)
-	assert.Equal(t, "_site", result.OutputDir)
-}
-
-func TestDetect_Eleventy(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		".eleventy.js": `module.exports = function(cfg) {};`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkEleventy, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "_site", result.OutputDir)
-}
-
-// --- Managed VPS: server runtimes ---
-
-func TestDetect_Rails(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"Gemfile": `source "https://rubygems.org"\ngem "rails", "~> 7.1"`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkRails, result.Framework)
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-	assert.Empty(t, result.BuildCommand, "VPS apps have no static build command")
-	assert.Empty(t, result.OutputDir)
-}
-
-func TestDetect_Ruby_NonRails(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"Gemfile": `source "https://rubygems.org"\ngem "sinatra"`,
-	})
-	result := Detect(dir)
-	// Non-Rails Ruby still suggests VPS
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-}
-
-func TestDetect_Django(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"requirements.txt": "django==4.2\ngunicorn==21.2",
-		"manage.py":        "#!/usr/bin/env python",
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkDjango, result.Framework)
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-}
-
-func TestDetect_Python_NonDjango(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"requirements.txt": "flask==3.0\ngunicorn==21.2",
-	})
-	result := Detect(dir)
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-}
-
-func TestDetect_Laravel(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"composer.json": `{"require": {"laravel/framework": "^10.0"}}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkLaravel, result.Framework)
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-}
-
-func TestDetect_Go(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"go.mod": "module example.com/myapp\n\ngo 1.21",
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkGo, result.Framework)
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-}
-
-func TestDetect_Go_SkipsHugoProject(t *testing.T) {
-	// Hugo projects have both go.mod (for Hugo modules) and hugo.toml/config.toml
-	// — they should be detected as Hugo (static), not Go (VPS).
-	dir := fixtureDir(t, map[string]string{
-		"go.mod":   "module example.com/mysite\n\ngo 1.21",
-		"hugo.toml": `baseURL = "https://example.com"`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkHugo, result.Framework)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-}
-
-func TestDetect_Express(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"package.json": `{
-			"name": "api",
-			"dependencies": { "express": "4.18.0" }
-		}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkNode, result.Framework)
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-}
-
-func TestDetect_NestJS(t *testing.T) {
-	dir := fixtureDir(t, map[string]string{
-		"package.json": `{
-			"name": "nest-api",
-			"dependencies": { "@nestjs/core": "10.0.0" }
-		}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-}
-
-// --- Edge cases ---
-
-func TestDetect_NodeNoBuildScript(t *testing.T) {
-	// A Node project with no build script and no known deps → VPS assumption
-	dir := fixtureDir(t, map[string]string{
-		"package.json": `{"name": "my-server", "dependencies": {}}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, FrameworkNode, result.Framework)
-	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
-}
-
-func TestDetect_NodeGenericWithBuild(t *testing.T) {
-	// A Node project with a build script but no recognisable framework
-	dir := fixtureDir(t, map[string]string{
-		"package.json": `{
-			"name": "my-tool",
-			"scripts": { "build": "tsc" },
-			"dependencies": {}
-		}`,
-	})
-	result := Detect(dir)
-	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
-	assert.Equal(t, "npm run build", result.BuildCommand)
-	assert.Equal(t, "dist", result.OutputDir)
+	assert.Equal(t, ProtocolNone, Detect(dir).SuggestedProtocol)
 }
 
 func TestDetect_MalformedPackageJSON(t *testing.T) {
 	dir := fixtureDir(t, map[string]string{
 		"package.json": `this is not valid json`,
 	})
-	// Should not panic; returns empty result
-	result := Detect(dir)
-	assert.Equal(t, ProtocolNone, result.SuggestedProtocol)
+	// Must not panic; returns no suggestion.
+	assert.Equal(t, ProtocolNone, Detect(dir).SuggestedProtocol)
 }
 
-// --- Helper: fileContains ---
+// --- Helper: packageDeclaresStaticBuild ---
 
-func TestFileContains(t *testing.T) {
+func TestPackageDeclaresStaticBuild(t *testing.T) {
 	tests := []struct {
 		name     string
-		data     []byte
-		substr   string
+		pkg      string
 		expected bool
 	}{
-		{"empty data", nil, "rails", false},
-		{"empty substr", []byte("some content"), "", true},
-		{"present", []byte("gem 'rails', '~> 7.1'"), "rails", true},
-		{"absent", []byte("gem 'sinatra'"), "rails", false},
+		{"empty", "", false},
+		{"dependency match", `{"dependencies":{"next":"14"}}`, true},
+		{"devDependency match", `{"devDependencies":{"vite":"5"}}`, true},
+		{"scoped match", `{"dependencies":{"@angular/core":"17"}}`, true},
+		{"no static dep", `{"dependencies":{"express":"4"}}`, false},
+		{"malformed", `not json`, false},
+		{"empty deps", `{"dependencies":{}}`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, fileContains(tt.data, tt.substr))
+			assert.Equal(t, tt.expected, packageDeclaresStaticBuild([]byte(tt.pkg)))
 		})
 	}
 }

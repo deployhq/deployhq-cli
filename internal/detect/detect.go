@@ -1,23 +1,28 @@
-// Package detect provides local framework detection for the dhq launch flow.
+// Package detect provides a minimal local target heuristic for the dhq launch flow.
 //
 // This is the OFFLINE FALLBACK. The primary path is the backend's POST /detection
 // endpoint (see launchDetect), which runs the same StackDetector pipeline as the
-// web onboarding wizard over an uploaded manifest, keeping the CLI's recommendation
-// in lockstep with the server. This local heuristic only runs when that endpoint is
-// unavailable (older backend, offline, transient error), so the CLI still works
-// without it. CollectManifest (manifest.go) gathers the upload for the primary path.
+// web onboarding wizard — including rule-based detection and, when the account
+// permits, AI-assisted framework + static-hosting assessment — over an uploaded
+// manifest. That keeps the CLI's recommendation in lockstep with the server and
+// is the single source of truth for framework identity and build configuration
+// (output directory, build command, SPA routing).
 //
-// Detection reads files in the project root directory and returns a best-guess
-// recommendation for the deployment target (static_hosting, managed_vps, or none)
-// along with pre-filled build configuration defaults. The mapping approximates the
-// wizard's:
-//   - Node apps that produce a static build artifact → static_hosting
-//   - Any app with a server-runtime signal (Gemfile, requirements.txt, go.mod, etc.) → managed_vps
-//   - No signal detected → empty (own-server / user's choice)
+// This local heuristic only runs when that endpoint is unavailable (older
+// backend, offline, transient error). It deliberately does NOT try to identify
+// the framework or infer build configuration — duplicating the backend's
+// per-framework logic here only drifts out of sync. It answers one coarse
+// question so the launch flow can pre-seed the target prompt:
 //
-// Detection is intentionally heuristic and conservative. False negatives (returning
-// empty when a protocol could be inferred) are preferred over false positives
-// (suggesting a managed offering the user did not intend).
+//   - a server-runtime manifest/entrypoint (Gemfile [Ruby], requirements.txt /
+//     Pipfile / pyproject.toml [Python], composer.json / index.php [PHP],
+//     go.mod [Go], …) → managed_vps
+//   - a package.json declaring a known static-site framework/bundler → static_hosting
+//   - no confident signal → "" (let the user choose)
+//
+// Detection is intentionally heuristic and conservative. False negatives
+// (returning "" when a protocol could be inferred) are preferred over false
+// positives. CollectManifest (manifest.go) gathers the upload for the primary path.
 package detect
 
 import (
@@ -34,65 +39,54 @@ const (
 	ProtocolNone = ""
 )
 
-// Framework identifies the detected frontend/backend framework.
+// Framework identifies a detected framework. Local detection no longer populates
+// it (the backend's /detection response is the authority); the type is retained
+// because detectionResultFromAPI maps the backend stack into it and callers read
+// it for display.
 type Framework string
 
-const (
-	FrameworkUnknown    Framework = ""
-	FrameworkNextJS     Framework = "nextjs"
-	FrameworkReact      Framework = "react"
-	FrameworkVite       Framework = "vite"
-	FrameworkNuxt       Framework = "nuxt"
-	FrameworkGatsby     Framework = "gatsby"
-	FrameworkAstro      Framework = "astro"
-	FrameworkHugo       Framework = "hugo"
-	FrameworkJekyll     Framework = "jekyll"
-	FrameworkEleventy   Framework = "eleventy"
-	FrameworkAngular    Framework = "angular"
-	FrameworkSvelte     Framework = "svelte"
-	FrameworkVueJS      Framework = "vuejs"
-	FrameworkRails      Framework = "rails"
-	FrameworkDjango     Framework = "django"
-	FrameworkLaravel    Framework = "laravel"
-	FrameworkGo         Framework = "go"
-	FrameworkNode       Framework = "node"
-)
+// FrameworkUnknown is the zero value — local detection always leaves Framework
+// unset, and the backend reports the concrete stack when available.
+const FrameworkUnknown Framework = ""
 
 // Result holds the output of a detection pass.
+//
+// Local Detect() only sets SuggestedProtocol. The other fields are populated by
+// detectionResultFromAPI from the backend /detection response (the authority for
+// framework identity and build configuration) and are read by the launch flow.
 type Result struct {
-	// Framework is the detected framework, or FrameworkUnknown when not identified.
+	// Framework is the detected framework (set from the backend response), or
+	// FrameworkUnknown when not identified / from local detection.
 	Framework Framework
 
 	// SuggestedProtocol is "static_hosting", "managed_vps", or "" (no suggestion).
 	// "" means the caller should ask the user to choose a target manually.
 	SuggestedProtocol string
 
-	// BuildCommand is a best-guess build command for the detected framework.
-	// Empty string when no build command can be inferred.
+	// BuildCommand is the build command from the backend response, or "" when
+	// none is known (local detection never sets it).
 	BuildCommand string
 
-	// OutputDir is the build output directory for static hosting frameworks.
-	// E.g. "dist", "build", "_site", "out", "public".
-	// Empty string for server-runtime frameworks.
+	// OutputDir is the build output directory from the backend response, or ""
+	// (local detection never sets it).
 	OutputDir string
 
-	// SPA is true when the detected framework is a single-page application
-	// that needs all URL paths rewritten to index.html.
+	// SPA is true when the backend reports the site needs single-page-application
+	// routing (all paths rewritten to index.html). Local detection never sets it.
 	SPA bool
 }
 
-// Detect reads the directory at dir and returns a detection Result.
+// Detect reads the directory at dir and returns a coarse target Result.
 // dir should be the root of the project (the directory containing package.json,
 // Gemfile, etc.). If dir is empty it defaults to ".".
 //
 // Detection never fails: when no signal is recognised, it returns a zero-value
-// Result with SuggestedProtocol = "".
+// Result with SuggestedProtocol = "". Only SuggestedProtocol is populated.
 func Detect(dir string) Result {
 	if dir == "" {
 		dir = "."
 	}
 
-	// Presence tests — cheap file-exists checks
 	has := func(names ...string) bool {
 		for _, name := range names {
 			if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
@@ -102,300 +96,76 @@ func Detect(dir string) Result {
 		return false
 	}
 
-	readFile := func(name string) []byte {
-		data, _ := os.ReadFile(filepath.Join(dir, name))
-		return data
+	// 1. Server-runtime manifests/entrypoints → Managed VPS. Checked first:
+	//    full-stack frameworks (Rails, Django, Laravel) commonly ship a
+	//    package.json for asset bundling, so a server manifest is the stronger
+	//    signal. PHP is covered both by composer.json (Composer projects: Laravel,
+	//    Symfony, …) and a root index.php entrypoint (Composer-less / legacy PHP,
+	//    WordPress).
+	if has("Gemfile", "requirements.txt", "Pipfile", "pyproject.toml", "composer.json", "go.mod", "index.php") {
+		return Result{SuggestedProtocol: ProtocolManagedVPS}
 	}
 
-	// --- Server-runtime signals (checked first; override static signals) ---
-
-	// Ruby / Rails
-	if has("Gemfile") {
-		framework := FrameworkRails
-		if !fileContains(readFile("Gemfile"), "rails") {
-			framework = FrameworkUnknown
-		}
-		return Result{
-			Framework:         framework,
-			SuggestedProtocol: ProtocolManagedVPS,
-		}
-	}
-
-	// Python / Django
-	if has("requirements.txt", "Pipfile", "pyproject.toml") {
-		framework := FrameworkUnknown
-		if has("manage.py") && fileContains(readFile("requirements.txt"), "django") {
-			framework = FrameworkDjango
-		}
-		return Result{
-			Framework:         framework,
-			SuggestedProtocol: ProtocolManagedVPS,
-		}
-	}
-
-	// PHP / Laravel
-	if has("composer.json") {
-		framework := FrameworkUnknown
-		if fileContains(readFile("composer.json"), "laravel") {
-			framework = FrameworkLaravel
-		}
-		return Result{
-			Framework:         framework,
-			SuggestedProtocol: ProtocolManagedVPS,
-		}
-	}
-
-	// Go binary / module (non-static, i.e. no static site generator config)
-	if has("go.mod") && !has("config.toml", "config.yaml", "hugo.toml", "hugo.yaml") {
-		return Result{
-			Framework:         FrameworkGo,
-			SuggestedProtocol: ProtocolManagedVPS,
-		}
-	}
-
-	// --- Static site signals ---
-
-	// Hugo
-	if has("hugo.toml", "hugo.yaml", "hugo.json") || (has("config.toml") && fileContains(readFile("config.toml"), "baseURL")) {
-		return Result{
-			Framework:         FrameworkHugo,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      "hugo",
-			OutputDir:         "public",
-			SPA:               false,
-		}
-	}
-
-	// Jekyll
-	if has("_config.yml", "_config.yaml") {
-		return Result{
-			Framework:         FrameworkJekyll,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      "bundle exec jekyll build",
-			OutputDir:         "_site",
-			SPA:               false,
-		}
-	}
-
-	// Eleventy
-	if has(".eleventy.js", "eleventy.config.js", "eleventy.config.mjs") {
-		return Result{
-			Framework:         FrameworkEleventy,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      "npx @11ty/eleventy",
-			OutputDir:         "_site",
-			SPA:               false,
-		}
-	}
-
-	// --- Node/JS — framework detection from package.json ---
+	// 2. A package.json declaring a known static-site framework or bundler →
+	//    Static Hosting.
 	if has("package.json") {
-		return detectNode(readFile("package.json"))
+		if data, err := os.ReadFile(filepath.Join(dir, "package.json")); err == nil && packageDeclaresStaticBuild(data) {
+			return Result{SuggestedProtocol: ProtocolStaticHosting}
+		}
 	}
 
-	// Nothing detected.
+	// 3. No confident signal — let the user choose.
 	return Result{}
 }
 
-// detectNode analyses package.json content and returns a Result for Node/JS projects.
-func detectNode(pkgJSON []byte) Result {
-	if len(pkgJSON) == 0 {
-		return Result{}
-	}
+// staticBuildDeps are package.json dependencies that indicate a static-site
+// build (the output is a directory of static assets suitable for CDN hosting).
+// The list is intentionally coarse — it only seeds the offline target suggestion,
+// which the user can override. The backend's /detection endpoint is the
+// authoritative source for framework identity and build configuration.
+var staticBuildDeps = map[string]struct{}{
+	"next":             {},
+	"nuxt":             {},
+	"nuxt3":            {},
+	"react":            {},
+	"react-dom":        {},
+	"vue":              {},
+	"@vue/cli-service": {},
+	"@angular/core":    {},
+	"svelte":           {},
+	"@sveltejs/kit":    {},
+	"astro":            {},
+	"gatsby":           {},
+	"vite":             {},
+	"preact":           {},
+	"solid-js":         {},
+	"gridsome":         {},
+	"@11ty/eleventy":   {},
+	"vitepress":        {},
+	"vuepress":         {},
+	"@docusaurus/core": {},
+}
 
+// packageDeclaresStaticBuild reports whether a package.json's dependencies or
+// devDependencies include a known static-site framework or bundler.
+func packageDeclaresStaticBuild(pkgJSON []byte) bool {
+	if len(pkgJSON) == 0 {
+		return false
+	}
 	var pkg struct {
-		Scripts      map[string]string      `json:"scripts"`
-		Dependencies map[string]interface{} `json:"dependencies"`
-		DevDeps      map[string]interface{} `json:"devDependencies"`
+		Dependencies    map[string]json.RawMessage `json:"dependencies"`
+		DevDependencies map[string]json.RawMessage `json:"devDependencies"`
 	}
 	if err := json.Unmarshal(pkgJSON, &pkg); err != nil {
-		return Result{}
-	}
-
-	allDeps := make(map[string]struct{})
-	for k := range pkg.Dependencies {
-		allDeps[k] = struct{}{}
-	}
-	for k := range pkg.DevDeps {
-		allDeps[k] = struct{}{}
-	}
-
-	hasDep := func(names ...string) bool {
-		for _, n := range names {
-			if _, ok := allDeps[n]; ok {
-				return true
-			}
-		}
 		return false
 	}
-
-	// Build script heuristic — prefer explicit "build" script
-	buildScript := ""
-	if s, ok := pkg.Scripts["build"]; ok && s != "" {
-		buildScript = "npm run build"
-	}
-
-	// Next.js
-	if hasDep("next") {
-		out := "out"
-		if buildScript == "" {
-			buildScript = "npm run build"
-		}
-		return Result{
-			Framework:         FrameworkNextJS,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         out,
-			SPA:               false, // Next.js export is not strictly SPA
+	for name := range pkg.Dependencies {
+		if _, ok := staticBuildDeps[name]; ok {
+			return true
 		}
 	}
-
-	// Astro
-	if hasDep("astro") {
-		return Result{
-			Framework:         FrameworkAstro,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         "dist",
-			SPA:               false,
-		}
-	}
-
-	// Gatsby
-	if hasDep("gatsby") {
-		return Result{
-			Framework:         FrameworkGatsby,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         "public",
-			SPA:               false,
-		}
-	}
-
-	// Nuxt
-	if hasDep("nuxt", "nuxt3") {
-		return Result{
-			Framework:         FrameworkNuxt,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         ".output/public",
-			SPA:               false,
-		}
-	}
-
-	// Vite (generic — covers Vue, React+Vite, Svelte+Vite, etc.)
-	if hasDep("vite") {
-		fw := FrameworkVite
-		spa := true
-		if hasDep("vue", "@vue/core") {
-			fw = FrameworkVueJS
-		} else if hasDep("svelte") {
-			fw = FrameworkSvelte
-		} else if hasDep("react", "react-dom") {
-			fw = FrameworkReact
-		}
-		return Result{
-			Framework:         fw,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         "dist",
-			SPA:               spa,
-		}
-	}
-
-	// Angular CLI
-	if hasDep("@angular/core") {
-		return Result{
-			Framework:         FrameworkAngular,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      "npm run build",
-			OutputDir:         "dist",
-			SPA:               true,
-		}
-	}
-
-	// React (CRA / other)
-	if hasDep("react", "react-dom") {
-		out := "build"
-		if hasDep("vite") {
-			out = "dist"
-		}
-		return Result{
-			Framework:         FrameworkReact,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         out,
-			SPA:               true,
-		}
-	}
-
-	// Svelte (without Vite)
-	if hasDep("svelte") {
-		return Result{
-			Framework:         FrameworkSvelte,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         "public",
-			SPA:               true,
-		}
-	}
-
-	// Vue CLI (without Vite)
-	if hasDep("vue", "@vue/cli-service") {
-		return Result{
-			Framework:         FrameworkVueJS,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         "dist",
-			SPA:               true,
-		}
-	}
-
-	// Express / Fastify / NestJS / Koa → server runtime → VPS
-	if hasDep("express", "fastify", "@nestjs/core", "koa", "hapi") {
-		return Result{
-			Framework:         FrameworkNode,
-			SuggestedProtocol: ProtocolManagedVPS,
-		}
-	}
-
-	// Generic Node app with a build script → optimistically suggest static
-	if buildScript != "" {
-		return Result{
-			Framework:         FrameworkNode,
-			SuggestedProtocol: ProtocolStaticHosting,
-			BuildCommand:      buildScript,
-			OutputDir:         "dist",
-			SPA:               false,
-		}
-	}
-
-	// Node app with no build → server runtime assumption
-	return Result{
-		Framework:         FrameworkNode,
-		SuggestedProtocol: ProtocolManagedVPS,
-	}
-}
-
-// fileContains is a simple substring search across a byte slice.
-// It is used for quick presence checks in config/manifest files.
-func fileContains(data []byte, substr string) bool {
-	if len(data) == 0 {
-		return false
-	}
-	return contains(string(data), substr)
-}
-
-// contains is strings.Contains without importing strings (keeps the package lean).
-func contains(s, substr string) bool {
-	if len(substr) == 0 {
-		return true
-	}
-	if len(s) < len(substr) {
-		return false
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
+	for name := range pkg.DevDependencies {
+		if _, ok := staticBuildDeps[name]; ok {
 			return true
 		}
 	}
