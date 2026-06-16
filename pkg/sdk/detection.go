@@ -21,6 +21,10 @@ type DetectionResponse struct {
 	SuggestedProtocol string                  `json:"suggested_protocol"`
 	StaticHosting     DetectionStaticHosting  `json:"static_hosting"`
 	BuildCommands     []DetectionBuildCommand `json:"build_commands"`
+	// AIAssisted is true when the backend's AI services contributed to the
+	// result (only when the account has AI features enabled and the rule-based
+	// result was ambiguous). Optional/additive; absent on older backends.
+	AIAssisted bool `json:"ai_assisted,omitempty"`
 }
 
 // DetectionStaticHosting holds the static-hosting assessment for the detected stack.
