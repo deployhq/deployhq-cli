@@ -1259,6 +1259,61 @@ func TestLaunchEnsureRepo_AlreadyConnected_NoKeyNoise(t *testing.T) {
 	assert.NotContains(t, stderr.String(), pubKey, "no deploy-key output when the repo is already connected")
 }
 
+// ── Stale persisted project (.deployhq.toml) handling ─────────────────────────
+
+func TestLaunchEnsureProject_StaleConfigProjectFallsThrough(t *testing.T) {
+	// A project persisted in .deployhq.toml that no longer exists (404) must be
+	// detected and skipped — NOT surfaced as the misleading "could not connect
+	// repository" error — and the flow must fall through to normal resolution.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/gone":
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"status":"not_found","error_code":"record_not_found"}`)) //nolint:errcheck
+		case r.Method == http.MethodGet && r.URL.Path == "/projects":
+			w.Write([]byte("[]")) //nolint:errcheck // no projects → falls through to "no project specified"
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	env, _, stderr := testLaunchEnvelope() // NonInteractive
+
+	cfg := launchConfig{projectID: "gone", projectFromConfig: true, targetProtocol: "static_hosting"}
+	_, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
+
+	require.Error(t, err)
+	assert.Contains(t, stderr.String(), "no longer exists", "must warn about the stale saved project")
+	assert.NotContains(t, err.Error(), "Could not connect repository", "must not surface the misleading repo error")
+}
+
+func TestLaunchEnsureProject_StaleFlagProjectErrorsClearly(t *testing.T) {
+	// An explicit --project that doesn't exist is a user error: fail clearly,
+	// don't silently fall through to creating a new project.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/projects/typo" {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"status":"not_found"}`)) //nolint:errcheck
+			return
+		}
+		t.Errorf("unexpected request (must not list/create): %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	env, _, _ := testLaunchEnvelope()
+
+	cfg := launchConfig{projectID: "typo", projectFromConfig: false} // came from --project
+	_, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
 // ── Failure diagnosis (explainLaunchFailure) — interactive-only ───────────────
 
 func TestExplainLaunchFailure_NonInteractiveIsNoOp(t *testing.T) {

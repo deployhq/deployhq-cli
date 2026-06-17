@@ -38,6 +38,10 @@ type launchConfig struct {
 
 	// Project
 	projectID string // permalink / identifier
+	// projectFromConfig is true when projectID came from .deployhq.toml rather
+	// than a --project flag. A stale (deleted) project from the toml is cleaned
+	// up and skipped; a bad explicit --project is treated as a user error.
+	projectFromConfig bool
 
 	// Persisted server identifier from a previous launch (enables idempotency).
 	// When non-empty, re-runs skip provisioning and go straight to deploy.
@@ -250,6 +254,7 @@ func resolveLaunchConfig(
 	cfg.projectID = flagProject
 	if cfg.projectID == "" && cliCtx != nil {
 		cfg.projectID = cliCtx.Config.Project
+		cfg.projectFromConfig = cfg.projectID != "" // came from .deployhq.toml, not a flag
 	}
 
 	// Server / target: read from .deployhq.toml so re-runs can skip provisioning.
@@ -852,7 +857,34 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 // ── Project + repo ───────────────────────────────────────────────────────────
 
 func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, gitRemote string) (string, error) {
-	// Re-use an existing project if specified or already in .deployhq.toml
+	// Re-use an existing project if specified or already in .deployhq.toml.
+	// First verify it still exists: a stale .deployhq.toml (project deleted in
+	// the dashboard) would otherwise produce a misleading "could not connect
+	// repository" 404 when we try to attach the repo.
+	if cfg.projectID != "" {
+		if _, err := client.GetProject(ctx, cfg.projectID); err != nil {
+			var apiErr *sdk.APIError
+			notFound := errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
+			switch {
+			case notFound && cfg.projectFromConfig:
+				// Stale persisted reference — warn, clean it out of the toml, and
+				// fall through to normal resolution (auto-pick / prompt / create).
+				env.Warn("Saved project %q no longer exists — removing it from .deployhq.toml and continuing.", cfg.projectID)
+				launchClearStaleProjectConfig(env)
+				cfg.projectID = ""
+				cfg.serverID = ""
+			case notFound:
+				// Explicit --project that doesn't exist — a user input error.
+				return "", &output.UserError{
+					Message: fmt.Sprintf("Project %q not found", cfg.projectID),
+					Hint:    "Check the --project value and that you have access, or omit it to pick or create a project.",
+				}
+			default:
+				return "", err // network / auth / other — surface as-is
+			}
+		}
+	}
+
 	if cfg.projectID != "" {
 		env.Status("Using project: %s", cfg.projectID)
 		// Ensure a repo is connected — treat hard failures as terminal.
@@ -1764,6 +1796,17 @@ func launchPersistConfig(env *output.Envelope, cfg launchConfig, server *sdk.Ser
 	}
 	_ = config.Set(path, "target", cfg.targetProtocol)
 	env.Status("Settings saved to %s", path)
+}
+
+// launchClearStaleProjectConfig removes the launch-persisted project/server/
+// target from .deployhq.toml after the saved project is found to no longer
+// exist, so subsequent runs — and other commands that read `project` — start
+// clean rather than tripping over the dead reference. Best-effort.
+func launchClearStaleProjectConfig(_ *output.Envelope) {
+	path := config.ProjectConfigPath()
+	_ = config.Unset(path, "project")
+	_ = config.Unset(path, "server")
+	_ = config.Unset(path, "target")
 }
 
 // ── Git helpers ───────────────────────────────────────────────────────────────
