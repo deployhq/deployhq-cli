@@ -63,9 +63,11 @@ type Result struct {
 	// "" means the caller should ask the user to choose a target manually.
 	SuggestedProtocol string
 
-	// BuildCommand is the build command from the backend response, or "" when
-	// none is known (local detection never sets it).
-	BuildCommand string
+	// BuildCommands are the suggested build steps from the backend response —
+	// each a separate command (e.g. "Install dependencies", "Build"), preserved
+	// individually rather than collapsed into one shell line, so they match the
+	// web wizard's build pipeline. Empty from local detection.
+	BuildCommands []BuildCommandStep
 
 	// OutputDir is the build output directory from the backend response, or ""
 	// (local detection never sets it).
@@ -80,6 +82,16 @@ type Result struct {
 	// applies). Empty from local detection.
 	ExcludedFiles   []string
 	BuildCacheFiles []string
+}
+
+// BuildCommandStep is a single suggested build step. It mirrors the backend
+// catalog entry — description, command, the predefined template_name, and
+// halt_on_error — so the launch flow can recreate each step faithfully.
+type BuildCommandStep struct {
+	Description  string
+	Command      string
+	TemplateName string
+	HaltOnError  *bool
 }
 
 // Detect reads the directory at dir and returns a coarse target Result.

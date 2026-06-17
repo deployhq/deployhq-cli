@@ -24,10 +24,11 @@ func (b BuildCommand) UUID() string   { return b.Identifier }
 
 // BuildCommandCreateRequest is the payload for creating/updating a build command.
 type BuildCommandCreateRequest struct {
-	Description string `json:"description,omitempty"`
-	Command     string `json:"command"`
-	HaltOnError *bool  `json:"halt_on_error,omitempty"`
-	Enabled     *bool  `json:"enabled,omitempty"`
+	Description  string `json:"description,omitempty"`
+	Command      string `json:"command"`
+	TemplateName string `json:"template_name,omitempty"`
+	HaltOnError  *bool  `json:"halt_on_error,omitempty"`
+	Enabled      *bool  `json:"enabled,omitempty"`
 }
 
 func (c *Client) ListBuildCommands(ctx context.Context, projectID string, opts *ListOptions) ([]BuildCommand, error) {

@@ -27,7 +27,7 @@ func TestDetect_Empty(t *testing.T) {
 	result := Detect(dir)
 	assert.Equal(t, FrameworkUnknown, result.Framework)
 	assert.Equal(t, ProtocolNone, result.SuggestedProtocol)
-	assert.Empty(t, result.BuildCommand)
+	assert.Empty(t, result.BuildCommands)
 	assert.Empty(t, result.OutputDir)
 	assert.False(t, result.SPA)
 }
@@ -50,7 +50,7 @@ func TestDetect_Gemfile(t *testing.T) {
 	assert.Equal(t, ProtocolManagedVPS, result.SuggestedProtocol)
 	// Local detection no longer identifies the framework or build config.
 	assert.Equal(t, FrameworkUnknown, result.Framework)
-	assert.Empty(t, result.BuildCommand)
+	assert.Empty(t, result.BuildCommands)
 	assert.Empty(t, result.OutputDir)
 }
 
@@ -108,7 +108,7 @@ func TestDetect_NextJS(t *testing.T) {
 	result := Detect(dir)
 	assert.Equal(t, ProtocolStaticHosting, result.SuggestedProtocol)
 	// Build config comes from the backend, not local detection.
-	assert.Empty(t, result.BuildCommand)
+	assert.Empty(t, result.BuildCommands)
 	assert.Empty(t, result.OutputDir)
 	assert.False(t, result.SPA)
 }

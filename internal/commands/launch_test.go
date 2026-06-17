@@ -152,7 +152,7 @@ func TestLaunchApplyBuildCommand_CreatesViaBuildCommandsEndpoint(t *testing.T) {
 	env, _, _ := testLaunchEnvelope()
 	client := newSpecValidatingClient(t, srv)
 	cfg := launchConfig{projectID: "my-app", targetProtocol: "static_hosting"}
-	detection := detect.Result{BuildCommand: "npm run build", OutputDir: "dist"}
+	detection := detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm run build"}}, OutputDir: "dist"}
 
 	launchApplyBuildCommand(t.Context(), env, cfg, client, detection)
 
@@ -179,7 +179,7 @@ func TestLaunchApplyBuildCommand_SkipsWhenBuildCommandsExist(t *testing.T) {
 	env, _, _ := testLaunchEnvelope()
 	client := newSpecValidatingClient(t, srv)
 	cfg := launchConfig{projectID: "my-app"}
-	launchApplyBuildCommand(t.Context(), env, cfg, client, detect.Result{BuildCommand: "npm run build"})
+	launchApplyBuildCommand(t.Context(), env, cfg, client, detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm run build"}}})
 
 	assert.False(t, postCalled)
 }
@@ -194,7 +194,7 @@ func TestLaunchApplyBuildCommand_EmptyCommandIsNoop(t *testing.T) {
 	defer srv.Close()
 
 	env, _, _ := testLaunchEnvelope()
-	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newSpecValidatingClient(t, srv), detect.Result{BuildCommand: ""})
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newSpecValidatingClient(t, srv), detect.Result{})
 	assert.False(t, called)
 }
 
@@ -216,7 +216,7 @@ func TestLaunchApplyBuildCommand_ListErrorStillCreates(t *testing.T) {
 	defer srv.Close()
 
 	env, _, _ := testLaunchEnvelope()
-	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newSpecValidatingClient(t, srv), detect.Result{BuildCommand: "npm run build"})
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newSpecValidatingClient(t, srv), detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm run build"}}})
 	assert.True(t, postCalled, "list error must not prevent the create attempt")
 }
 
@@ -237,7 +237,7 @@ func TestLaunchApplyBuildCommand_CreateErrorWarnsWithHint(t *testing.T) {
 	env, _, stderr := testLaunchEnvelope()
 	// Must not panic / must return normally despite the API error.
 	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "my-app"}, newSpecValidatingClient(t, srv),
-		detect.Result{BuildCommand: "npm run build"})
+		detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm run build"}}})
 
 	warn := stderr.String()
 	assert.Contains(t, warn, "dhq build-commands create", "must point the user at the manual fix")
@@ -263,7 +263,7 @@ func TestLaunchApplyBuildCommand_TruncatesLongDescription(t *testing.T) {
 
 	env, _, _ := testLaunchEnvelope()
 	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "p"}, newSpecValidatingClient(t, srv),
-		detect.Result{BuildCommand: longCmd})
+		detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: longCmd}}})
 
 	var parsed struct {
 		BuildCommand struct {
@@ -313,7 +313,7 @@ func TestLaunchStatic_ProvisionThenBuildCommand_Integration(t *testing.T) {
 		subdomain:      "my-app",
 		subdirectory:   "dist",
 	}
-	detection := detect.Result{BuildCommand: "npm run build", OutputDir: "dist"}
+	detection := detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm run build"}}, OutputDir: "dist"}
 
 	// Step 8: provision the static server.
 	server, err := launchProvisionStatic(t.Context(), env, cfg, client)

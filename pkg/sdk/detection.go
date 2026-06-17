@@ -46,10 +46,14 @@ type DetectionStaticHosting struct {
 	Confidence  string `json:"confidence"`
 }
 
-// DetectionBuildCommand is a single suggested build step.
+// DetectionBuildCommand is a single suggested build step. halt_on_error and
+// template_name mirror the catalog so the CLI can recreate the build pipeline
+// faithfully; both are optional/additive (absent on older backends).
 type DetectionBuildCommand struct {
-	Description string `json:"description"`
-	Command     string `json:"command"`
+	Description  string `json:"description"`
+	Command      string `json:"command"`
+	HaltOnError  *bool  `json:"halt_on_error,omitempty"`
+	TemplateName string `json:"template_name,omitempty"`
 }
 
 // DetectFramework asks the backend to detect the project's framework from an

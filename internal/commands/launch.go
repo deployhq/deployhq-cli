@@ -436,7 +436,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 
 	// ── Step 10: Static-hosting project config (build command + excludes/cache) ─
 	if cfg.targetProtocol == detect.ProtocolStaticHosting {
-		if detection.BuildCommand != "" {
+		if len(detection.BuildCommands) > 0 {
 			launchApplyBuildCommand(ctx, env, cfg, client, detection)
 		}
 		launchApplyStaticExtras(ctx, env, cfg, client, detection)
@@ -510,10 +510,15 @@ func launchDetect(ctx context.Context, env *output.Envelope, client *sdk.Client,
 // into a single shell command (the backend runs build commands as shell steps,
 // so "install && build" is equivalent to two ordered commands).
 func detectionResultFromAPI(resp *sdk.DetectionResponse) detect.Result {
-	cmds := make([]string, 0, len(resp.BuildCommands))
+	cmds := make([]detect.BuildCommandStep, 0, len(resp.BuildCommands))
 	for _, bc := range resp.BuildCommands {
 		if bc.Command != "" {
-			cmds = append(cmds, bc.Command)
+			cmds = append(cmds, detect.BuildCommandStep{
+				Description:  bc.Description,
+				Command:      bc.Command,
+				TemplateName: bc.TemplateName,
+				HaltOnError:  bc.HaltOnError,
+			})
 		}
 	}
 	excluded := make([]string, 0, len(resp.ExcludedFiles))
@@ -531,7 +536,7 @@ func detectionResultFromAPI(resp *sdk.DetectionResponse) detect.Result {
 	return detect.Result{
 		Framework:         detect.Framework(resp.Stack),
 		SuggestedProtocol: resp.SuggestedProtocol,
-		BuildCommand:      strings.Join(cmds, " && "),
+		BuildCommands:     cmds,
 		OutputDir:         resp.StaticHosting.RootPath,
 		SPA:               resp.StaticHosting.SPAMode,
 		ExcludedFiles:     excluded,
@@ -1654,7 +1659,7 @@ func pollProvisioningState(ctx context.Context, env *output.Envelope, client *sd
 // (Onboarding::ProjectCreator), which creates project build commands via
 // POST /projects/:id/build_commands — no separate build environment is needed.
 func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, detection detect.Result) {
-	if detection.BuildCommand == "" {
+	if len(detection.BuildCommands) == 0 {
 		return
 	}
 	// Don't clobber or duplicate: if the project already has build commands
@@ -1663,20 +1668,32 @@ func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg laun
 		return
 	}
 
-	env.Status("Setting build command from detection: %s", detection.BuildCommand)
-	desc := detection.BuildCommand
-	if r := []rune(desc); len(r) > 100 {
-		desc = string(r[:100])
-	}
-	_, err := client.CreateBuildCommand(ctx, cfg.projectID, sdk.BuildCommandCreateRequest{
-		Command:     detection.BuildCommand,
-		Description: desc,
-	})
-	if err != nil {
-		// Non-fatal: the site still provisions, but without a build step the
-		// first deploy may publish unbuilt sources — make the fix discoverable.
-		env.Warn("Could not set the detected build command (%q): %v", detection.BuildCommand, err)
-		env.Warn("Add it manually: dhq build-commands create -p %s --command %q", cfg.projectID, detection.BuildCommand)
+	// Create each step as its own command (e.g. "Install dependencies", then
+	// "Build") so the project's build pipeline matches the web wizard rather
+	// than a single collapsed shell line.
+	for _, step := range detection.BuildCommands {
+		if step.Command == "" {
+			continue
+		}
+		desc := step.Description
+		if desc == "" {
+			desc = step.Command
+		}
+		if r := []rune(desc); len(r) > 100 {
+			desc = string(r[:100])
+		}
+		env.Status("Setting build command from detection: %s", step.Command)
+		if _, err := client.CreateBuildCommand(ctx, cfg.projectID, sdk.BuildCommandCreateRequest{
+			Command:      step.Command,
+			Description:  desc,
+			TemplateName: step.TemplateName,
+			HaltOnError:  step.HaltOnError,
+		}); err != nil {
+			// Non-fatal: the site still provisions, but without a build step the
+			// first deploy may publish unbuilt sources — make the fix discoverable.
+			env.Warn("Could not set the detected build command (%q): %v", step.Command, err)
+			env.Warn("Add it manually: dhq build-commands create -p %s --command %q", cfg.projectID, step.Command)
+		}
 	}
 }
 

@@ -78,8 +78,11 @@ func TestDetectionResultFromAPI_MapsAllFields(t *testing.T) {
 	assert.Equal(t, "static_hosting", r.SuggestedProtocol)
 	assert.Equal(t, "dist", r.OutputDir)
 	assert.True(t, r.SPA)
-	// Multiple build steps collapse into one shell command.
-	assert.Equal(t, "npm install && npm run build", r.BuildCommand)
+	// Build steps are preserved individually, not collapsed into one command.
+	if assert.Len(t, r.BuildCommands, 2) {
+		assert.Equal(t, "npm install", r.BuildCommands[0].Command)
+		assert.Equal(t, "npm run build", r.BuildCommands[1].Command)
+	}
 }
 
 func TestLaunchDetect_UsesRemoteWhenAvailable(t *testing.T) {
