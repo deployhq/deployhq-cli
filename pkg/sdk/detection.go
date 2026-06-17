@@ -21,10 +21,21 @@ type DetectionResponse struct {
 	SuggestedProtocol string                  `json:"suggested_protocol"`
 	StaticHosting     DetectionStaticHosting  `json:"static_hosting"`
 	BuildCommands     []DetectionBuildCommand `json:"build_commands"`
+	// ExcludedFiles and BuildCacheFiles are the suggested deploy-exclude and
+	// build-cache patterns for the detected stack — the same source the web
+	// onboarding wizard uses. Optional/additive; empty on older backends.
+	ExcludedFiles   []DetectionFile `json:"excluded_files,omitempty"`
+	BuildCacheFiles []DetectionFile `json:"build_cache_files,omitempty"`
 	// AIAssisted is true when the backend's AI services contributed to the
 	// result (only when the account has AI features enabled and the rule-based
 	// result was ambiguous). Optional/additive; absent on older backends.
 	AIAssisted bool `json:"ai_assisted,omitempty"`
+}
+
+// DetectionFile is a single suggested file path — an excluded-file pattern or a
+// build-cache entry.
+type DetectionFile struct {
+	Path string `json:"path"`
 }
 
 // DetectionStaticHosting holds the static-hosting assessment for the detected stack.

@@ -74,6 +74,12 @@ type Result struct {
 	// SPA is true when the backend reports the site needs single-page-application
 	// routing (all paths rewritten to index.html). Local detection never sets it.
 	SPA bool
+
+	// ExcludedFiles and BuildCacheFiles are suggested deploy-exclude and
+	// build-cache patterns from the backend response (the same the web wizard
+	// applies). Empty from local detection.
+	ExcludedFiles   []string
+	BuildCacheFiles []string
 }
 
 // Detect reads the directory at dir and returns a coarse target Result.

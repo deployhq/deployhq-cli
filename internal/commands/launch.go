@@ -429,9 +429,12 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		cfg.serverID = server.Identifier
 	}
 
-	// ── Step 10: Build command (static only) ──────────────────────────────────
-	if cfg.targetProtocol == detect.ProtocolStaticHosting && detection.BuildCommand != "" {
-		launchApplyBuildCommand(ctx, env, cfg, client, detection)
+	// ── Step 10: Static-hosting project config (build command + excludes/cache) ─
+	if cfg.targetProtocol == detect.ProtocolStaticHosting {
+		if detection.BuildCommand != "" {
+			launchApplyBuildCommand(ctx, env, cfg, client, detection)
+		}
+		launchApplyStaticExtras(ctx, env, cfg, client, detection)
 	}
 
 	// ── Step 11: Deploy ───────────────────────────────────────────────────────
@@ -504,12 +507,26 @@ func detectionResultFromAPI(resp *sdk.DetectionResponse) detect.Result {
 			cmds = append(cmds, bc.Command)
 		}
 	}
+	excluded := make([]string, 0, len(resp.ExcludedFiles))
+	for _, f := range resp.ExcludedFiles {
+		if f.Path != "" {
+			excluded = append(excluded, f.Path)
+		}
+	}
+	cache := make([]string, 0, len(resp.BuildCacheFiles))
+	for _, f := range resp.BuildCacheFiles {
+		if f.Path != "" {
+			cache = append(cache, f.Path)
+		}
+	}
 	return detect.Result{
 		Framework:         detect.Framework(resp.Stack),
 		SuggestedProtocol: resp.SuggestedProtocol,
 		BuildCommand:      strings.Join(cmds, " && "),
 		OutputDir:         resp.StaticHosting.RootPath,
 		SPA:               resp.StaticHosting.SPAMode,
+		ExcludedFiles:     excluded,
+		BuildCacheFiles:   cache,
 	}
 }
 
@@ -1123,10 +1140,29 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg launch
 			subdomain = s
 		}
 
-		// SPA routing prompt
+		// Subdirectory (build output dir) prompt, pre-filled with the detected
+		// default (e.g. "dist" for Vite). The user can accept, override, or clear it.
+		subdirPrompt := promptui.Prompt{
+			Label:   "Subdirectory to deploy from (build output dir)",
+			Default: cfg.subdirectory,
+		}
+		if s, err := subdirPrompt.Run(); err == nil {
+			cfg.subdirectory = strings.TrimSpace(s)
+		}
+
+		// SPA routing prompt — preselect the detected value. cfg.spaMode is
+		// seeded from detection before provisioning, so a detected SPA defaults
+		// the cursor to "Yes" (the user can still change it).
+		spaCursor := 0
+		spaLabel := "SPA routing (rewrite all paths to index.html)?"
+		if cfg.spaMode {
+			spaCursor = 1
+			spaLabel += " [detected]"
+		}
 		spaPrompt := promptui.Select{
-			Label: "SPA routing (rewrite all paths to index.html)?",
-			Items: []string{"No", "Yes"},
+			Label:     spaLabel,
+			Items:     []string{"No", "Yes"},
+			CursorPos: spaCursor,
 		}
 		if idx, _, err := spaPrompt.Run(); err == nil {
 			cfg.spaMode = idx == 1
@@ -1586,6 +1622,47 @@ func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg laun
 		// first deploy may publish unbuilt sources — make the fix discoverable.
 		env.Warn("Could not set the detected build command (%q): %v", detection.BuildCommand, err)
 		env.Warn("Add it manually: dhq build-commands create -p %s --command %q", cfg.projectID, detection.BuildCommand)
+	}
+}
+
+// launchApplyStaticExtras applies the detected excluded-file and build-cache
+// patterns to the project, mirroring the web onboarding wizard's suggested
+// config so the first static deploy is clean and fast. Best-effort and
+// idempotent: it skips patterns that already exist, and any failure is
+// non-fatal (the deploy still works, just without the optimisation).
+func launchApplyStaticExtras(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, detection detect.Result) {
+	if len(detection.ExcludedFiles) > 0 {
+		existing := map[string]bool{}
+		if list, err := client.ListExcludedFiles(ctx, cfg.projectID, nil); err == nil {
+			for _, e := range list {
+				existing[e.Path] = true
+			}
+		}
+		for _, path := range detection.ExcludedFiles {
+			if path == "" || existing[path] {
+				continue
+			}
+			if _, err := client.CreateExcludedFile(ctx, cfg.projectID, sdk.ExcludedFileCreateRequest{Path: path}); err != nil {
+				env.Logger.Write("could not add excluded file %q: %v", path, err)
+			}
+		}
+	}
+
+	if len(detection.BuildCacheFiles) > 0 {
+		existing := map[string]bool{}
+		if list, err := client.ListBuildCacheFiles(ctx, cfg.projectID); err == nil {
+			for _, b := range list {
+				existing[b.Path] = true
+			}
+		}
+		for _, path := range detection.BuildCacheFiles {
+			if path == "" || existing[path] {
+				continue
+			}
+			if _, err := client.CreateBuildCacheFile(ctx, cfg.projectID, sdk.BuildCacheFileCreateRequest{Path: path}); err != nil {
+				env.Logger.Write("could not add build cache file %q: %v", path, err)
+			}
+		}
 	}
 }
 
