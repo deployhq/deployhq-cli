@@ -1225,7 +1225,9 @@ func TestLaunchEnsureRepo_SurfacesPublicDeployKey(t *testing.T) {
 	env, _, stderr := testLaunchEnvelope() // NonInteractive: surfaces without pausing
 
 	cfg := launchConfig{targetProtocol: "static_hosting", branch: "main"}
-	err := launchEnsureRepo(t.Context(), env, cfg, client, "my-app", "git@github.com:acme/my-app.git")
+	// Non-GitHub host so the gh-CLI auto-install path is skipped and we
+	// deterministically exercise the surface-the-key fallback.
+	err := launchEnsureRepo(t.Context(), env, cfg, client, "my-app", "git@git.example.com:acme/my-app.git")
 	require.NoError(t, err)
 	assert.Contains(t, stderr.String(), pubKey, "public deploy key must be surfaced after connecting the repo")
 }
@@ -1272,6 +1274,14 @@ func TestExplainLaunchFailure_EmptyProjectIsNoOp(t *testing.T) {
 	env, _, stderr := testLaunchEnvelope()
 	explainLaunchFailure(t.Context(), env, nil, "")
 	assert.Empty(t, stderr.String())
+}
+
+func TestInstallDeployKeyViaGH_RejectsNonGitHubURL(t *testing.T) {
+	// A non-GitHub URL is rejected before any `gh` invocation, so callers fall
+	// back to surfacing the key for manual installation.
+	err := installDeployKeyViaGH("git@gitlab.com:acme/app.git", "ssh-ed25519 AAAA key", "DeployHQ - app")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "GitHub")
 }
 
 // testLaunchEnvelope uses io.Discard for the Logger so tests don't need a

@@ -1009,8 +1009,9 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 	env.Status("Repository connected.")
 	// Surface the project's public deploy key so a private repo can be granted
 	// read access before the first clone. proj was fetched above (may be nil if
-	// that lookup failed — the helper re-fetches in that case).
-	launchSurfaceDeployKey(ctx, env, client, projectID, proj)
+	// that lookup failed — the helper re-fetches in that case). For a GitHub repo
+	// with the gh CLI present, the helper installs the key automatically instead.
+	launchSurfaceDeployKey(ctx, env, client, projectID, gitRemote, proj)
 	return nil
 }
 
@@ -1021,7 +1022,7 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 // mode it pauses so the user can install the key first; non-interactively it
 // prints a warning and continues (a private repo missing the key surfaces as a
 // clone error at deploy time, which the structured error flow reports).
-func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *sdk.Client, projectID string, proj *sdk.Project) {
+func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *sdk.Client, projectID, gitRemote string, proj *sdk.Project) {
 	publicKey := ""
 	if proj != nil {
 		publicKey = proj.PublicKey
@@ -1034,6 +1035,24 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 	}
 	if publicKey == "" {
 		return // nothing to surface (best-effort)
+	}
+
+	// Path A: for a GitHub repo, try the local `gh` CLI to install the deploy
+	// key automatically. gh carries its own auth, so this needs no browser or
+	// prompt and works in both interactive and non-interactive mode. Any failure
+	// (not GitHub, gh missing/unauthenticated, no write access, duplicate key)
+	// falls through to surfacing the key for manual installation.
+	if isGitHubURL(gitRemote) && ghAvailable() {
+		name := projectID
+		if proj != nil && proj.Name != "" {
+			name = proj.Name
+		}
+		err := installDeployKeyViaGH(gitRemote, publicKey, fmt.Sprintf("DeployHQ - %s", name))
+		if err == nil {
+			output.ColorGreen.Fprintf(env.Stderr, "Added the project's deploy key to GitHub via the gh CLI.\n") //nolint:errcheck
+			return
+		}
+		env.Logger.Write("gh deploy-key add failed; falling back to manual key: %v", err)
 	}
 
 	env.Status("")

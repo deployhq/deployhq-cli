@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -863,35 +862,8 @@ func (m *initModel) createServer() tea.Msg {
 }
 
 func (m *initModel) addDeployKeyViaGH() tea.Msg {
-	// Extract repo owner/name from URL (e.g. git@github.com:owner/repo.git)
-	repo := extractGitHubRepo(m.repoURL)
-	if repo == "" {
-		return createResultMsg{err: fmt.Errorf("could not extract GitHub repo from URL: %s", m.repoURL), step: stepDeployKeyAuto}
-	}
-
-	// Write public key to temp file
-	tmpFile, err := os.CreateTemp("", "dhq-deploy-key-*.pub")
-	if err != nil {
-		return createResultMsg{err: err, step: stepDeployKeyAuto}
-	}
-	defer os.Remove(tmpFile.Name()) //nolint:errcheck
-
-	if _, err := tmpFile.WriteString(m.project.PublicKey); err != nil {
-		tmpFile.Close() //nolint:errcheck
-		return createResultMsg{err: err, step: stepDeployKeyAuto}
-	}
-	tmpFile.Close() //nolint:errcheck
-
-	// Run gh repo deploy-key add
-	cmd := exec.Command("gh", "repo", "deploy-key", "add", tmpFile.Name(),
-		"--repo", repo,
-		"--title", fmt.Sprintf("DeployHQ - %s", m.project.Name))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return createResultMsg{err: fmt.Errorf("%s", strings.TrimSpace(string(output))), step: stepDeployKeyAuto}
-	}
-
-	return createResultMsg{err: nil, step: stepDeployKeyAuto}
+	err := installDeployKeyViaGH(m.repoURL, m.project.PublicKey, fmt.Sprintf("DeployHQ - %s", m.project.Name))
+	return createResultMsg{err: err, step: stepDeployKeyAuto}
 }
 
 func extractGitHubRepo(url string) string {
