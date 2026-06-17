@@ -440,6 +440,10 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// ── Step 11: Deploy ───────────────────────────────────────────────────────
 	dep, liveURL, err := launchDeploy(ctx, env, cfg, client, server)
 	if err != nil {
+		// Close the loop: a local-AI diagnosis of the failure (interactive +
+		// Ollama only; no-op otherwise). Runs before cleanup so the failed
+		// deployment is still queryable for context.
+		explainLaunchFailure(ctx, env, client, cfg.projectID)
 		// Provision succeeded but deploy failed — name the resource
 		if server != nil {
 			launchDeployFailureCleanup(ctx, env, cfg, client, server)

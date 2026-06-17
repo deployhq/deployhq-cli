@@ -1257,6 +1257,23 @@ func TestLaunchEnsureRepo_AlreadyConnected_NoKeyNoise(t *testing.T) {
 	assert.NotContains(t, stderr.String(), pubKey, "no deploy-key output when the repo is already connected")
 }
 
+// ── Failure diagnosis (explainLaunchFailure) — interactive-only ───────────────
+
+func TestExplainLaunchFailure_NonInteractiveIsNoOp(t *testing.T) {
+	// Non-interactive must never auto-diagnose, prompt, or call Ollama — the
+	// structured launchError is the machine-readable output. Expect no output.
+	env, stdout, stderr := testLaunchEnvelope() // NonInteractive=true, IsTTY=false
+	explainLaunchFailure(t.Context(), env, nil, "my-app")
+	assert.Empty(t, stdout.String())
+	assert.Empty(t, stderr.String())
+}
+
+func TestExplainLaunchFailure_EmptyProjectIsNoOp(t *testing.T) {
+	env, _, stderr := testLaunchEnvelope()
+	explainLaunchFailure(t.Context(), env, nil, "")
+	assert.Empty(t, stderr.String())
+}
+
 // testLaunchEnvelope uses io.Discard for the Logger so tests don't need a
 // real log file. We define a Logger inline since output.Logger has exported
 // fields but the constructor creates a file.
