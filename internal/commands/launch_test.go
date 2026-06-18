@@ -1339,6 +1339,59 @@ func TestInstallDeployKeyViaGH_RejectsNonGitHubURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "GitHub")
 }
 
+// ── Email-verification gate handling ──────────────────────────────────────────
+
+func TestIsEmailVerificationRequired(t *testing.T) {
+	assert.True(t, isEmailVerificationRequired(&sdk.APIError{StatusCode: http.StatusForbidden, Message: "email_verification_required"}))
+	// Critical: a generic 403 must NOT be treated as the email-verification case.
+	assert.False(t, isEmailVerificationRequired(&sdk.APIError{StatusCode: http.StatusForbidden, Message: "AccessDenied"}))
+	assert.False(t, isEmailVerificationRequired(&sdk.APIError{StatusCode: http.StatusNotFound, Message: "email_verification_required"}))
+	assert.False(t, isEmailVerificationRequired(errors.New("boom")))
+}
+
+func TestHandleEmailVerificationRequired_NonInteractiveFailsCleanly(t *testing.T) {
+	env, _, _ := testLaunchEnvelope() // NonInteractive
+	err := handleEmailVerificationRequired(t.Context(), env, nil, "user@example.com")
+	require.Error(t, err)
+	var le *launchError
+	require.True(t, errors.As(err, &le))
+	assert.Equal(t, reasonEmailVerificationRequired, le.Reason)
+	assert.True(t, le.Retryable, "the user can retry after verifying")
+}
+
+func TestLaunchGetCaps_EmailVerificationRequired_StructuredFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"email_verification_required"}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope() // NonInteractive → no wait, clean structured fail
+	_, capsKnown, err := launchGetCaps(t.Context(), env, newTestClient(t, srv))
+	require.Error(t, err)
+	assert.False(t, capsKnown)
+	var le *launchError
+	require.True(t, errors.As(err, &le))
+	assert.Equal(t, reasonEmailVerificationRequired, le.Reason)
+}
+
+func TestLaunchGetCaps_GenericForbidden_Propagates(t *testing.T) {
+	// Anti-regression: a real authorization 403 must surface as a real error —
+	// NOT be swallowed or mistaken for the email-verification case.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"AccessDenied"}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	_, capsKnown, err := launchGetCaps(t.Context(), env, newTestClient(t, srv))
+	require.Error(t, err)
+	assert.False(t, capsKnown)
+	var le *launchError
+	assert.False(t, errors.As(err, &le), "a generic 403 must not become an email_verification launchError")
+}
+
 // testLaunchEnvelope uses io.Discard for the Logger so tests don't need a
 // real log file. We define a Logger inline since output.Logger has exported
 // fields but the constructor creates a file.

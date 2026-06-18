@@ -104,6 +104,10 @@ const (
 	reasonRateLimited        = "rate_limited"
 	reasonProvisionFailed    = "provision_failed"
 	reasonDeployFailed       = "deploy_failed"
+	// reasonEmailVerificationRequired: the account's email isn't verified yet, so
+	// the backend's deploy gate blocks it. Handled gracefully (wait-and-retry
+	// interactively, structured fail non-interactively) — not a raw 403.
+	reasonEmailVerificationRequired = "email_verification_required"
 )
 
 // launchError is a structured error that carries machine-readable next-step
@@ -330,6 +334,12 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// acts as the authority.
 	caps, capsKnown, err := launchGetCaps(ctx, env, client)
 	if err != nil {
+		// An email_verification_required failure carries its own reason; route it
+		// through writeLaunchError so --json gets the structured payload.
+		var le *launchError
+		if errors.As(err, &le) {
+			return writeLaunchError(env, cfg, le.Reason, err)
+		}
 		return err
 	}
 
@@ -555,9 +565,75 @@ func launchGetCaps(ctx context.Context, env *output.Envelope, client *sdk.Client
 			env.Warn("Capability check unavailable — beta status unknown. Visit https://app.deployhq.com/beta_features to enable.")
 			return &sdk.AccountCapabilities{}, false, nil
 		}
+		// The account's email isn't verified yet — handle it gracefully (wait and
+		// retry interactively, structured fail non-interactively) rather than
+		// surfacing a raw 403. Every OTHER error still propagates as a real error.
+		if isEmailVerificationRequired(err) {
+			if hErr := handleEmailVerificationRequired(ctx, env, client, ""); hErr != nil {
+				return nil, false, hErr
+			}
+			// Verified after the wait — re-fetch; degrade if the refetch fails.
+			if caps, err = client.GetAccountCapabilities(ctx); err != nil {
+				return &sdk.AccountCapabilities{}, false, nil
+			}
+			return caps, true, nil
+		}
 		return nil, false, err
 	}
 	return caps, true, nil
+}
+
+// isEmailVerificationRequired reports whether err is the backend's SPECIFIC
+// "email not verified" 403 — the one launch handles gracefully. A generic 403
+// (AccessDenied) returns false here so it still surfaces as a real error.
+func isEmailVerificationRequired(err error) bool {
+	var apiErr *sdk.APIError
+	return errors.As(err, &apiErr) && apiErr.IsEmailVerificationRequired()
+}
+
+// emailVerificationLaunchError is the structured failure returned in
+// non-interactive mode when the account's email isn't verified.
+func emailVerificationLaunchError() *launchError {
+	return &launchError{
+		Reason:    reasonEmailVerificationRequired,
+		Message:   "Your email address needs to be verified before you can deploy. Open the verification link we emailed you, then re-run.",
+		NextStep:  "Verify your email (check your inbox), then re-run: dhq launch",
+		Retryable: true,
+	}
+}
+
+// handleEmailVerificationRequired deals with the one auth case launch handles
+// gracefully. Non-interactive: a clean structured failure asking the user to
+// verify. Interactive: explain, wait for the user to verify and press Enter,
+// re-checking until the account is verified (or the user cancels with Ctrl-C).
+func handleEmailVerificationRequired(ctx context.Context, env *output.Envelope, client *sdk.Client, email string) error {
+	if env.NonInteractive {
+		return emailVerificationLaunchError()
+	}
+
+	if email == "" {
+		_, email, _, _ = cliCtx.Credentials()
+	}
+	env.Status("")
+	env.Status("We're sorry — your email needs to be verified before you can deploy.")
+	if email != "" {
+		env.Status("We've sent a verification link to %s. Open it to verify your account.", email)
+	} else {
+		env.Status("Check your inbox for the verification link.")
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Fprint(env.Stderr, "Press Enter once you've verified (Ctrl-C to cancel)... ") //nolint:errcheck
+		_, _ = reader.ReadString('\n')
+		// Re-check against an authenticated endpoint: success — or any error that
+		// is NOT the email-verification gate — means we can proceed.
+		if _, err := client.GetAccountCapabilities(ctx); err == nil || !isEmailVerificationRequired(err) {
+			env.Status("Thanks — continuing.")
+			return nil
+		}
+		env.Status("Still not verified — open the verification link, then press Enter.")
+	}
 }
 
 // ── Auth / bootstrap ────────────────────────────────────────────────────────
@@ -661,10 +737,6 @@ func launchSignup(ctx context.Context, env *output.Envelope, reader *bufio.Reade
 	}
 	_ = config.Set(config.GlobalConfigPath(), "account", result.Account.Subdomain)
 
-	if !result.EmailVerified {
-		env.Warn("Email not yet verified — account is usable but please verify when you can.")
-	}
-
 	output.ColorGreen.Fprintf(env.Stderr, "Account %q created. API key stored.\n", result.Account.Subdomain) //nolint:errcheck
 
 	var sdkOpts []sdk.Option
@@ -675,6 +747,16 @@ func launchSignup(ctx context.Context, env *output.Envelope, reader *bufio.Reade
 	client, clientErr := sdk.New(result.Account.Subdomain, email, result.APIKey, sdkOpts...)
 	if clientErr != nil {
 		return nil, "", &output.InternalError{Message: "create api client after signup", Cause: clientErr}
+	}
+
+	// A fresh signup's email isn't verified yet, and the backend's deploy gate
+	// will block the deployment. Handle it now (wait-and-retry, since signup is
+	// interactive) so the user verifies up front rather than running into a 403
+	// after detection — and avoid a misleading "No framework detected".
+	if !result.EmailVerified {
+		if vErr := handleEmailVerificationRequired(ctx, env, client, email); vErr != nil {
+			return nil, "", vErr
+		}
 	}
 	return client, result.Account.Subdomain, nil
 }
