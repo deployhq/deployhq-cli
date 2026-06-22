@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/skills"
 )
@@ -116,15 +117,31 @@ func (a aider) Install() (string, error) {
 // PostInstallNote tells the user how to wire the skill into Aider, since
 // we can't safely auto-edit .aider.conf.yml. Surfaced by both the hello
 // hook and `dhq skills install` via the Noter interface.
+//
+// The path is double-quoted so the snippet is safe to paste verbatim into
+// both YAML (read: ["..."]) and a shell command (--read "..."), even when
+// the user's home contains spaces or other characters that would otherwise
+// need escaping.
 func (a aider) PostInstallNote() string {
 	p, err := a.skillPath()
 	if err != nil {
 		return ""
 	}
+	q := quotePathForYAMLAndShell(p)
 	return fmt.Sprintf(
 		"To load on every Aider run: add `read: [%s]` to ~/.aider.conf.yml "+
 			"(or pass `--read %s` ad-hoc).",
-		p, p,
+		q, q,
 	)
+}
+
+// quotePathForYAMLAndShell wraps a path in double quotes with internal
+// backslashes and double quotes escaped. The result is valid in both a
+// YAML double-quoted scalar and a POSIX shell double-quoted string, which
+// is the only quoting context the PostInstallNote needs to support.
+func quotePathForYAMLAndShell(p string) string {
+	p = strings.ReplaceAll(p, `\`, `\\`)
+	p = strings.ReplaceAll(p, `"`, `\"`)
+	return `"` + p + `"`
 }
 

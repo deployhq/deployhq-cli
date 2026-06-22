@@ -132,10 +132,10 @@ type Noter interface {
 
 // DetectInstalled probes every registered target and returns those whose
 // agent appears to be installed locally (Status != StatusNotInstalled).
-// The runtime agent — the one the user is currently running `dhq` from,
-// as reported by harness.Detect — is included even if Status would
-// otherwise be StatusInstalled, so the caller can decide whether to
-// upgrade silently or skip.
+//
+// Decisions about how to act on the result — whether to auto-install for
+// the runtime agent, prompt for others, or skip ScopeProject — are the
+// caller's responsibility (see internal/commands/hello_skills.go).
 func DetectInstalled() []DetectResult {
 	var out []DetectResult
 	for _, t := range All() {
@@ -146,8 +146,11 @@ func DetectInstalled() []DetectResult {
 	return out
 }
 
-// Find returns the Target with the given name, or nil if no such target is
-// registered. Matching is case-insensitive on the canonical name.
+// Find returns the Target with the given name, or nil if no such target
+// is registered. Names are exact-match — every registered target's
+// canonical name is lowercase (claude-code, cursor, …), so a CLI flag
+// like --agent CURSOR will not match. Normalise at the call site if
+// case-insensitive lookup is desired.
 func Find(name string) Target {
 	for _, t := range All() {
 		if t.Name() == name {

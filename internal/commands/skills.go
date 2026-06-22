@@ -35,7 +35,7 @@ type skillRow struct {
 func newSkillsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List detected AI agents and skill install status",
+		Short: "List supported AI agents and their skill install status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 

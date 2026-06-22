@@ -30,8 +30,13 @@ const (
 
 // xdgConfigDir returns $XDG_CONFIG_HOME, or ~/.config as the XDG spec
 // fallback. Lives at file scope so future XDG-aware targets can reuse it.
+//
+// The XDG Base Directory spec requires the variable to hold an absolute
+// path; if it's set to a relative path, the spec says to ignore it and
+// use the default. Honouring that here avoids accidentally writing into
+// the dev's cwd when XDG_CONFIG_HOME is misconfigured.
 func xdgConfigDir() (string, error) {
-	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
+	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" && filepath.IsAbs(x) {
 		return x, nil
 	}
 	home, err := homeDir()

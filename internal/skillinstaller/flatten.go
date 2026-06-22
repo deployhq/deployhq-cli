@@ -43,13 +43,17 @@ func buildOwnedSkillFile(efs fs.FS, root string) ([]byte, error) {
 }
 
 // parseOwnedFileVersion returns the version embedded in our top-of-file
-// HTML comment, or "" if no marker is present.
+// HTML comment, or "" if no marker is present at the start of the body.
+//
+// The marker MUST be the first thing in the file. We write it that way
+// via buildOwnedSkillFile, and if a future read finds content above the
+// marker we treat the file as "not ours" — reporting StatusAvailable so
+// the next install rewrites cleanly rather than appending to user edits.
 func parseOwnedFileVersion(body string) string {
-	idx := strings.Index(body, ownedFileVersionPrefix)
-	if idx < 0 {
+	if !strings.HasPrefix(body, ownedFileVersionPrefix) {
 		return ""
 	}
-	rest := body[idx+len(ownedFileVersionPrefix):]
+	rest := body[len(ownedFileVersionPrefix):]
 	end := strings.Index(rest, ownedFileVersionSuffix)
 	if end < 0 {
 		return ""

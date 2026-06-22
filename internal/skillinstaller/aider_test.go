@@ -178,8 +178,11 @@ func TestParseOwnedFileVersion(t *testing.T) {
 	}{
 		{"empty", "", ""},
 		{"no marker", "# user content\n", ""},
-		{"v1", "<!-- deployhq-skill v1 -->\nbody\n", "1"},
-		{"v42 mid file", "x\n<!-- deployhq-skill v42 -->\nbody\n", "42"},
+		{"v1 at start", "<!-- deployhq-skill v1 -->\nbody\n", "1"},
+		// Owned-file contract: marker must be the first thing in the
+		// file. Anything above it means the file isn't ours and we
+		// should rewrite, not trust it.
+		{"marker not on first line is rejected", "x\n<!-- deployhq-skill v42 -->\nbody\n", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

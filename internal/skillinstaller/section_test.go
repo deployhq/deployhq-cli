@@ -1,6 +1,9 @@
 package skillinstaller
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseSectionVersion(t *testing.T) {
 	cases := []struct {
@@ -37,11 +40,11 @@ func TestMergeSection_PreservesPreAndPost(t *testing.T) {
 	got := mergeSection(existing, "<!-- BEGIN deployhq-skill v1 -->\nnew\n<!-- END deployhq-skill -->")
 
 	for _, must := range []string{"# top", "# bottom", "v1 -->", "new"} {
-		if !contains(got, must) {
+		if !strings.Contains(got, must) {
 			t.Errorf("missing %q in result:\n%s", must, got)
 		}
 	}
-	if contains(got, "old") || contains(got, "v0 -->") {
+	if strings.Contains(got, "old") || strings.Contains(got, "v0 -->") {
 		t.Errorf("stale content survived:\n%s", got)
 	}
 }
@@ -55,11 +58,3 @@ func TestMergeSection_Idempotent(t *testing.T) {
 	}
 }
 
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
