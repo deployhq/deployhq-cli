@@ -16,9 +16,14 @@ func newSkillsCmd() *cobra.Command {
 (Claude Code, Cursor, etc.). Run during 'dhq hello' or standalone.
 
 Examples:
-  dhq skills list                       Show detected agents and skill status
-  dhq skills install                    Install for every detected agent
-  dhq skills install --agent claude-code  Install for a single agent`,
+  dhq skills list                         Show every supported agent and status
+  dhq skills install                      Install for detected user-scope agents
+                                          (Claude Code, Cursor, etc.). Skips
+                                          project-scope agents to avoid silently
+                                          mutating the current repo.
+  dhq skills install --agent copilot      Install for a project-scope agent
+                                          (writes into the current repo)
+  dhq skills install --agent claude-code  Install for any specific agent`,
 	}
 	cmd.AddCommand(newSkillsListCmd())
 	cmd.AddCommand(newSkillsInstallCmd())

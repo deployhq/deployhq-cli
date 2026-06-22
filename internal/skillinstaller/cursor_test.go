@@ -57,9 +57,9 @@ func TestCursor_Install_WritesMDC(t *testing.T) {
 		t.Error("mdc missing alwaysApply: false")
 	}
 	// The description from SKILL.md ("Deploy code…") should make it into
-	// the Cursor frontmatter, collapsed to one line.
-	if !strings.Contains(body, "description: Deploy code") {
-		t.Errorf("mdc missing description extracted from SKILL.md\n--- body ---\n%s", body[:min(400, len(body))])
+	// the Cursor frontmatter, collapsed to one line and YAML-quoted.
+	if !strings.Contains(body, `description: "Deploy code`) {
+		t.Errorf("mdc missing quoted description extracted from SKILL.md\n--- body ---\n%s", body[:min(400, len(body))])
 	}
 	// SKILL.md body content should appear (post-frontmatter heading).
 	if !strings.Contains(body, "DeployHQ CLI — Agent Skill Guide") {

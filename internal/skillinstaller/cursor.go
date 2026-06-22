@@ -121,7 +121,10 @@ func buildCursorMDC(efs fs.FS, root string) ([]byte, error) {
 
 	var buf strings.Builder
 	buf.WriteString("---\n")
-	fmt.Fprintf(&buf, "description: %s\n", oneLine(description))
+	// %q produces a Go-quoted string with " and \ escaped — also a valid
+	// YAML double-quoted scalar. Required because the description may
+	// contain `:` or `#`, which would corrupt an unquoted scalar.
+	fmt.Fprintf(&buf, "description: %q\n", oneLine(description))
 	buf.WriteString("alwaysApply: false\n")
 	buf.WriteString("---\n\n")
 	buf.Write(body)

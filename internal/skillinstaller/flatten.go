@@ -103,6 +103,12 @@ func flattenSkill(efs fs.FS, root string) (description string, body []byte, err 
 		if e.IsDir() {
 			continue
 		}
+		// References are markdown by contract. Skip anything else so a
+		// stray editor backup (e.g. .swp) or future binary asset doesn't
+		// land verbatim in a single-file target's output.
+		if !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
 		data, err := fs.ReadFile(efs, path.Join(refsDir, e.Name()))
 		if err != nil {
 			return "", nil, fmt.Errorf("read %s: %w", e.Name(), err)

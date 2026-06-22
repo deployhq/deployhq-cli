@@ -143,4 +143,16 @@ func TestXDGConfigDir(t *testing.T) {
 	if got != "/some/path" {
 		t.Errorf("XDG override = %q, want %q", got, "/some/path")
 	}
+
+	// Per the XDG Base Directory spec, a relative XDG_CONFIG_HOME must
+	// be ignored — falling back to ~/.config rather than potentially
+	// writing into the dev's cwd via a misconfigured env.
+	t.Setenv("XDG_CONFIG_HOME", "relative/path")
+	got, err = xdgConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != filepath.Join(home, ".config") {
+		t.Errorf("relative XDG should fall back to ~/.config = %q, want %q", got, filepath.Join(home, ".config"))
+	}
 }
