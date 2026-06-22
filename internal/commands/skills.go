@@ -65,6 +65,7 @@ func newSkillsInstallCmd() *cobra.Command {
 			env := cliCtx.Envelope
 
 			var targets []skillinstaller.Target
+			var skippedProject []string
 			if agentFlag != "" {
 				t := skillinstaller.Find(agentFlag)
 				if t == nil {
@@ -75,8 +76,17 @@ func newSkillsInstallCmd() *cobra.Command {
 				}
 				targets = []skillinstaller.Target{t}
 			} else {
+				// Bulk install only touches user-scope targets — installing
+				// project-scope ones (Copilot, Cline, Kiro, Antigravity)
+				// would silently mutate the current repo, which we promise
+				// not to do without --agent. Defer those to an explicit
+				// `dhq skills install --agent <name>` invocation.
 				for _, d := range skillinstaller.DetectInstalled() {
-					targets = append(targets, d.Target)
+					if d.Target.Scope() == skillinstaller.ScopeUser {
+						targets = append(targets, d.Target)
+					} else {
+						skippedProject = append(skippedProject, d.Target.Name())
+					}
 				}
 			}
 
@@ -100,6 +110,13 @@ func newSkillsInstallCmd() *cobra.Command {
 					if note := n.PostInstallNote(); note != "" {
 						env.Status("  %s", note)
 					}
+				}
+			}
+
+			if len(skippedProject) > 0 {
+				env.Status("Skipped project-scope agents (modify the current repo, opt-in only):")
+				for _, name := range skippedProject {
+					env.Status("  - %s — install with: dhq skills install --agent %s", name, name)
 				}
 			}
 

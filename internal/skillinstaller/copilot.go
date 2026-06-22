@@ -43,50 +43,16 @@ const (
 	copilotRefsDir          = ".github/copilot/deployhq"
 )
 
-// getCwd is the working-directory lookup. Overridable in tests.
-var getCwd = os.Getwd
-
-func (c copilot) repoRoot() (string, error) {
-	cwd, err := getCwd()
-	if err != nil {
-		return "", err
-	}
-	return cwd, nil
-}
-
-// inRepo reports whether the cwd looks like a git repo. We accept any
-// ancestor having .git/, which matches how someone running 'dhq' inside a
-// subdirectory of their project would expect this to behave.
-func (c copilot) inRepo() bool {
-	dir, err := c.repoRoot()
-	if err != nil {
-		return false
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return false
-		}
-		dir = parent
-	}
-}
-
 func (c copilot) Detect() Status {
-	if !c.inRepo() {
+	root, ok := findRepoRoot()
+	if !ok {
 		// Not a git repo — nothing to install into. We treat this as
 		// "not installed" so 'dhq skills list' stays informative without
 		// implying we'd write to a random directory.
 		return StatusNotInstalled
 	}
-	cwd, err := c.repoRoot()
-	if err != nil {
-		return StatusNotInstalled
-	}
 
-	data, err := os.ReadFile(filepath.Join(cwd, copilotInstructionsFile))
+	data, err := os.ReadFile(filepath.Join(root, copilotInstructionsFile))
 	if err != nil {
 		return StatusAvailable
 	}
@@ -101,16 +67,14 @@ func (c copilot) Detect() Status {
 }
 
 func (c copilot) Install() (string, error) {
-	cwd, err := c.repoRoot()
-	if err != nil {
-		return "", err
-	}
-	if !c.inRepo() {
+	root, ok := findRepoRoot()
+	if !ok {
+		cwd, _ := getCwd()
 		return "", fmt.Errorf("not a git repository (cwd=%s); run from inside a repo or use a user-scope target", cwd)
 	}
 
-	// Refresh the reference tree at .github/copilot/deployhq/.
-	refsRoot := filepath.Join(cwd, copilotRefsDir)
+	// Refresh the reference tree at <repo>/.github/copilot/deployhq/.
+	refsRoot := filepath.Join(root, copilotRefsDir)
 	if err := os.RemoveAll(refsRoot); err != nil {
 		return "", err
 	}
@@ -118,7 +82,7 @@ func (c copilot) Install() (string, error) {
 		return "", err
 	}
 
-	instrPath := filepath.Join(cwd, copilotInstructionsFile)
+	instrPath := filepath.Join(root, copilotInstructionsFile)
 	if err := os.MkdirAll(filepath.Dir(instrPath), 0o755); err != nil {
 		return "", err
 	}

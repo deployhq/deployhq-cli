@@ -41,32 +41,12 @@ const (
 	antigravityRefsDir          = ".antigravity/deployhq"
 )
 
-func (a antigravity) inRepo() bool {
-	dir, err := getCwd()
-	if err != nil {
-		return false
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return false
-		}
-		dir = parent
-	}
-}
-
 func (a antigravity) Detect() Status {
-	if !a.inRepo() {
+	root, ok := findRepoRoot()
+	if !ok {
 		return StatusNotInstalled
 	}
-	cwd, err := getCwd()
-	if err != nil {
-		return StatusNotInstalled
-	}
-	data, err := os.ReadFile(filepath.Join(cwd, antigravityInstructionsFile))
+	data, err := os.ReadFile(filepath.Join(root, antigravityInstructionsFile))
 	if err != nil {
 		return StatusAvailable
 	}
@@ -81,17 +61,14 @@ func (a antigravity) Detect() Status {
 }
 
 func (a antigravity) Install() (string, error) {
-	if !a.inRepo() {
+	root, ok := findRepoRoot()
+	if !ok {
 		cwd, _ := getCwd()
 		return "", fmt.Errorf("not a git repository (cwd=%s); run from inside a repo", cwd)
 	}
-	cwd, err := getCwd()
-	if err != nil {
-		return "", err
-	}
 
 	// Refresh the reference tree at <repo>/.antigravity/deployhq/.
-	refsRoot := filepath.Join(cwd, antigravityRefsDir)
+	refsRoot := filepath.Join(root, antigravityRefsDir)
 	if err := os.RemoveAll(refsRoot); err != nil {
 		return "", err
 	}
@@ -99,7 +76,7 @@ func (a antigravity) Install() (string, error) {
 		return "", err
 	}
 
-	instrPath := filepath.Join(cwd, antigravityInstructionsFile)
+	instrPath := filepath.Join(root, antigravityInstructionsFile)
 	existing, err := os.ReadFile(instrPath)
 	if err != nil && !os.IsNotExist(err) {
 		return "", err
