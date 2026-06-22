@@ -30,6 +30,24 @@ func TestFindRepoRoot_OutsideRepo(t *testing.T) {
 	}
 }
 
+func TestFindRepoRoot_GetCwdError(t *testing.T) {
+	// If the OS can't tell us the cwd at all (e.g. it was unlinked under
+	// us, or a permission boundary blocks lookup), we treat it the same
+	// as "no repo found" rather than panicking or returning a half-true
+	// path that downstream code would join filenames onto.
+	orig := getCwd
+	getCwd = func() (string, error) { return "", os.ErrPermission }
+	t.Cleanup(func() { getCwd = orig })
+
+	got, ok := findRepoRoot()
+	if ok {
+		t.Errorf("findRepoRoot() ok=true when getCwd errored, want false")
+	}
+	if got != "" {
+		t.Errorf("findRepoRoot() path = %q, want empty string", got)
+	}
+}
+
 // Regression: each project-scope target must write at the repo root, not
 // the cwd, when invoked from a subdirectory. Bug surfaced by Codex review
 // on copilot.go; the same pattern existed in cline/kiro/antigravity.

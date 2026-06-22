@@ -91,6 +91,20 @@ func newSkillsInstallCmd() *cobra.Command {
 			}
 
 			if len(targets) == 0 {
+				if len(skippedProject) > 0 {
+					// Detected agents exist, they're just project-scope —
+					// hide them from the bare command to avoid silently
+					// writing into the user's repo. Tell the user exactly
+					// which ones can be opted in.
+					hint := "Available project-scope agents (run with --agent to install):\n"
+					for _, name := range skippedProject {
+						hint += fmt.Sprintf("  - dhq skills install --agent %s\n", name)
+					}
+					return &output.UserError{
+						Message: "No user-scope AI agents available for bulk install",
+						Hint:    hint,
+					}
+				}
 				return &output.UserError{
 					Message: "No supported AI agents detected on this machine",
 					Hint:    "Install one (e.g. Claude Code) and re-run, or pass --agent <name>.",
