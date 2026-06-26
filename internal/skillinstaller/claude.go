@@ -11,7 +11,13 @@ import (
 
 func init() { Register(&claudeCode{}) }
 
-// homeDir is the user home-directory lookup. Overridable in tests.
+// homeDir is the user home-directory lookup. Overridable in tests so we
+// don't write into the dev's real home.
+//
+// Tests in this package MUST NOT call t.Parallel(): homeDir (along with
+// getCwd in repo.go and findAider in aider.go) is mutable global state.
+// Concurrent tests would race on these vars and produce flaky output. The
+// install/detect paths are fast enough that serial execution costs nothing.
 var homeDir = os.UserHomeDir
 
 // claudeCode installs the skill into Claude Code's user-level skills directory.
@@ -87,7 +93,7 @@ func (c claudeCode) Install() (string, error) {
 	if err := writeEmbeddedTree(skills.FS, "deployhq", dir); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(dir, versionMarker), []byte(skills.Version+"\n"), 0o644); err != nil {
+	if err := safeWriteFile(filepath.Join(dir, versionMarker), []byte(skills.Version+"\n"), 0o644); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -97,7 +103,15 @@ func (c claudeCode) Install() (string, error) {
 // creating directories as needed. Existing files are overwritten — this is
 // the simplest definition of idempotent and matches what users expect from
 // "re-install" or "upgrade".
+//
+// Refuses when dst is a symlink: otherwise a planted symlink at the refs
+// root would silently redirect every write into a victim directory.
+// Per-file writes go through safeWriteFile, which adds the same check on
+// the final path.
 func writeEmbeddedTree(efs fs.FS, srcRoot, dst string) error {
+	if err := ensureNotSymlinkDir(dst); err != nil {
+		return err
+	}
 	return fs.WalkDir(efs, srcRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -116,7 +130,7 @@ func writeEmbeddedTree(efs fs.FS, srcRoot, dst string) error {
 		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 			return err
 		}
-		return os.WriteFile(out, data, 0o644)
+		return safeWriteFile(out, data, 0o644)
 	})
 }
 

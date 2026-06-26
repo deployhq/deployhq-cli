@@ -87,10 +87,10 @@ func (c cursor) Install() (string, error) {
 	}
 
 	dst := filepath.Join(rules, cursorSkillFile)
-	if err := os.WriteFile(dst, content, 0o644); err != nil {
+	if err := safeWriteFile(dst, content, 0o644); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(rules, versionMarker), []byte(skills.Version+"\n"), 0o644); err != nil {
+	if err := safeWriteFile(filepath.Join(rules, versionMarker), []byte(skills.Version+"\n"), 0o644); err != nil {
 		return "", err
 	}
 	return dst, nil

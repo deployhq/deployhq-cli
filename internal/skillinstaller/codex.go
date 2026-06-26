@@ -96,7 +96,7 @@ func (c codex) Install() (string, error) {
 
 	section := buildCodexSection(refsRoot)
 	merged := mergeSection(string(existing), section)
-	if err := os.WriteFile(agentsPath, []byte(merged), 0o644); err != nil {
+	if err := safeWriteFile(agentsPath, []byte(merged), 0o644); err != nil {
 		return "", err
 	}
 	return agentsPath, nil

@@ -116,7 +116,7 @@ func (w windsurf) Install() (string, error) {
 	section := buildWindsurfSection(refsRoot)
 	merged := mergeSection(string(existing), section)
 
-	if err := os.WriteFile(rulesPath, []byte(merged), 0o644); err != nil {
+	if err := safeWriteFile(rulesPath, []byte(merged), 0o644); err != nil {
 		return "", err
 	}
 	return rulesPath, nil

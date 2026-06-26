@@ -47,6 +47,9 @@ const (
 
 // findAider is the binary-on-PATH lookup. Overridable in tests so they
 // don't depend on whether the dev box actually has aider installed.
+//
+// Tests using this var must run serially — see the note on homeDir in
+// claude.go for why this package forbids t.Parallel().
 var findAider = func() bool {
 	_, err := exec.LookPath("aider")
 	return err == nil
@@ -108,7 +111,7 @@ func (a aider) Install() (string, error) {
 	}
 
 	dst := filepath.Join(dir, aiderSkillFile)
-	if err := os.WriteFile(dst, body, 0o644); err != nil {
+	if err := safeWriteFile(dst, body, 0o644); err != nil {
 		return "", err
 	}
 	return dst, nil

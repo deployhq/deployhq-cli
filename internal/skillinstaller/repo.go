@@ -8,6 +8,9 @@ import (
 // getCwd is the working-directory lookup. Overridable in tests so they
 // don't depend on the dev box's real cwd. Project-scope targets use this
 // as the starting point for findRepoRoot.
+//
+// Tests using this var must run serially — see the note on homeDir in
+// claude.go for why this package forbids t.Parallel().
 var getCwd = os.Getwd
 
 // findRepoRoot walks up from the current working directory looking for a

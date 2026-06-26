@@ -84,7 +84,7 @@ func (a antigravity) Install() (string, error) {
 
 	section := buildAntigravitySection(antigravityRefsDir)
 	merged := mergeSection(string(existing), section)
-	if err := os.WriteFile(instrPath, []byte(merged), 0o644); err != nil {
+	if err := safeWriteFile(instrPath, []byte(merged), 0o644); err != nil {
 		return "", err
 	}
 	return instrPath, nil

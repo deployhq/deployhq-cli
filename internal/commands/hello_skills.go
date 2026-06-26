@@ -10,6 +10,31 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
+// Test seams for offerSkillInstall. These three vars are the only external
+// state the function depends on; overriding them lets tests exercise every
+// branch (no targets / runtime auto-install / prompt yes / prompt no /
+// project-scope skip) without a live TTY or real agent installs.
+//
+// Production code MUST NOT reassign these — only the test files do.
+var (
+	detectInstalledFn    = skillinstaller.DetectInstalled
+	detectRuntimeAgentFn = harness.Detect
+	confirmInstallFn     = defaultConfirmInstall
+)
+
+// defaultConfirmInstall runs the Y/n promptui prompt and returns true on
+// "yes". Extracted from offerSkillInstall so tests can substitute a
+// deterministic answer.
+func defaultConfirmInstall(label string) bool {
+	prompt := promptui.Prompt{
+		Label:     label,
+		IsConfirm: true,
+		Default:   "Y",
+	}
+	_, err := prompt.Run()
+	return err == nil
+}
+
 // offerSkillInstall is the Wrangler-style post-login hook that detects locally
 // installed AI agents and offers to install the DeployHQ skill for them.
 //
@@ -24,12 +49,12 @@ import (
 // The function is a no-op when nothing is detected, when nothing needs
 // installing, or when env.NonInteractive is set.
 func offerSkillInstall(env *output.Envelope) {
-	detected := skillinstaller.DetectInstalled()
+	detected := detectInstalledFn()
 	if len(detected) == 0 {
 		return
 	}
 
-	runtimeName := harness.Detect().Name
+	runtimeName := detectRuntimeAgentFn().Name
 
 	var runtime *skillinstaller.DetectResult
 	var others []skillinstaller.DetectResult
@@ -64,13 +89,7 @@ func offerSkillInstall(env *output.Envelope) {
 	}
 	label := fmt.Sprintf("Detected AI agents that could use the DeployHQ skill: %s.\n  Install for them now?", strings.Join(names, ", "))
 
-	prompt := promptui.Prompt{
-		Label:     label,
-		IsConfirm: true,
-		Default:   "Y",
-	}
-	if _, err := prompt.Run(); err != nil {
-		// User said no, or aborted — fine.
+	if !confirmInstallFn(label) {
 		env.Status("Skipping. Run `dhq skills install` later if you change your mind.")
 		return
 	}

@@ -93,7 +93,7 @@ func (c copilot) Install() (string, error) {
 
 	section := buildCopilotSection(copilotRefsDir)
 	merged := mergeSection(string(existing), section)
-	if err := os.WriteFile(instrPath, []byte(merged), 0o644); err != nil {
+	if err := safeWriteFile(instrPath, []byte(merged), 0o644); err != nil {
 		return "", err
 	}
 	return instrPath, nil
