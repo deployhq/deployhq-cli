@@ -57,8 +57,12 @@ func (c codex) Detect() Status {
 
 	data, err := os.ReadFile(filepath.Join(cfg, codexAgentsFile))
 	if err != nil {
-		// Codex installed but AGENTS.md not written yet — skill available.
-		return StatusAvailable
+		if os.IsNotExist(err) {
+			// Codex installed but AGENTS.md not written yet — skill available.
+			return StatusAvailable
+		}
+		// Permission/IO error — can't determine state; treat as not installed.
+		return StatusNotInstalled
 	}
 	switch parseSectionVersion(string(data)) {
 	case "":

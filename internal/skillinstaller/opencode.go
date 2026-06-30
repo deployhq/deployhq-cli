@@ -65,7 +65,10 @@ func (o opencode) Detect() Status {
 
 	data, err := os.ReadFile(filepath.Join(cfg, opencodeInstructionsFile))
 	if err != nil {
-		return StatusAvailable
+		if os.IsNotExist(err) {
+			return StatusAvailable
+		}
+		return StatusNotInstalled
 	}
 	switch parseSectionVersion(string(data)) {
 	case "":

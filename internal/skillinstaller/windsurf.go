@@ -72,8 +72,12 @@ func (w windsurf) Detect() Status {
 	rulesPath := filepath.Join(mem, windsurfRulesFile)
 	data, err := os.ReadFile(rulesPath)
 	if err != nil {
-		// Windsurf installed but no rules file yet — skill is available.
-		return StatusAvailable
+		if os.IsNotExist(err) {
+			// Windsurf installed but no rules file yet — skill is available.
+			return StatusAvailable
+		}
+		// Permission/IO error — can't determine state; treat as not installed.
+		return StatusNotInstalled
 	}
 
 	version := parseSectionVersion(string(data))

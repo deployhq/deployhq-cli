@@ -50,7 +50,10 @@ func (g gemini) Detect() Status {
 
 	data, err := os.ReadFile(filepath.Join(cfg, geminiInstructionsFile))
 	if err != nil {
-		return StatusAvailable
+		if os.IsNotExist(err) {
+			return StatusAvailable
+		}
+		return StatusNotInstalled
 	}
 	switch parseSectionVersion(string(data)) {
 	case "":

@@ -145,14 +145,20 @@ func TestAider_PostInstallNote_MentionsExactPath(t *testing.T) {
 	if note == "" {
 		t.Fatal("PostInstallNote() returned empty string")
 	}
-	// Compare against the quoted form the note actually emits. On Linux
-	// the raw path would also be a substring (quotePathForYAMLAndShell is
-	// a no-op without metacharacters), but on Windows the path has
-	// backslashes that get escaped to `\\` — so we'd never find the raw
-	// path. Always compare against the quoted form to stay portable.
-	wantQuoted := quotePathForYAMLAndShell(filepath.Join(home, aiderSkillDir, aiderSkillFile))
-	if !strings.Contains(note, wantQuoted) {
-		t.Errorf("note doesn't mention quoted path %s in %s", wantQuoted, note)
+	// Compare against the quoted forms the note actually emits. On Linux
+	// the raw path would also be a substring (the quoting is a near no-op
+	// without metacharacters), but on Windows the path has backslashes that
+	// get escaped — so we'd never find the raw path. Always compare against
+	// the quoted forms to stay portable. The YAML and shell snippets use
+	// different quoting, so check both.
+	skillPath := filepath.Join(home, aiderSkillDir, aiderSkillFile)
+	wantYAML := quotePathForYAML(skillPath)
+	if !strings.Contains(note, wantYAML) {
+		t.Errorf("note doesn't mention YAML-quoted path %s in %s", wantYAML, note)
+	}
+	wantShell := quotePathForShell(skillPath)
+	if !strings.Contains(note, wantShell) {
+		t.Errorf("note doesn't mention shell-quoted path %s in %s", wantShell, note)
 	}
 	if !strings.Contains(note, ".aider.conf.yml") {
 		t.Errorf("note should point at .aider.conf.yml: %s", note)

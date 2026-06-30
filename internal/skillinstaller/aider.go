@@ -121,30 +121,37 @@ func (a aider) Install() (string, error) {
 // we can't safely auto-edit .aider.conf.yml. Surfaced by both the hello
 // hook and `dhq skills install` via the Noter interface.
 //
-// The path is double-quoted so the snippet is safe to paste verbatim into
-// both YAML (read: ["..."]) and a shell command (--read "..."), even when
-// the user's home contains spaces or other characters that would otherwise
-// need escaping.
+// The path is quoted per-context so each snippet is safe to paste verbatim:
+// the YAML form (read: ["..."]) and the shell form (--read '...') use
+// different quoting rules, since a double-quoted shell argument would still
+// evaluate $(...), backticks, and $VAR. Using a single escaping for both
+// would break on edge-case home paths.
 func (a aider) PostInstallNote() string {
 	p, err := a.skillPath()
 	if err != nil {
 		return ""
 	}
-	q := quotePathForYAMLAndShell(p)
+	yamlPath := quotePathForYAML(p)
+	shellPath := quotePathForShell(p)
 	return fmt.Sprintf(
 		"To load on every Aider run: add `read: [%s]` to ~/.aider.conf.yml "+
 			"(or pass `--read %s` ad-hoc).",
-		q, q,
+		yamlPath, shellPath,
 	)
 }
 
-// quotePathForYAMLAndShell wraps a path in double quotes with internal
-// backslashes and double quotes escaped. The result is valid in both a
-// YAML double-quoted scalar and a POSIX shell double-quoted string, which
-// is the only quoting context the PostInstallNote needs to support.
-func quotePathForYAMLAndShell(p string) string {
+// quotePathForYAML wraps a path in a YAML double-quoted scalar with internal
+// backslashes and double quotes escaped.
+func quotePathForYAML(p string) string {
 	p = strings.ReplaceAll(p, `\`, `\\`)
 	p = strings.ReplaceAll(p, `"`, `\"`)
 	return `"` + p + `"`
+}
+
+// quotePathForShell returns a single-quoted POSIX shell literal. Single
+// quotes suppress all expansion ($(...), backticks, $VAR), so the only
+// character needing care is the single quote itself.
+func quotePathForShell(p string) string {
+	return `'` + strings.ReplaceAll(p, `'`, `'"'"'`) + `'`
 }
 
