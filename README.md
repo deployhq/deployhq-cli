@@ -184,7 +184,7 @@ dhq completion    bash | zsh | fish | powershell
 dhq doctor        (health check)
 dhq update        (self-update to latest version)
 dhq skills        list | install (auto-detect AI agents and install the DeployHQ skill)
-dhq setup         claude | codex | cursor | windsurf (install agent plugins, --project for project-level)
+dhq setup         claude | codex | cursor | windsurf (deprecated — use 'dhq skills')
 dhq mcp           (start MCP server in stdio mode)
 ```
 
@@ -318,9 +318,9 @@ bare `dhq skills install`; **project-scope** agents write into the current
 repository and require an explicit `--agent` flag so login never mutates a repo
 as a side effect.
 
-`dhq setup <agent>` is a narrower alternative that installs the agent plugin for
-a single tool (Claude Code, Codex, Cursor, or Windsurf), with `--project` for
-project-level installs.
+> **Deprecated:** `dhq setup <agent>` (Claude Code, Codex, Cursor, Windsurf) is
+> the older, narrower predecessor of `dhq skills install`. It still works but
+> warns on use and will be removed in a future release — prefer `dhq skills`.
 
 ### Other agent helpers
 

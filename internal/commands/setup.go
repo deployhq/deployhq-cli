@@ -45,6 +45,7 @@ type agentSetup struct {
 	Use         string
 	Short       string
 	Name        string
+	SkillsName  string // equivalent target name for `dhq skills install --agent`
 	PathFor     func(scope) (string, error)
 	Content     func() []byte
 	StrategyFor func(scope) writeStrategy
@@ -59,6 +60,7 @@ var agents = []agentSetup{
 		Use:         "claude",
 		Short:       "Install Claude Code skill",
 		Name:        "Claude Code",
+		SkillsName:  "claude-code",
 		PathFor:     pathClaude,
 		Content:     func() []byte { return []byte(skillFrontmatter + skillBody) },
 		StrategyFor: always(strategyOverwrite),
@@ -67,6 +69,7 @@ var agents = []agentSetup{
 		Use:         "codex",
 		Short:       "Install OpenAI Codex AGENTS.md section",
 		Name:        "Codex",
+		SkillsName:  "codex",
 		PathFor:     pathCodex,
 		Content:     func() []byte { return []byte(skillBody) },
 		StrategyFor: always(strategyMarkedBlock),
@@ -75,15 +78,17 @@ var agents = []agentSetup{
 		Use:         "cursor",
 		Short:       "Install Cursor project rule",
 		Name:        "Cursor",
+		SkillsName:  "cursor",
 		PathFor:     pathCursor,
 		Content:     func() []byte { return []byte(cursorFrontmatter + skillBody) },
 		StrategyFor: always(strategyOverwrite),
 	},
 	{
-		Use:     "windsurf",
-		Short:   "Install Windsurf integration",
-		Name:    "Windsurf",
-		PathFor: pathWindsurf,
+		Use:        "windsurf",
+		Short:      "Install Windsurf integration",
+		Name:       "Windsurf",
+		SkillsName: "windsurf",
+		PathFor:    pathWindsurf,
 		Content: func() []byte { return []byte(skillBody) },
 		// User-level writes into the shared ~/.codeium/.../global_rules.md, so we
 		// must merge with a marker block. Project-level writes a dedicated file we own.
@@ -99,8 +104,12 @@ var agents = []agentSetup{
 func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install agent plugins",
-		Long:  "Install DeployHQ agent integration files for AI coding assistants.",
+		Short: "Install agent plugins (deprecated — use 'dhq skills')",
+		Long: "Install DeployHQ agent integration files for AI coding assistants.\n\n" +
+			"DEPRECATED: 'dhq setup' is superseded by 'dhq skills install', which\n" +
+			"auto-detects installed agents and supports 12 of them (vs the 4 here).\n" +
+			"This command still works but will be removed in a future release.\n" +
+			"Migrate with 'dhq skills install' (or 'dhq skills install --agent <name>').",
 	}
 	for _, a := range agents {
 		cmd.AddCommand(newAgentSetupCmd(a))
@@ -118,6 +127,14 @@ func newAgentSetupCmd(a agentSetup) *cobra.Command {
 		Long:  longHelp(a),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			env := cliCtx.Envelope
+			// 'dhq setup' is deprecated in favour of 'dhq skills'. Warn on every
+			// use (stderr, so JSON/data on stdout is unaffected) and point at the
+			// equivalent command rather than silently doing the old thing.
+			env.Warn("'dhq setup' is deprecated; use 'dhq skills install --agent %s' instead "+
+				"(auto-detects agents and supports 12 of them). 'dhq setup' will be removed "+
+				"in a future release.", a.SkillsName)
+
 			sc := scopeUser
 			if project {
 				sc = scopeProject
@@ -133,7 +150,6 @@ func newAgentSetupCmd(a agentSetup) *cobra.Command {
 				return &output.InternalError{Message: "resolve install path", Cause: err}
 			}
 
-			env := cliCtx.Envelope
 			strategy := a.StrategyFor(sc)
 			if uninstall {
 				return runUninstall(env, a, path, strategy)
@@ -154,6 +170,7 @@ func longHelp(a agentSetup) string {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Install %s integration files.\n\n", a.Name)
+	fmt.Fprintf(&b, "DEPRECATED: use 'dhq skills install --agent %s' instead.\n\n", a.SkillsName)
 	if userErr == nil {
 		fmt.Fprintf(&b, "Default (user-global): %s\n", userPath)
 	} else {
