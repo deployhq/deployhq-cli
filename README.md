@@ -57,7 +57,8 @@ dhq signup
 dhq auth login
 dhq configure
 
-# Teach your AI coding agents (Claude Code, Cursor, Copilot, …) to drive dhq
+# Teach your detected AI coding agents (Claude Code, Cursor, Codex, …) to drive dhq
+# (project-scope agents like Copilot are opt-in — see `dhq skills install --agent`)
 dhq skills install
 
 # Deploy and watch in real-time
@@ -311,7 +312,7 @@ dhq skills install --agent copilot
 ```
 
 Twelve agents are supported — Aider, Antigravity, Claude Code, Cline, Codex CLI,
-Continue, Cursor, Gemini CLI, GitHub Copilot, Kiro, OpenCode, and Windsurf.
+Continue.dev, Cursor, Gemini CLI, GitHub Copilot, Kiro CLI, OpenCode, and Windsurf.
 **User-scope** agents install into your home directory and are picked up by the
 bare `dhq skills install`; **project-scope** agents write into the current
 repository and require an explicit `--agent` flag so login never mutates a repo
