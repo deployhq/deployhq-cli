@@ -84,10 +84,8 @@ func (c codex) Install() (string, error) {
 	}
 
 	// Refresh the reference tree at ~/.codex/deployhq-references/.
+	// writeEmbeddedTree replaces it atomically, so no pre-RemoveAll.
 	refsRoot := filepath.Join(cfg, codexRefsDir)
-	if err := os.RemoveAll(refsRoot); err != nil {
-		return "", err
-	}
 	if err := writeEmbeddedTree(skills.FS, "deployhq", refsRoot); err != nil {
 		return "", err
 	}

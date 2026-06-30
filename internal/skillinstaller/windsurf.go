@@ -103,10 +103,8 @@ func (w windsurf) Install() (string, error) {
 	// Write the deep-reference tree alongside global_rules.md so the agent
 	// can pull in detail on demand. SKILL.md is intentionally included
 	// here too — the rules-section pointer can address it by relative path.
+	// writeEmbeddedTree replaces the tree atomically, so no pre-RemoveAll.
 	refsRoot := filepath.Join(mem, windsurfRefsDir)
-	if err := os.RemoveAll(refsRoot); err != nil {
-		return "", err
-	}
 	if err := writeEmbeddedTree(skills.FS, "deployhq", refsRoot); err != nil {
 		return "", err
 	}

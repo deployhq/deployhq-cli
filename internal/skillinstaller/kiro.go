@@ -68,7 +68,7 @@ func (k kiro) Install() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := safeWriteFile(p, body, 0o644); err != nil {
+	if err := writeOwnedFile(p, body, 0o644); err != nil {
 		return "", err
 	}
 	return p, nil

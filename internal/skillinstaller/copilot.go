@@ -74,10 +74,8 @@ func (c copilot) Install() (string, error) {
 	}
 
 	// Refresh the reference tree at <repo>/.github/copilot/deployhq/.
+	// writeEmbeddedTree replaces it atomically, so no pre-RemoveAll.
 	refsRoot := filepath.Join(root, copilotRefsDir)
-	if err := os.RemoveAll(refsRoot); err != nil {
-		return "", err
-	}
 	if err := writeEmbeddedTree(skills.FS, "deployhq", refsRoot); err != nil {
 		return "", err
 	}

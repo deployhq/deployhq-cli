@@ -68,10 +68,8 @@ func (a antigravity) Install() (string, error) {
 	}
 
 	// Refresh the reference tree at <repo>/.antigravity/deployhq/.
+	// writeEmbeddedTree replaces it atomically, so no pre-RemoveAll.
 	refsRoot := filepath.Join(root, antigravityRefsDir)
-	if err := os.RemoveAll(refsRoot); err != nil {
-		return "", err
-	}
 	if err := writeEmbeddedTree(skills.FS, "deployhq", refsRoot); err != nil {
 		return "", err
 	}

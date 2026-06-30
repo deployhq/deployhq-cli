@@ -40,6 +40,33 @@ func TestSafeWriteFile_RefusesSymlinkTarget(t *testing.T) {
 	}
 }
 
+func TestSafeWriteFile_RefusesSymlinkedParent(t *testing.T) {
+	dir := t.TempDir()
+	// Attacker pre-plants the predictable *directory* we write into (e.g.
+	// `~/.codex` or `.github`) as a symlink to a dir they control. The leaf
+	// itself isn't a symlink, so only the parent check catches this.
+	attacker := filepath.Join(dir, "attacker")
+	if err := os.MkdirAll(attacker, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(dir, "config")
+	if err := os.Symlink(attacker, parent); err != nil {
+		t.Fatal(err)
+	}
+
+	err := safeWriteFile(filepath.Join(parent, "AGENTS.md"), []byte("payload\n"), 0o644)
+	if err == nil {
+		t.Fatal("safeWriteFile through symlinked parent should have errored")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("error should mention symlink: %v", err)
+	}
+	// The write must not have landed in the attacker-controlled directory.
+	if _, statErr := os.Stat(filepath.Join(attacker, "AGENTS.md")); !os.IsNotExist(statErr) {
+		t.Errorf("write leaked through symlinked parent into attacker dir")
+	}
+}
+
 func TestSafeWriteFile_WritesToMissingPath(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "new.md")
@@ -136,5 +163,47 @@ func TestWriteEmbeddedTree_RefusesSymlinkedRoot(t *testing.T) {
 			names[i] = e.Name()
 		}
 		t.Errorf("victim directory has %d entries after refused write: %v", len(entries), names)
+	}
+}
+
+func TestWriteEmbeddedTree_ReplacesStaleFilesAndLeavesNoTemp(t *testing.T) {
+	parent := t.TempDir()
+	dst := filepath.Join(parent, "deployhq-references")
+
+	// First install.
+	if err := writeEmbeddedTree(skills.FS, "deployhq", dst); err != nil {
+		t.Fatalf("first install = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "SKILL.md")); err != nil {
+		t.Fatalf("SKILL.md missing after install: %v", err)
+	}
+
+	// Plant a stale file that the new embedded tree does not contain.
+	stale := filepath.Join(dst, "stale-leftover.md")
+	if err := os.WriteFile(stale, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-install: the atomic swap replaces the whole tree, so the stale file
+	// must be gone and SKILL.md must still be present.
+	if err := writeEmbeddedTree(skills.FS, "deployhq", dst); err != nil {
+		t.Fatalf("re-install = %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale file survived the atomic re-install (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "SKILL.md")); err != nil {
+		t.Errorf("SKILL.md missing after re-install: %v", err)
+	}
+
+	// No staging directory should be left behind in the parent.
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".deployhq-references.tmp-") {
+			t.Errorf("leftover staging dir not cleaned up: %s", e.Name())
+		}
 	}
 }

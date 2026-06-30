@@ -61,6 +61,31 @@ func parseOwnedFileVersion(body string) string {
 	return strings.TrimSpace(rest[:end])
 }
 
+// writeOwnedFile writes an owned single-file skill (Aider, Cline, Continue,
+// Kiro), refusing to clobber a file DeployHQ didn't write. The destination is
+// "ours" only if it already carries our top-of-file version marker; an
+// existing file without the marker is treated as user content and preserved,
+// returning an actionable error instead of overwriting it.
+//
+// This matters most from `dhq hello`, where the prompt says "install" — a
+// user who happens to have their own file at our predictable path (e.g.
+// ~/.continue/rules/deployhq.md) must not lose it silently. Re-installs and
+// upgrades are unaffected: our own marked file parses to a version and is
+// overwritten as before.
+func writeOwnedFile(path string, body []byte, perm os.FileMode) error {
+	switch existing, err := os.ReadFile(path); {
+	case err == nil:
+		if parseOwnedFileVersion(string(existing)) == "" {
+			return fmt.Errorf(
+				"refusing to overwrite existing non-DeployHQ file: %s "+
+					"(remove or rename it, then re-run)", path)
+		}
+	case !os.IsNotExist(err):
+		return err
+	}
+	return safeWriteFile(path, body, perm)
+}
+
 // flattenSkill reads SKILL.md plus every references/*.md from the embedded
 // skill tree and returns:
 //

@@ -89,10 +89,8 @@ func (o opencode) Install() (string, error) {
 		return "", err
 	}
 
+	// writeEmbeddedTree replaces the tree atomically, so no pre-RemoveAll.
 	refsRoot := filepath.Join(cfg, opencodeRefsDir)
-	if err := os.RemoveAll(refsRoot); err != nil {
-		return "", err
-	}
 	if err := writeEmbeddedTree(skills.FS, "deployhq", refsRoot); err != nil {
 		return "", err
 	}

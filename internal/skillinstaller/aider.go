@@ -111,7 +111,7 @@ func (a aider) Install() (string, error) {
 	}
 
 	dst := filepath.Join(dir, aiderSkillFile)
-	if err := safeWriteFile(dst, body, 0o644); err != nil {
+	if err := writeOwnedFile(dst, body, 0o644); err != nil {
 		return "", err
 	}
 	return dst, nil
