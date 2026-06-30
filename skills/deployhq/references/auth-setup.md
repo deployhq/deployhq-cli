@@ -110,39 +110,39 @@ account = "mycompany"
 
 ## Agent Setup
 
-### `dhq setup claude`
-Install Claude Code integration files.
+### `dhq skills` (preferred)
 
-| Flag | Description |
-|------|-------------|
-| `--project` | Install to project directory (`.claude/`) instead of user (`~/.claude/`) |
-| `--uninstall` | Remove integration files |
+Install the DeployHQ skill into the AI coding agents on this machine. `dhq skills`
+auto-detects installed agents and supports 12 of them (Aider, Antigravity, Claude
+Code, Cline, Codex CLI, Continue.dev, Cursor, Gemini CLI, GitHub Copilot, Kiro CLI,
+OpenCode, Windsurf).
 
 ```bash
-dhq setup claude
-dhq setup claude --project
-dhq setup claude --uninstall
+dhq skills list                         # detected agents + skill status
+dhq skills install                      # install for detected user-scope agents
+dhq skills install --agent claude-code  # install for a specific agent
+dhq skills install --agent copilot      # project-scope agents are opt-in via --agent
 ```
 
-### `dhq setup codex`
-Install OpenAI Codex integration.
+User-scope agents install into your home directory and are covered by the bare
+`dhq skills install`; project-scope agents write into the current repository and
+require an explicit `--agent` flag.
+
+### `dhq setup` (deprecated)
+
+> **Deprecated:** `dhq setup claude|codex|cursor|windsurf` is the older, narrower
+> predecessor of `dhq skills install`. It still works but warns on use and will be
+> removed in a future release. Prefer `dhq skills`. Two caveats when migrating:
+> `dhq skills` has no uninstall yet (use `dhq setup <agent> --uninstall` to remove),
+> and it installs at each agent's own default scope, which may differ from
+> `dhq setup --project`.
 
 ```bash
-dhq setup codex
-```
-
-### `dhq setup cursor`
-Install Cursor integration.
-
-```bash
-dhq setup cursor
-```
-
-### `dhq setup windsurf`
-Install Windsurf integration.
-
-```bash
-dhq setup windsurf
+dhq setup claude              # ~ dhq skills install --agent claude-code
+dhq setup codex               # ~ dhq skills install --agent codex
+dhq setup cursor              # ~ dhq skills install --agent cursor
+dhq setup windsurf            # ~ dhq skills install --agent windsurf
+dhq setup claude --uninstall  # remove (no dhq skills equivalent yet)
 ```
 
 ### `dhq mcp`

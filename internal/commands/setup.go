@@ -129,11 +129,11 @@ func newAgentSetupCmd(a agentSetup) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 			// 'dhq setup' is deprecated in favour of 'dhq skills'. Warn on every
-			// use (stderr, so JSON/data on stdout is unaffected) and point at the
-			// equivalent command rather than silently doing the old thing.
-			env.Warn("'dhq setup' is deprecated; use 'dhq skills install --agent %s' instead "+
-				"(auto-detects agents and supports 12 of them). 'dhq setup' will be removed "+
-				"in a future release.", a.SkillsName)
+			// use (stderr, so JSON/data on stdout is unaffected). The note is
+			// mode-aware: 'dhq skills' has no uninstall and installs at each
+			// agent's own default scope, so we don't claim a like-for-like
+			// replacement for the --uninstall or --project paths.
+			env.Warn("%s", setupDeprecationNote(a, uninstall, project))
 
 			sc := scopeUser
 			if project {
@@ -162,6 +162,32 @@ func newAgentSetupCmd(a agentSetup) *cobra.Command {
 	cmd.Flags().BoolVar(&project, "project", false,
 		"Install at project level (current directory) instead of user-global")
 	return cmd
+}
+
+// setupDeprecationNote builds the per-run deprecation warning for `dhq setup`.
+// It is mode-aware because the successor command isn't a like-for-like drop-in:
+//   - `dhq skills` has no uninstall, so the --uninstall path keeps using setup;
+//   - `dhq skills install --agent <name>` installs at that agent's own default
+//     scope (e.g. Cursor is user-scope there, project-scope here), so we don't
+//     promise scope equivalence on the --project path.
+func setupDeprecationNote(a agentSetup, uninstall, project bool) string {
+	switch {
+	case uninstall:
+		return fmt.Sprintf(
+			"'dhq setup' is deprecated and will be removed in a future release. "+
+				"'dhq skills' has no uninstall yet, so 'dhq setup %s --uninstall' "+
+				"remains the way to remove this integration for now.", a.Use)
+	case project:
+		return fmt.Sprintf(
+			"'dhq setup' is deprecated; prefer 'dhq skills install --agent %s'. "+
+				"Note 'dhq skills' installs at that agent's default scope rather than "+
+				"project-local, and 'dhq setup' will be removed in a future release.", a.SkillsName)
+	default:
+		return fmt.Sprintf(
+			"'dhq setup' is deprecated; use 'dhq skills install --agent %s' instead "+
+				"(auto-detects agents and supports 12 of them). 'dhq setup' will be "+
+				"removed in a future release.", a.SkillsName)
+	}
 }
 
 func longHelp(a agentSetup) string {
