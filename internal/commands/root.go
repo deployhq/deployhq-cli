@@ -201,6 +201,7 @@ Support: support@deployhq.com`,
 		newTestAccessCmd(),
 
 		// Shortcuts
+		newLaunchCmd(),
 		newDeployCmd(),
 		newRetryCmd(),
 		newRollbackCmd(),

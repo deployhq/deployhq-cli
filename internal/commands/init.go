@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -139,21 +138,30 @@ var protocolsAll = []string{
 	"Heroku",
 	"Netlify",
 	"Shopify",
+	// Managed offerings — require beta_features on the account.
+	// Prefer `dhq launch` for these; listed here for advanced users.
+	"Static Hosting (beta)",
+	"Managed VPS (beta)",
 }
 
 // protocolAPIType maps display names to API protocol_type values.
 var protocolAPIType = map[string]string{
-	"SSH/SFTP":               "ssh",
-	"FTP":                    "ftp",
+	"SSH/SFTP":              "ssh",
+	"FTP":                   "ftp",
 	"FTPS (SSL/TLS)":        "ftps",
-	"Rsync":                  "rsync",
-	"Amazon S3":              "s3",
-	"S3-Compatible Storage":  "s3_compatible",
-	"DigitalOcean":           "digitalocean",
-	"Hetzner Cloud":          "hetzner_cloud",
-	"Heroku":                 "heroku",
-	"Netlify":                "netlify",
-	"Shopify":                "shopify",
+	"Rsync":                 "rsync",
+	"Amazon S3":             "s3",
+	"S3-Compatible Storage": "s3_compatible",
+	"DigitalOcean":          "digitalocean",
+	"Hetzner Cloud":         "hetzner_cloud",
+	"Heroku":                "heroku",
+	"Netlify":               "netlify",
+	"Shopify":               "shopify",
+	// Managed offerings (beta) — backed by DeployHQ-managed infrastructure.
+	// static_hosting: Cloudflare CDN site at <subdomain>.deployhq-sites.com.
+	// managed_vps: DeployHQ-provisioned DigitalOcean droplet.
+	"Static Hosting (beta)": "static_hosting",
+	"Managed VPS (beta)":    "managed_vps",
 }
 
 // protocolSupportsSSHKeys returns true if the protocol supports SSH key authentication.
@@ -854,35 +862,8 @@ func (m *initModel) createServer() tea.Msg {
 }
 
 func (m *initModel) addDeployKeyViaGH() tea.Msg {
-	// Extract repo owner/name from URL (e.g. git@github.com:owner/repo.git)
-	repo := extractGitHubRepo(m.repoURL)
-	if repo == "" {
-		return createResultMsg{err: fmt.Errorf("could not extract GitHub repo from URL: %s", m.repoURL), step: stepDeployKeyAuto}
-	}
-
-	// Write public key to temp file
-	tmpFile, err := os.CreateTemp("", "dhq-deploy-key-*.pub")
-	if err != nil {
-		return createResultMsg{err: err, step: stepDeployKeyAuto}
-	}
-	defer os.Remove(tmpFile.Name()) //nolint:errcheck
-
-	if _, err := tmpFile.WriteString(m.project.PublicKey); err != nil {
-		tmpFile.Close() //nolint:errcheck
-		return createResultMsg{err: err, step: stepDeployKeyAuto}
-	}
-	tmpFile.Close() //nolint:errcheck
-
-	// Run gh repo deploy-key add
-	cmd := exec.Command("gh", "repo", "deploy-key", "add", tmpFile.Name(),
-		"--repo", repo,
-		"--title", fmt.Sprintf("DeployHQ - %s", m.project.Name))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return createResultMsg{err: fmt.Errorf("%s", strings.TrimSpace(string(output))), step: stepDeployKeyAuto}
-	}
-
-	return createResultMsg{err: nil, step: stepDeployKeyAuto}
+	err := installDeployKeyViaGH(m.repoURL, m.project.PublicKey, fmt.Sprintf("DeployHQ - %s", m.project.Name))
+	return createResultMsg{err: err, step: stepDeployKeyAuto}
 }
 
 func extractGitHubRepo(url string) string {

@@ -25,9 +25,25 @@ Create a server. Flags vary by protocol type.
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--name` | yes | Server name |
-| `--protocol-type` | yes | One of: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify |
+| `--protocol-type` | yes | One of: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify, static_hosting (beta), managed_vps (beta) |
 | `--path` | no | Deployment path |
 | `--environment` | no | Environment label |
+
+**Static Hosting flags (beta, requires managed-resources beta on account):**
+
+| Flag | Description |
+|------|-------------|
+| `--subdomain` | Globally unique subdomain under deployhq-sites.com |
+| `--spa-mode` | Enable SPA routing (rewrites all paths to index.html) |
+| `--subdirectory` | Output subdirectory to publish (e.g. dist) |
+
+**Managed VPS flags (beta, requires managed-resources beta on account):**
+
+| Flag | Description |
+|------|-------------|
+| `--region` | DigitalOcean region slug (e.g. lon1, nyc3). Use `dhq api GET /managed_hosting/regions` to list. |
+| `--size` | DigitalOcean droplet size slug (e.g. s-1vcpu-1gb). Use `dhq api GET /managed_hosting/sizes` to list. |
+| `--os-image` | OS image slug (default: ubuntu-24-04-x64) |
 
 **SSH/FTP/FTPS/Rsync flags:**
 
@@ -78,6 +94,16 @@ dhq servers create -p my-app --name "Static Assets" --protocol-type s3 \
 # Netlify
 dhq servers create -p my-app --name Netlify --protocol-type netlify \
   --site-id abc123 --access-token ... --json
+
+# Static Hosting site (beta)
+# Note: requires managed-resources beta enabled; use `dhq launch` for guided setup
+dhq servers create -p my-app --name "My Site" --protocol-type static_hosting \
+  --subdomain my-app --subdirectory dist --json
+
+# Managed VPS (beta)
+# Note: requires managed-resources beta enabled; use `dhq launch` for guided setup
+dhq servers create -p my-app --name "My VPS" --protocol-type managed_vps \
+  --region lon1 --size s-1vcpu-1gb --json
 ```
 
 ### `dhq servers update <identifier>`

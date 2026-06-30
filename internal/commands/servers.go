@@ -16,7 +16,9 @@ func newServersCmd() *cobra.Command {
 		Use:     "servers",
 		Aliases: []string{"server", "srv"},
 		Short:   "Manage servers",
-		Long: `Servers are the deployment targets for a project — the destinations where your code lands. DeployHQ supports many protocols: SSH, FTP/FTPS, Rsync, S3 (and S3-compatible), DigitalOcean, Hetzner Cloud, Heroku, Netlify, and Shopify. Each server pins exactly one protocol.
+		Long: `Servers are the deployment targets for a project — the destinations where your code lands. DeployHQ supports many protocols: SSH, FTP/FTPS, Rsync, S3 (and S3-compatible), DigitalOcean, Hetzner Cloud, Heroku, Netlify, Shopify, Static Hosting, and Managed VPS. Each server pins exactly one protocol.
+
+Static Hosting and Managed VPS are managed offerings backed by DeployHQ infrastructure (beta). They require the managed-resources beta to be enabled on your account. Use "dhq launch" for guided one-command provisioning of these offerings.
 
 Use these commands to create, configure, and list the servers attached to a project. To deploy to one, see "dhq deploy" or "dhq deployments create".`,
 	}
@@ -169,6 +171,14 @@ func newServersCreateCmd() *cobra.Command {
 	var siteID, accessToken string
 	// Shopify
 	var storeURL, themeName string
+	// Static Hosting (beta)
+	var subdomain string
+	var spaMode bool
+	var subdirectory string
+	// Managed VPS (beta)
+	var region, size, osImage string
+	// Billing guardrail (mirrors the gate in `dhq launch`)
+	var acceptCost bool
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -189,7 +199,15 @@ func newServersCreateCmd() *cobra.Command {
 
   # Heroku app
   dhq servers create -p my-app --name staging --protocol-type heroku \
-    --app-name my-app-staging --api-key '<key>'`,
+    --app-name my-app-staging --api-key '<key>'
+
+  # Static Hosting site (beta — requires managed-resources beta)
+  dhq servers create -p my-app --name site --protocol-type static_hosting \
+    --subdomain my-app --subdirectory dist
+
+  # Managed VPS droplet (beta — requires managed-resources beta)
+  dhq servers create -p my-app --name vps --protocol-type managed_vps \
+    --region lon1 --size s-1vcpu-1gb`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if name == "" {
 				return &output.UserError{Message: "Server name is required", Hint: "Use --name flag"}
@@ -197,7 +215,7 @@ func newServersCreateCmd() *cobra.Command {
 			if protocolType == "" {
 				return &output.UserError{
 					Message: "Protocol type is required",
-					Hint:    "Use --protocol-type with one of: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify",
+					Hint:    "Use --protocol-type with one of: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify, static_hosting, managed_vps",
 				}
 			}
 
@@ -221,8 +239,8 @@ func newServersCreateCmd() *cobra.Command {
 				Username: username,
 				Password: password,
 				// S3
-				BucketName:     bucketName,
-				AccessKeyID:    accessKeyID,
+				BucketName:      bucketName,
+				AccessKeyID:     accessKeyID,
 				SecretAccessKey: secretAccessKey,
 				// S3-Compatible
 				CustomEndpoint: customEndpoint,
@@ -241,6 +259,18 @@ func newServersCreateCmd() *cobra.Command {
 				// Shopify
 				StoreURL:  storeURL,
 				ThemeName: themeName,
+				// Managed VPS (beta)
+				Region:  region,
+				Size:    size,
+				OSImage: osImage,
+			}
+			// Static Hosting (beta) — nested attributes
+			if protocolType == "static_hosting" && subdomain != "" {
+				req.HostedWebsiteAttributes = &sdk.HostedWebsiteAttributes{
+					Subdomain:    subdomain,
+					SPAMode:      spaMode,
+					Subdirectory: subdirectory,
+				}
 			}
 			if cmd.Flags().Changed("port") {
 				req.Port = &port
@@ -253,6 +283,27 @@ func newServersCreateCmd() *cobra.Command {
 			}
 
 			env := cliCtx.Envelope
+
+			// Cost-acknowledgement guardrail: managed_vps MUST be acknowledged before
+			// creation (mirrors the gate in `dhq launch --vps`) (Fix 4). The exact
+			// wording is sourced from managedVPSAcknowledgePhrase() so it tracks the
+			// beta-vs-GA switch in metered.go.
+			if protocolType == "managed_vps" && !acceptCost {
+				if !env.IsTTY || env.NonInteractive || env.JSONMode {
+					return &output.UserError{
+						Message: "Managed VPS creation requires --accept-cost (" + managedVPSAcknowledgePhrase() + ")",
+						Hint:    "Add --accept-cost to acknowledge that a Managed VPS is " + managedVPSAcknowledgePhrase() + ".",
+					}
+				}
+				// Interactive: prompt to confirm
+				fmt.Fprintf(env.Stderr, "Creating a Managed VPS — %s. Continue? [y/N]: ", managedVPSAcknowledgePhrase()) //nolint:errcheck
+				reader := bufio.NewReader(os.Stdin)
+				answer, _ := reader.ReadString('\n')
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					return &output.UserError{Message: "Managed VPS creation cancelled"}
+				}
+			}
 
 			var server *sdk.Server
 			for {
@@ -335,7 +386,7 @@ func newServersCreateCmd() *cobra.Command {
 
 	// Common flags
 	cmd.Flags().StringVar(&name, "name", "", "Server name (required)")
-	cmd.Flags().StringVar(&protocolType, "protocol-type", "", "Protocol (required): ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify")
+	cmd.Flags().StringVar(&protocolType, "protocol-type", "", "Protocol (required): ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify, static_hosting, managed_vps")
 	cmd.Flags().StringVar(&serverPath, "path", "", "Server path")
 	cmd.Flags().StringVar(&environment, "environment", "", "Environment name")
 
@@ -375,6 +426,19 @@ func newServersCreateCmd() *cobra.Command {
 	// Shopify
 	cmd.Flags().StringVar(&storeURL, "store-url", "", "Shopify store URL (shopify)")
 	cmd.Flags().StringVar(&themeName, "theme-name", "", "Shopify theme name (shopify)")
+
+	// Static Hosting (beta) — requires managed-resources beta on the account
+	cmd.Flags().StringVar(&subdomain, "subdomain", "", "Globally unique subdomain under deployhq-sites.com (static_hosting)")
+	cmd.Flags().BoolVar(&spaMode, "spa-mode", false, "Enable SPA routing: all paths rewrite to index.html (static_hosting)")
+	cmd.Flags().StringVar(&subdirectory, "subdirectory", "", "Output subdirectory to publish, e.g. dist (static_hosting)")
+
+	// Managed VPS (beta) — requires managed-resources beta on the account
+	cmd.Flags().StringVar(&region, "region", "", "DigitalOcean region slug, e.g. lon1, nyc3 (managed_vps)")
+	cmd.Flags().StringVar(&size, "size", "", "DigitalOcean droplet size slug, e.g. s-1vcpu-1gb (managed_vps)")
+	cmd.Flags().StringVar(&osImage, "os-image", "", "OS image slug (managed_vps, default: ubuntu-24-04-x64)")
+
+	// Cost-acknowledgement guardrail — required for managed_vps in non-interactive mode
+	cmd.Flags().BoolVar(&acceptCost, "accept-cost", false, "Acknowledge Managed VPS provisioning — "+managedVPSAcknowledgePhrase()+" (required for non-interactive managed_vps creation)")
 
 	return cmd
 }

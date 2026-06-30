@@ -44,6 +44,10 @@ dhq update
 ## Quick Start
 
 ```bash
+# One command: detect the framework, provision DeployHQ hosting
+# (Static Hosting or a Managed VPS) and deploy — to a live URL.
+dhq launch
+
 # Guided setup (login or signup, pick a project, optional first deploy)
 dhq hello
 
@@ -61,6 +65,30 @@ dhq deployments logs <id> -p my-app
 # Open in browser
 dhq open my-app
 ```
+
+## One-command deploy (`dhq launch`)
+
+`dhq launch` takes a project folder to a live URL on DeployHQ's own
+infrastructure — **Static Hosting** (global CDN, Cloudflare-backed) or a
+**Managed VPS** (DeployHQ-provisioned) — in a single command. It detects your
+framework, provisions the target, deploys, and prints the URL.
+
+```bash
+dhq launch                    # interactive: detect, pick a target, deploy
+dhq launch --static --subdomain my-app
+dhq launch --vps --accept-cost --region lon1 --size s-1vcpu-1gb
+
+# Agents / CI — structured JSON, never prompts:
+dhq launch --static --json
+dhq launch --vps --dry-run --json   # preview cost + actions, no side effects
+```
+
+A Managed VPS is a managed resource — free for early customers during the beta,
+billed monthly afterwards — so `--accept-cost` is required for non-interactive VPS
+provisioning (`--yes` alone never provisions one). After the first run, `launch`
+writes `.deployhq.toml` so subsequent deploys are just `dhq deploy`. See the
+[agent guide](skills/deployhq/references/launch.md) for the full flag set and the
+structured-error reasons agents can branch on.
 
 ## Authentication
 
@@ -104,6 +132,9 @@ See `examples/github-actions/` for complete workflows:
 ```
 dhq projects      list | show | create | update | delete | star | insights | upload-key | badge
 dhq servers       list | show | create | update | delete | reset-host-key
+                  protocols: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean,
+                             hetzner_cloud, heroku, netlify, shopify,
+                             static_hosting (beta), managed_vps (beta)
 dhq server-groups list | show | create | update | delete
 dhq deployments   list | show | create | abort | rollback | logs | watch
 dhq repos         show | create | update | branches | commits | commit-info | latest-revision

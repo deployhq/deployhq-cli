@@ -27,6 +27,18 @@ func TestAgentMetadata_Rollback(t *testing.T) {
 	assert.True(t, m.SafeForAutomation)
 }
 
+func TestAgentMetadata_Launch(t *testing.T) {
+	m := lookupAgentMetadata("dhq launch")
+	assert.True(t, m.Interactive, "launch can prompt in a TTY")
+	assert.False(t, m.Destructive, "launch provisions, it does not delete")
+	assert.True(t, m.Idempotent, "re-runs resolve the existing project/server")
+	assert.True(t, m.RequiresConfirmation, "provisions managed resources")
+	assert.True(t, m.SupportsJSON)
+	assert.True(t, m.SafeForAutomation, "deterministic non-interactively with the right flags")
+	assert.Contains(t, m.ResourceTypes, "server")
+	assert.Contains(t, m.ResourceTypes, "deployment")
+}
+
 func TestAgentMetadata_ProjectsDelete(t *testing.T) {
 	m := lookupAgentMetadata("dhq projects delete")
 	assert.True(t, m.Destructive)

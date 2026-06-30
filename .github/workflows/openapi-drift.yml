@@ -1,0 +1,59 @@
+name: OpenAPI drift check
+
+# Guards the committed OpenAPI fixture (internal/commands/testdata/openapi.json)
+# against silent contract drift: fetches the backend's LIVE spec on a schedule
+# and re-runs the spec-validating contract tests against it. A failure means the
+# backend changed in a way that breaks the requests this CLI sends — refresh the
+# fixture (script/update-openapi-fixture.sh) and adapt the SDK in one PR.
+#
+# Requires the repository variable DHQ_SPEC_URL (e.g. the staging /docs.json).
+# When unset, the job no-ops so forks/CI stay green.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1-5" # weekday mornings UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch live OpenAPI spec
+        id: fetch
+        env:
+          SPEC_URL: ${{ vars.DHQ_SPEC_URL }}
+        run: |
+          if [ -z "$SPEC_URL" ]; then
+            echo "DHQ_SPEC_URL repository variable not set — skipping drift check."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          curl -sf --max-time 180 "$SPEC_URL" -o /tmp/live-openapi.json
+          head -c 100 /tmp/live-openapi.json | grep -q '"openapi"' || {
+            echo "::error::Response from $SPEC_URL does not look like an OpenAPI document"; exit 1; }
+
+      - uses: actions/setup-go@v5
+        if: steps.fetch.outputs.skip != 'true'
+        with:
+          go-version: "1.25"
+
+      - name: Run contract tests against the live spec
+        if: steps.fetch.outputs.skip != 'true'
+        run: |
+          # Informational: how far has the spec moved since the pinned fixture?
+          if ! cmp -s /tmp/live-openapi.json internal/commands/testdata/openapi.json; then
+            echo "::notice::Live spec differs from the committed fixture (additive drift is fine; this job fails only on breaking drift)."
+          fi
+          cp /tmp/live-openapi.json internal/commands/testdata/openapi.json
+          go test ./internal/commands/
+
+      - name: Explain failure
+        if: failure()
+        run: |
+          echo "::error::The CLI's requests no longer conform to the backend's live OpenAPI spec." \
+               "Refresh the fixture with script/update-openapi-fixture.sh, fix the SDK, and ship both in one PR."

@@ -32,6 +32,18 @@ var commandMetadataTable = map[string]AgentMetadata{
 		SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
+	"dhq launch": {
+		// Provisions a project/server (Managed VPS or Static Hosting) and deploys.
+		// Re-runs resolve the existing project/server from .deployhq.toml rather than
+		// double-provisioning (idempotent). A Managed VPS is a managed resource (see
+		// managedVPSAcknowledgePhrase in metered.go for the current cost framing), so
+		// agents should confirm — and the command itself requires --accept-cost in
+		// non-interactive mode before provisioning a Managed VPS.
+		Interactive: true, Destructive: false, Idempotent: true,
+		RequiresConfirmation: true,
+		SupportsJSON:         true, SafeForAutomation: true,
+		ResourceTypes: []string{"project", "server", "deployment"},
+	},
 
 	// Projects
 	"dhq projects list": {

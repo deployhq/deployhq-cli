@@ -183,6 +183,16 @@ func (c *Client) do(ctx context.Context, method, path string, body, v interface{
 func parseAPIError(resp *http.Response) error {
 	apiErr := &APIError{StatusCode: resp.StatusCode}
 
+	// Capture the Retry-After backoff hint on 429s (provisioning rate limit).
+	// Only the integer-seconds form is parsed; an HTTP-date form is left as 0.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		if ra := strings.TrimSpace(resp.Header.Get("Retry-After")); ra != "" {
+			if secs, convErr := strconv.Atoi(ra); convErr == nil && secs >= 0 {
+				apiErr.RetryAfter = secs
+			}
+		}
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil || len(body) == 0 {
 		return apiErr

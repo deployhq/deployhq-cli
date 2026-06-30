@@ -85,7 +85,15 @@ func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.E
 						if len(logs) > 15 {
 							start = len(logs) - 15
 						}
+						// De-duplicate identical lines: a static deploy can record
+						// the same advisory/log line more than once, which would
+						// otherwise print twice here (the web UI shows each once).
+						seen := make(map[string]bool)
 						for _, l := range logs[start:] {
+							if seen[l.Message] {
+								continue
+							}
+							seen[l.Message] = true
 							env.Status("   %s", l.Message)
 						}
 					}

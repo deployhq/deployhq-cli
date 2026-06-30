@@ -101,6 +101,27 @@ type Server struct {
 	UseSSHKeys             bool         `json:"use_ssh_keys,omitempty"`
 	HostKey                string       `json:"host_key,omitempty"`
 	UnlinkBeforeUpload     bool         `json:"unlink_before_upload,omitempty"`
+
+	// Managed-resource provisioning state, populated for managed_vps and
+	// static_hosting servers by the project-scoped server show endpoint
+	// (GET /projects/:id/servers/:id). The backend nests provisioning
+	// detail under a protocol-specific block; use ProvisioningStatus(server)
+	// to read the lifecycle status uniformly across protocols.
+	StaticHosting *StaticHostingInfo `json:"static_hosting,omitempty"`
+	ManagedVPS    *ManagedVPSInfo    `json:"managed_vps,omitempty"`
+}
+
+// HostedWebsiteAttributes holds Static Hosting-specific provisioning parameters.
+// Set this when creating a server with protocol_type "static_hosting".
+type HostedWebsiteAttributes struct {
+	// Subdomain is the globally unique subdomain under deployhq-sites.com.
+	// Example: "my-app" → https://my-app.deployhq-sites.com
+	Subdomain string `json:"subdomain"`
+	// SPAMode enables single-page-application routing (rewrites all paths to index.html).
+	SPAMode bool `json:"spa_mode,omitempty"`
+	// Subdirectory is the output folder within the server path to publish.
+	// Defaults to "" (the server path root) when empty.
+	Subdirectory string `json:"subdirectory,omitempty"`
 }
 
 // ServerCreateRequest is the payload for creating a server.
@@ -151,6 +172,21 @@ type ServerCreateRequest struct {
 	// Shopify
 	StoreURL  string `json:"store_url,omitempty"`
 	ThemeName string `json:"theme_name,omitempty"`
+
+	// Managed-resource provisioning params. These are tagged `json:"-"` because
+	// the DeployHQ servers API expects them as TOP-LEVEL siblings of `server` in
+	// the request body (params[:region], params[:hosted_website_attributes], …),
+	// NOT nested inside the server object. CreateServer hoists them accordingly.
+
+	// Static Hosting (protocol_type "static_hosting") — attributes that configure
+	// the HostedWebsite provisioned alongside the server.
+	HostedWebsiteAttributes *HostedWebsiteAttributes `json:"-"`
+	// Region is the DigitalOcean region slug for a Managed VPS (e.g. "lon1", "nyc3").
+	Region string `json:"-"`
+	// Size is the DigitalOcean droplet size slug (e.g. "s-1vcpu-1gb").
+	Size string `json:"-"`
+	// OSImage is the DigitalOcean image slug (defaults to "ubuntu-24-04-x64" when empty).
+	OSImage string `json:"-"`
 }
 
 // ServerUpdateRequest is the payload for updating a server.
@@ -365,4 +401,100 @@ type PaginatedResponse[T any] struct {
 type ListOptions struct {
 	Page    int
 	PerPage int
+}
+
+// AccountCapabilities holds the managed-resource capability flags carried on the
+// account sub-object of GET /profile.
+// All authenticated account members can read /profile — it is not admin-gated.
+type AccountCapabilities struct {
+	// BetaFeatures indicates whether the managed-resources beta is enabled for this account.
+	BetaFeatures bool `json:"beta_features"`
+	// StaticHostingEligible indicates whether the account can provision Static Hosting sites.
+	StaticHostingEligible bool `json:"static_hosting_eligible"`
+	// ManagedVPSEligible indicates whether the account can provision Managed VPS droplets.
+	ManagedVPSEligible bool `json:"managed_vps_eligible"`
+}
+
+// BetaEnrollmentRequest is the body for POST /beta/enrollments.
+// Protocol is optional — omit to enroll in all managed-resources protocols.
+type BetaEnrollmentRequest struct {
+	// Protocol is the managed protocol to enroll in, e.g. "static_hosting" or "managed_vps".
+	// When empty the backend enrolls the account in all managed-resources protocols.
+	Protocol string `json:"protocol,omitempty"`
+}
+
+// BetaEnrollmentResponse is the response from POST /beta/enrollments.
+type BetaEnrollmentResponse struct {
+	// Enrolled is true when the account is now enrolled (was already enrolled or just flipped).
+	Enrolled bool `json:"enrolled"`
+	// BetaFeatures mirrors the account's beta_features flag after the operation.
+	BetaFeatures bool `json:"beta_features"`
+}
+
+// ManagedHostingRegion is a DigitalOcean region available for Managed VPS provisioning.
+type ManagedHostingRegion struct {
+	// Slug is the region identifier used in ServerCreateRequest.Region (e.g. "lon1").
+	Slug string `json:"slug"`
+	// Name is the human-readable region name (e.g. "London, United Kingdom").
+	Name string `json:"name"`
+	// Available indicates whether new droplets can currently be created in this region.
+	Available bool `json:"available"`
+}
+
+// ManagedHostingSize is a DigitalOcean droplet size available for Managed VPS provisioning.
+type ManagedHostingSize struct {
+	// Slug is the size identifier used in ServerCreateRequest.Size (e.g. "s-1vcpu-1gb").
+	Slug string `json:"slug"`
+	// Description is the human-readable size label (e.g. "1 vCPU / 1 GB RAM").
+	Description string `json:"description"`
+	// PriceMonthly is the monthly cost in the account's billing currency.
+	PriceMonthly float64 `json:"price_monthly"`
+	// PriceHourly is the hourly cost in the account's billing currency.
+	PriceHourly float64 `json:"price_hourly"`
+	// Memory is the RAM in megabytes.
+	Memory int `json:"memory"`
+	// VCPUs is the number of virtual CPUs.
+	VCPUs int `json:"vcpus"`
+	// Disk is the root disk size in gigabytes.
+	Disk int `json:"disk"`
+}
+
+// ManagedVPSInfo is the nested `managed_vps` object within a server response for
+// managed_vps servers. It carries the provisioning state and droplet
+// detail that live on the backing HostedResource rather than on the server row.
+type ManagedVPSInfo struct {
+	// HostedResourceIdentifier is the opaque identifier of the backing HostedResource.
+	HostedResourceIdentifier string `json:"hosted_resource_identifier"`
+	// Status is the provisioning lifecycle status, e.g. "provisioning", "active", "error".
+	Status string `json:"status,omitempty"`
+	// IPAddress is the public IP of the droplet once active.
+	IPAddress string `json:"ip_address,omitempty"`
+	// Region is the DigitalOcean region slug the droplet runs in.
+	Region string `json:"region,omitempty"`
+	// Size is the DigitalOcean droplet size slug.
+	Size string `json:"size,omitempty"`
+	// MonthlyCost is the droplet's monthly cost (string or number on the wire).
+	MonthlyCost FlexString `json:"monthly_cost,omitempty"`
+}
+
+// StaticHostingInfo is the nested `static_hosting` object within a server response for static_hosting servers.
+type StaticHostingInfo struct {
+	// URL is the live public URL of the Static Hosting site (e.g. "https://my-app.deployhq-sites.com").
+	URL string `json:"url"`
+	// Subdomain is the subdomain portion of the URL.
+	Subdomain string `json:"subdomain"`
+	// Status is the provisioning status of the underlying HostedWebsite.
+	Status string `json:"status,omitempty"`
+}
+
+// TwoFactorError is a sentinel returned by Signup when the API responds with 422
+// and the error body indicates an existing account with 2FA enabled.
+// The caller should redirect the user to browser-based login.
+type TwoFactorError struct {
+	// Message is the human-readable error from the API.
+	Message string
+}
+
+func (e *TwoFactorError) Error() string {
+	return "two-factor authentication required: " + e.Message
 }

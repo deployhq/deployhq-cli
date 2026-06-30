@@ -189,7 +189,7 @@ func resolveDeployProject(ctx context.Context, client *sdk.Client, configured st
 	case 0:
 		return "", &output.UserError{
 			Message: "No project specified",
-			Hint:    "This account has no projects yet. Create one in the DeployHQ dashboard, then re-run with --project <identifier>.",
+			Hint:    "This account has no projects yet.\nTo provision and deploy in one step: dhq launch\nOr create a project in the DeployHQ dashboard, then re-run with --project <identifier>.",
 		}
 	case 1:
 		env.Status("Auto-selected project: %s", projects[0].Name)

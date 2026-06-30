@@ -10,6 +10,10 @@ type APIError struct {
 	StatusCode int      `json:"status"`
 	Message    string   `json:"error,omitempty"`
 	Errors     []string `json:"errors,omitempty"`
+	// RetryAfter is the parsed Retry-After header (in seconds) accompanying a
+	// 429 response, or 0 when absent/unparseable. Callers hitting a provisioning
+	// rate limit should back off for this long before retrying.
+	RetryAfter int `json:"retry_after,omitempty"`
 }
 
 func (e *APIError) Error() string {
@@ -44,9 +48,25 @@ func (e *APIError) IsForbidden() bool {
 	return e.StatusCode == http.StatusForbidden
 }
 
+// IsEmailVerificationRequired is the one 403 the launch flow handles gracefully:
+// the account's email is not yet verified, so the backend's deploy gate blocks
+// it. It is deliberately distinct from a generic 403 (AccessDenied) — which must
+// still surface as a real error.
+func (e *APIError) IsEmailVerificationRequired() bool {
+	return e.StatusCode == http.StatusForbidden && e.Message == "email_verification_required"
+}
+
 // IsValidationError returns true if the error is a 422.
 func (e *APIError) IsValidationError() bool {
 	return e.StatusCode == http.StatusUnprocessableEntity
+}
+
+// IsRateLimited returns true if the error is a 429. For metered-resource
+// provisioning this is the per-account provisioning rate limit — deliberately
+// distinct from the 422 cap/kill-switch — and is safe to retry after backing
+// off for RetryAfter seconds.
+func (e *APIError) IsRateLimited() bool {
+	return e.StatusCode == http.StatusTooManyRequests
 }
 
 // IsServerError returns true if the error is a 5xx.
@@ -74,6 +94,14 @@ func IsUnauthorized(err error) bool {
 func IsForbidden(err error) bool {
 	if apiErr, ok := err.(*APIError); ok {
 		return apiErr.IsForbidden()
+	}
+	return false
+}
+
+// IsRateLimited checks whether err is an APIError with status 429.
+func IsRateLimited(err error) bool {
+	if apiErr, ok := err.(*APIError); ok {
+		return apiErr.IsRateLimited()
 	}
 	return false
 }
