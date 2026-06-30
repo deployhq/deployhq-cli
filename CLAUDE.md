@@ -36,6 +36,12 @@ internal/commands/  All CLI commands (42 top-level, 155+ total)
 
 internal/version/   Update checker (GitHub releases API)
 
+internal/skillinstaller/  Detects installed AI agents (12 supported) and
+                    installs the DeployHQ skill into each one's native format.
+                    user-scope targets write to $HOME; project-scope targets
+                    write into the repo (opt-in via --agent). Powers
+                    `dhq skills` and the `dhq hello` onboarding step.
+
 skills/deployhq/    Agent skill guide + per-domain reference docs (8 files)
                     SKILL.md is the entry point for any AI agent.
 

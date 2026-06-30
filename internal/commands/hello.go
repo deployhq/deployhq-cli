@@ -21,7 +21,7 @@ func newHelloCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "hello",
 		Short: "Get started with DeployHQ CLI",
-		Long:  "Guided setup that walks you through login, account creation, and project configuration.",
+		Long:  "Guided setup that walks you through login, account creation, project configuration, and installing the DeployHQ skill into any AI coding agents detected on this machine.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
