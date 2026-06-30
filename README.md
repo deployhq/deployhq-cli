@@ -48,13 +48,18 @@ dhq update
 # (Static Hosting or a Managed VPS) and deploy — to a live URL.
 dhq launch
 
-# Guided setup (login or signup, pick a project, optional first deploy)
+# Guided setup (login or signup, pick a project, install the DeployHQ
+# skill into your AI coding agents, optional first deploy)
 dhq hello
 
 # Or step-by-step
 dhq signup
 dhq auth login
 dhq configure
+
+# Teach your detected AI coding agents (Claude Code, Cursor, Codex, …) to drive dhq
+# (project-scope agents like Copilot are opt-in — see `dhq skills install --agent`)
+dhq skills install
 
 # Deploy and watch in real-time
 dhq deploy -p my-app --wait
@@ -178,6 +183,7 @@ dhq assist        [question] (AI deployment assistant, requires Ollama)
 dhq completion    bash | zsh | fish | powershell
 dhq doctor        (health check)
 dhq update        (self-update to latest version)
+dhq skills        list | install (auto-detect AI agents and install the DeployHQ skill)
 dhq setup         claude | codex | cursor | windsurf (install agent plugins, --project for project-level)
 dhq mcp           (start MCP server in stdio mode)
 ```
@@ -285,18 +291,49 @@ dhq config show --resolved
 
 The CLI is designed for AI agents that can run shell commands.
 
-Agent skill guides are available at `.claude/SKILL.md`, `.codex/SKILL.md`, `.cursor/SKILL.md`, `.windsurf/SKILL.md`, and `docs/SKILL.md`.
+### Install the DeployHQ skill into your agents
+
+`dhq skills install` detects the AI coding agents on your machine and installs
+the DeployHQ skill into each one's native format, so the agent knows how to
+drive `dhq`. It's also offered automatically during `dhq hello`.
 
 ```bash
-# Install agent plugin (Claude Code, Codex, Cursor, or Windsurf)
-dhq setup claude
+# Detect installed agents and show their skill status
+dhq skills list
 
+# Install for every detected user-scope agent (Claude Code, Cursor, …)
+dhq skills install
+
+# Install for a specific agent (use the name from `dhq skills list`)
+dhq skills install --agent claude-code
+
+# Project-scope agents write into the current repo, so they're opt-in:
+dhq skills install --agent copilot
+```
+
+Twelve agents are supported — Aider, Antigravity, Claude Code, Cline, Codex CLI,
+Continue.dev, Cursor, Gemini CLI, GitHub Copilot, Kiro CLI, OpenCode, and Windsurf.
+**User-scope** agents install into your home directory and are picked up by the
+bare `dhq skills install`; **project-scope** agents write into the current
+repository and require an explicit `--agent` flag so login never mutates a repo
+as a side effect.
+
+`dhq setup <agent>` is a narrower alternative that installs the agent plugin for
+a single tool (Claude Code, Codex, Cursor, or Windsurf), with `--project` for
+project-level installs.
+
+### Other agent helpers
+
+```bash
 # Full command catalog with agent safety metadata
 dhq commands --json
 
 # Agent-optimized workflow
 DEPLOYHQ_AGENT=my-bot dhq deploy -p my-app --json
 ```
+
+Standalone skill guides are also available at `.claude/SKILL.md`,
+`.codex/SKILL.md`, `.cursor/SKILL.md`, `.windsurf/SKILL.md`, and `docs/SKILL.md`.
 
 ### Non-Interactive Mode
 
