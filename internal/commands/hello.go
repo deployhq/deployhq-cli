@@ -58,7 +58,12 @@ func newHelloCmd() *cobra.Command {
 				env.Status("Logged in as %s on %s.%s", creds.Email, creds.Account, host)
 			}
 
-			// Step 2: Fetch projects
+			// Step 2: Offer to install the DeployHQ skill for any AI agents
+			// installed on this machine. Auto-installs for the runtime agent,
+			// prompts for others. Non-fatal — hello continues on errors.
+			offerSkillInstall(env)
+
+			// Step 3: Fetch projects
 			var sdkOpts []sdk.Option
 			if baseURL := cliCtx.Config.BaseURL(creds.Account); baseURL != "" {
 				sdkOpts = append(sdkOpts, sdk.WithBaseURL(baseURL))
@@ -101,7 +106,7 @@ func newHelloCmd() *cobra.Command {
 				return initCmd.RunE(initCmd, nil)
 			}
 
-			// Step 3: Default project
+			// Step 4: Default project
 			defaultProject := cliCtx.Config.Project
 			if defaultProject != "" {
 				env.Status("Default project: %s", defaultProject)
@@ -134,7 +139,7 @@ func newHelloCmd() *cobra.Command {
 				output.ColorGreen.Fprintf(env.Stderr, "Saved to %s\n", path) //nolint:errcheck
 			}
 
-			// Step 4: Orientation
+			// Step 5: Orientation
 			env.Status("")
 			env.Status("You're all set! Here are some useful commands:")
 			env.Status("  dhq deploy            Deploy your project")
