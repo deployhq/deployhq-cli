@@ -104,7 +104,7 @@ var agents = []agentSetup{
 func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install agent plugins (deprecated — use 'dhq skills')",
+		Short: "Install agent plugins (deprecated — use 'dhq skills install')",
 		Long: "Install DeployHQ agent integration files for AI coding assistants.\n\n" +
 			"DEPRECATED: 'dhq setup' is superseded by 'dhq skills install', which\n" +
 			"auto-detects installed agents and supports 12 of them (vs the 4 here).\n" +
