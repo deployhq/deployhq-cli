@@ -30,5 +30,7 @@ func TestAgentMetadata_SSHKeysDownload(t *testing.T) {
 	assert.True(t, m.Idempotent, "reading a key is retry-safe")
 	assert.True(t, m.SupportsJSON)
 	assert.False(t, m.Destructive, "downloading does not mutate the key")
+	assert.True(t, m.RequiresConfirmation, "emits sensitive private key material")
+	assert.False(t, m.SafeForAutomation, "key material should not be printed unattended")
 	assert.Contains(t, m.ResourceTypes, "ssh_key")
 }

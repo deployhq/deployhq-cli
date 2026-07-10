@@ -277,9 +277,12 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"ssh_key"},
 	},
 	"dhq ssh-keys download": {
-		// Reads private key material; idempotent and safe to retry, but the
-		// output is sensitive. Requires an admin on a paid account (else 403).
-		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		// Emits raw private key material. Idempotent, but sensitive enough that
+		// an agent should confirm before running and not treat it as safe to run
+		// unattended (the key would land in logs/transcripts). Requires an admin
+		// on a paid account (else 403).
+		Idempotent: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: false,
 		ResourceTypes: []string{"ssh_key"},
 	},
 	// Users

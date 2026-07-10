@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -147,7 +148,7 @@ to save the raw key to a file use --output rather than shell redirection:
 			}
 
 			env.Warn("Printing private key material to stdout — handle with care.")
-			fmt.Fprintln(env.Stdout, privateKey)
+			fmt.Fprintln(env.Stdout, privateKey) //nolint:errcheck // best-effort stdout
 			return nil
 		},
 	}
@@ -156,22 +157,31 @@ to save the raw key to a file use --output rather than shell redirection:
 }
 
 // writeSecureFile writes private key material with owner-only (0600)
-// permissions. Unlike os.WriteFile, it also tightens the mode of a
-// pre-existing file — os.WriteFile leaves an existing file's permissions
-// untouched, which could leave key material world-readable.
+// permissions, atomically. It writes to a temporary 0600 file in the same
+// directory and renames it into place, so a write failure or interruption
+// never truncates or partially overwrites an existing valid key — and the
+// destination ends up 0600 even if a looser-permissioned file was already
+// there.
 func writeSecureFile(path, contents string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".dhq-key-*")
 	if err != nil {
 		return err
 	}
-	// Enforce 0600 even if the file already existed with looser permissions.
-	if err := f.Chmod(0o600); err != nil {
-		_ = f.Close()
+	tmpName := tmp.Name()
+	// Best-effort cleanup if we bail before the rename.
+	defer func() { _ = os.Remove(tmpName) }()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
 		return err
 	}
-	if _, err := f.WriteString(contents); err != nil {
-		_ = f.Close()
+	if _, err := tmp.WriteString(contents); err != nil {
+		_ = tmp.Close()
 		return err
 	}
-	return f.Close()
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
