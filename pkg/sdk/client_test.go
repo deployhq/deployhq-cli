@@ -56,6 +56,65 @@ func TestNew(t *testing.T) {
 	})
 }
 
+func TestNewPublic(t *testing.T) {
+	t.Run("valid without credentials", func(t *testing.T) {
+		c, err := NewPublic("myco")
+		require.NoError(t, err)
+		assert.Equal(t, "https://myco.deployhq.com", c.baseURL.String())
+		assert.Empty(t, c.email)
+		assert.Empty(t, c.apiKey)
+	})
+
+	t.Run("missing account", func(t *testing.T) {
+		_, err := NewPublic("")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "account is required")
+	})
+}
+
+// newPublicTestClient creates a public (no-auth) Client pointed at the test server.
+func newPublicTestClient(t *testing.T, server *httptest.Server) *Client {
+	t.Helper()
+	c, err := NewPublic("test")
+	require.NoError(t, err)
+	c.baseURL = mustParseURL(t, server.URL)
+	c.httpClient = server.Client()
+	return c
+}
+
+// TestPublicClient_NoAuth verifies the public client works against a server
+// that requires no Authorization header (the empty header it sends is ignored).
+func TestPublicClient_NoAuth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// An empty basic-auth header (or none) must be acceptable — the
+		// server does not require credentials for these public endpoints.
+		user, pass, _ := r.BasicAuth()
+		assert.Empty(t, user)
+		assert.Empty(t, pass)
+
+		switch r.URL.Path {
+		case "/ip_ranges":
+			_ = json.NewEncoder(w).Encode(IPRanges{AllIPv4: []string{"1.2.3.0/24"}})
+		case "/packages":
+			_ = json.NewEncoder(w).Encode([]Package{{Permalink: "pro", Name: "Pro"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	c := newPublicTestClient(t, server)
+
+	ranges, err := c.GetIPRanges(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"1.2.3.0/24"}, ranges.AllIPv4)
+
+	pkgs, err := c.ListPackages(context.Background())
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1)
+	assert.Equal(t, "pro", pkgs[0].Permalink)
+}
+
 func TestClient_BasicAuth(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, pass, ok := r.BasicAuth()

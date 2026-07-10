@@ -30,6 +30,9 @@ Use these commands to create, list, configure, and delete projects. Once a proje
 		newProjectsInsightsCmd(),
 		newProjectsUploadKeyCmd(),
 		newProjectsBadgeCmd(),
+		newProjectsRegenerateKeyCmd(),
+		newProjectsUndeployedChangesCmd(),
+		newProjectsAIOverviewCmd(),
 	)
 
 	return cmd
@@ -331,10 +334,10 @@ func newProjectsDeleteCmd() *cobra.Command {
 
 func newProjectsStarCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "star [permalink]",
-		Aliases: []string{"fav", "unfav", "favourite", "unfavourite"},
-		Short:   "Toggle project starred/favourite status",
-		Args:    cobra.MaximumNArgs(1),
+		Use:               "star [permalink]",
+		Aliases:           []string{"fav", "unfav", "favourite", "unfavourite"},
+		Short:             "Toggle project starred/favourite status",
+		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeProjectNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID, err := resolveProjectArg(args)
@@ -464,6 +467,156 @@ func newProjectsBadgeCmd() *cobra.Command {
 			return err
 		},
 	}
+}
+
+func newProjectsRegenerateKeyCmd() *cobra.Command {
+	var keyType string
+
+	cmd := &cobra.Command{
+		Use:               "regenerate-key [permalink]",
+		Short:             "Regenerate the project's SSH deploy key",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
+		Example: `  # Regenerate with the account default key type
+  dhq projects regenerate-key my-app
+
+  # Regenerate as an ED25519 key
+  dhq projects regenerate-key my-app --key-type ED25519`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := resolveProjectArg(args)
+			if err != nil {
+				return err
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			publicKey, err := client.RegenerateProjectKey(cliCtx.Background(), projectID, keyType)
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(
+					map[string]string{"public_key": publicKey},
+					fmt.Sprintf("Regenerated deploy key for project: %s", projectID),
+				))
+			}
+
+			env.Status("Regenerated deploy key for project: %s", projectID)
+			env.Status("\nNew public key (add this to your repository's deploy keys):\n")
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), publicKey)
+			return err
+		},
+	}
+
+	cmd.Flags().StringVar(&keyType, "key-type", "", "Key type: ED25519 or RSA (default: account default)")
+	return cmd
+}
+
+func newProjectsUndeployedChangesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "undeployed-changes [permalink]",
+		Short:             "Show commits not yet deployed for a project",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := resolveProjectArg(args)
+			if err != nil {
+				return err
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			changes, err := client.GetUndeployedChanges(cliCtx.Background(), projectID)
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(changes,
+					fmt.Sprintf("%d undeployed change(s)", changes.Count),
+					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
+				))
+			}
+
+			env.Status("%d undeployed change(s)", changes.Count)
+			if changes.Truncated {
+				env.Status("(list truncated)")
+			}
+			if len(changes.Commits) > 0 {
+				rows := make([][]string, len(changes.Commits))
+				for i, commit := range changes.Commits {
+					ref := commit.Ref
+					if len(ref) > 8 {
+						ref = ref[:8]
+					}
+					rows[i] = []string{ref, commit.Author, commit.ShortMessage}
+				}
+				env.WriteTable([]string{"Ref", "Author", "Message"}, rows)
+				env.Status("\nTip: dhq deploy -p %s", projectID)
+			}
+			return nil
+		},
+	}
+}
+
+func newProjectsAIOverviewCmd() *cobra.Command {
+	var startRef, endRef string
+
+	cmd := &cobra.Command{
+		Use:               "ai-overview [permalink]",
+		Short:             "Generate an AI summary of changes for a deployment",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
+		Example: `  # Summarize changes up to a revision
+  dhq projects ai-overview my-app --end-ref main
+
+  # Summarize a specific range
+  dhq projects ai-overview my-app --start-ref abc123 --end-ref def456`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if endRef == "" {
+				return &output.UserError{Message: "--end-ref is required", Hint: "Use --end-ref <revision>"}
+			}
+
+			projectID, err := resolveProjectArg(args)
+			if err != nil {
+				return err
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			overview, err := client.GenerateAIDeploymentOverview(cliCtx.Background(), projectID, startRef, endRef)
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(
+					map[string]string{"overview": overview},
+					fmt.Sprintf("AI deployment overview for project: %s", projectID),
+				))
+			}
+
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), overview)
+			return err
+		},
+	}
+
+	cmd.Flags().StringVar(&startRef, "start-ref", "", "Start revision (default: last deployed revision)")
+	cmd.Flags().StringVar(&endRef, "end-ref", "", "End revision (required)")
+	return cmd
 }
 
 // resolveProjectArg gets the project ID from args or --project flag.

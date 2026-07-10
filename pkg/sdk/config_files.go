@@ -3,15 +3,16 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"net/http"
 )
 
 // ConfigFile represents a project config file.
 type ConfigFile struct {
-	Identifier  string   `json:"identifier"`
-	Description string   `json:"description"`
-	Path        string   `json:"path"`
-	Body        string   `json:"body"`
-	Build       bool     `json:"build"`
+	Identifier  string        `json:"identifier"`
+	Description string        `json:"description"`
+	Path        string        `json:"path"`
+	Body        string        `json:"body"`
+	Build       bool          `json:"build"`
 	Servers     []interface{} `json:"servers,omitempty"`
 }
 
@@ -64,4 +65,26 @@ func (c *Client) UpdateConfigFile(ctx context.Context, projectID, fileID string,
 
 func (c *Client) DeleteConfigFile(ctx context.Context, projectID, fileID string) error {
 	return c.delete(ctx, fmt.Sprintf("/projects/%s/config_files/%s", projectID, fileID))
+}
+
+// LinkGlobalConfigFile links an account-wide global config file into a project.
+// The request body is FLAT (top-level config_file_id), not wrapped.
+func (c *Client) LinkGlobalConfigFile(ctx context.Context, projectID, configFileID string) (*ConfigFile, error) {
+	body := struct {
+		ConfigFileID string `json:"config_file_id"`
+	}{ConfigFileID: configFileID}
+	var file ConfigFile
+	if err := c.post(ctx, fmt.Sprintf("/projects/%s/config_files/link_global", projectID), body, &file); err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
+// UnlinkGlobalConfigFile removes the link between a project and a global config
+// file. This is a DELETE request that carries a FLAT body.
+func (c *Client) UnlinkGlobalConfigFile(ctx context.Context, projectID, configFileID string) error {
+	body := struct {
+		ConfigFileID string `json:"config_file_id"`
+	}{ConfigFileID: configFileID}
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/projects/%s/config_files/unlink_global", projectID), body, nil)
 }

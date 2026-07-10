@@ -156,15 +156,74 @@ func TestEnrollBeta_AllProtocols(t *testing.T) {
 	assert.True(t, resp.Enrolled)
 }
 
+// The real GET /managed_hosting/regions payload is grouped by continent.
+const managedRegionsPayload = `{
+	"grouped_regions": {
+		"Europe": {
+			"default": "lon1",
+			"regions": [
+				{"slug": "lon1", "name": "London, United Kingdom", "flag": "🇬🇧", "country": "United Kingdom"},
+				{"slug": "ams3", "name": "Amsterdam, Netherlands", "flag": "🇳🇱", "country": "Netherlands"}
+			]
+		},
+		"North America": {
+			"default": "nyc3",
+			"regions": [
+				{"slug": "nyc3", "name": "New York City, United States", "flag": "🇺🇸", "country": "United States"}
+			]
+		}
+	}
+}`
+
+func TestGetManagedHostingRegions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/managed_hosting/regions", r.URL.Path)
+		assert.Equal(t, http.MethodGet, r.Method)
+		_, _ = w.Write([]byte(managedRegionsPayload))
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	resp, err := c.GetManagedHostingRegions(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, resp.GroupedRegions, "Europe")
+	eu := resp.GroupedRegions["Europe"]
+	assert.Equal(t, "lon1", eu.Default)
+	require.Len(t, eu.Regions, 2)
+	assert.Equal(t, "lon1", eu.Regions[0].Slug)
+	assert.Equal(t, "United Kingdom", eu.Regions[0].Country)
+	assert.Equal(t, "🇬🇧", eu.Regions[0].Flag)
+}
+
+func TestListManagedHostingRegionRows(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(managedRegionsPayload))
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	rows, err := c.ListManagedHostingRegionRows(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, rows, 3)
+
+	// Find the lon1 row and assert it is flagged default within its group.
+	var lon1 *ManagedHostingRegionRow
+	for i := range rows {
+		if rows[i].Slug == "lon1" {
+			lon1 = &rows[i]
+		}
+	}
+	require.NotNil(t, lon1)
+	assert.Equal(t, "Europe", lon1.Group)
+	assert.True(t, lon1.IsDefault)
+	assert.Equal(t, "United Kingdom", lon1.Country)
+}
+
 func TestListManagedHostingRegions(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/managed_hosting/regions", r.URL.Path)
 		assert.Equal(t, http.MethodGet, r.Method)
-		_ = json.NewEncoder(w).Encode([]ManagedHostingRegion{
-			{Slug: "lon1", Name: "London, United Kingdom", Available: true},
-			{Slug: "nyc3", Name: "New York City, United States", Available: true},
-			{Slug: "ams3", Name: "Amsterdam, Netherlands", Available: false},
-		})
+		_, _ = w.Write([]byte(managedRegionsPayload))
 	}))
 	defer server.Close()
 
@@ -172,18 +231,24 @@ func TestListManagedHostingRegions(t *testing.T) {
 	regions, err := c.ListManagedHostingRegions(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, regions, 3)
-	assert.Equal(t, "lon1", regions[0].Slug)
-	assert.True(t, regions[0].Available)
-	assert.False(t, regions[2].Available)
+	slugs := make(map[string]bool)
+	for _, r := range regions {
+		slugs[r.Slug] = true
+	}
+	assert.True(t, slugs["lon1"])
+	assert.True(t, slugs["nyc3"])
+	assert.True(t, slugs["ams3"])
 }
 
 func TestListManagedHostingSizes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/managed_hosting/sizes", r.URL.Path)
 		assert.Equal(t, http.MethodGet, r.Method)
-		_ = json.NewEncoder(w).Encode([]ManagedHostingSize{
-			{Slug: "s-1vcpu-1gb", Description: "1 vCPU / 1 GB RAM", PriceMonthly: 6.0, PriceHourly: 0.009, Memory: 1024, VCPUs: 1, Disk: 25},
-			{Slug: "s-2vcpu-2gb", Description: "2 vCPU / 2 GB RAM", PriceMonthly: 12.0, PriceHourly: 0.018, Memory: 2048, VCPUs: 2, Disk: 60},
+		_ = json.NewEncoder(w).Encode(ManagedHostingSizesResponse{
+			Sizes: []ManagedHostingSize{
+				{Slug: "s-1vcpu-1gb", Label: "1 vCPU / 1 GB RAM", MonthlyCost: 6.0, Currency: "USD"},
+				{Slug: "s-2vcpu-2gb", Label: "2 vCPU / 2 GB RAM", MonthlyCost: 12.0, Currency: "USD"},
+			},
 		})
 	}))
 	defer server.Close()
@@ -193,8 +258,24 @@ func TestListManagedHostingSizes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, sizes, 2)
 	assert.Equal(t, "s-1vcpu-1gb", sizes[0].Slug)
-	assert.Equal(t, 6.0, sizes[0].PriceMonthly)
-	assert.Equal(t, 1024, sizes[0].Memory)
+	assert.Equal(t, 6.0, sizes[0].MonthlyCost)
+	assert.Equal(t, "USD", sizes[0].Currency)
+	assert.Equal(t, "1 vCPU / 1 GB RAM", sizes[0].Label)
+}
+
+func TestListManagedHostingSizes_PricingUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Pricing temporarily unavailable."})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	_, err := c.ListManagedHostingSizes(context.Background())
+	require.Error(t, err)
+	apiErr, ok := err.(*APIError)
+	require.True(t, ok)
+	assert.Equal(t, http.StatusServiceUnavailable, apiErr.StatusCode)
 }
 
 func TestGetServerProvisioningState_ManagedVPS(t *testing.T) {

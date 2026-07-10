@@ -195,10 +195,17 @@ Support: support@deployhq.com`,
 		newAutoDeploysCmd(),
 		newScheduledDeploysCmd(),
 		newTemplatesCmd(),
+		newHostedResourcesCmd(),
+		newManagedHostingCmd(),
+		newBetaCmd(),
+		newInvoicesCmd(),
+		newIPRangesCmd(),
+		newPlansCmd(),
 		newZonesCmd(),
 
 		// Operations
 		newTestAccessCmd(),
+		newDetectCmd(),
 
 		// Shortcuts
 		newLaunchCmd(),

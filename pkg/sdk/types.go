@@ -431,32 +431,50 @@ type BetaEnrollmentResponse struct {
 	BetaFeatures bool `json:"beta_features"`
 }
 
-// ManagedHostingRegion is a DigitalOcean region available for Managed VPS provisioning.
+// ManagedHostingRegion is a DigitalOcean region available for Managed VPS
+// provisioning. Regions are served grouped by continent (see RegionGroup); this
+// is a single region row within a group.
 type ManagedHostingRegion struct {
 	// Slug is the region identifier used in ServerCreateRequest.Region (e.g. "lon1").
 	Slug string `json:"slug"`
 	// Name is the human-readable region name (e.g. "London, United Kingdom").
 	Name string `json:"name"`
-	// Available indicates whether new droplets can currently be created in this region.
-	Available bool `json:"available"`
+	// Flag is the emoji/flag glyph for the region's country.
+	Flag string `json:"flag"`
+	// Country is the human-readable country name.
+	Country string `json:"country"`
+}
+
+// RegionGroup is a named group of regions (e.g. "Europe") with the group's
+// default region slug.
+type RegionGroup struct {
+	// Default is the slug of the group's default region.
+	Default string `json:"default"`
+	// Regions are the regions within this group.
+	Regions []ManagedHostingRegion `json:"regions"`
+}
+
+// ManagedHostingRegionsResponse is the raw GET /managed_hosting/regions payload:
+// a map from group name to that group's regions and default.
+type ManagedHostingRegionsResponse struct {
+	GroupedRegions map[string]RegionGroup `json:"grouped_regions"`
 }
 
 // ManagedHostingSize is a DigitalOcean droplet size available for Managed VPS provisioning.
 type ManagedHostingSize struct {
 	// Slug is the size identifier used in ServerCreateRequest.Size (e.g. "s-1vcpu-1gb").
 	Slug string `json:"slug"`
-	// Description is the human-readable size label (e.g. "1 vCPU / 1 GB RAM").
-	Description string `json:"description"`
-	// PriceMonthly is the monthly cost in the account's billing currency.
-	PriceMonthly float64 `json:"price_monthly"`
-	// PriceHourly is the hourly cost in the account's billing currency.
-	PriceHourly float64 `json:"price_hourly"`
-	// Memory is the RAM in megabytes.
-	Memory int `json:"memory"`
-	// VCPUs is the number of virtual CPUs.
-	VCPUs int `json:"vcpus"`
-	// Disk is the root disk size in gigabytes.
-	Disk int `json:"disk"`
+	// Label is the human-readable size label (e.g. "1 vCPU / 1 GB RAM").
+	Label string `json:"label"`
+	// MonthlyCost is the monthly cost in the account's billing currency.
+	MonthlyCost float64 `json:"monthly_cost"`
+	// Currency is the ISO currency code for MonthlyCost (e.g. "USD").
+	Currency string `json:"currency"`
+}
+
+// ManagedHostingSizesResponse is the raw GET /managed_hosting/sizes payload.
+type ManagedHostingSizesResponse struct {
+	Sizes []ManagedHostingSize `json:"sizes"`
 }
 
 // ManagedVPSInfo is the nested `managed_vps` object within a server response for
