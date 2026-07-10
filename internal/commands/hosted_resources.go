@@ -72,7 +72,10 @@ func newHostedResourcesListCmd() *cobra.Command {
 				return nil
 			}
 
-			columns := []string{"Name", "Identifier", "Kind", "Status", "Region / Subdomain", "Monthly Cost"}
+			// The hosted_resources endpoint reports monthly_cost in the account's
+			// billing currency but does not return the currency code, so we render
+			// a bare amount rather than falsely prefixing a currency symbol.
+			columns := []string{"Name", "Identifier", "Kind", "Status", "Region / Subdomain", "Monthly Cost (account currency)"}
 			rows := make([][]string, len(resources))
 			for i, r := range resources {
 				rows[i] = []string{
@@ -81,7 +84,7 @@ func newHostedResourcesListCmd() *cobra.Command {
 					r.Kind,
 					r.Status,
 					hostedResourceLocation(r),
-					fmt.Sprintf("$%.2f", r.MonthlyCost),
+					fmt.Sprintf("%.2f", r.MonthlyCost),
 				}
 			}
 			env.WriteTable(columns, rows)

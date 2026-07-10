@@ -130,9 +130,11 @@ dhq scheduled-deploys list|show|create|update|delete -p <project>
 
 Templates:
 dhq templates list|show|public|public-show|create|update|delete
-dhq templates config-files|excluded-files|integrations|commands|build-commands|build-cache-files|build-known-hosts|servers|server-groups <action> -t <template>
+dhq templates config-files|servers list|show|create|update|delete -t <template>    (full CRUD)
+dhq templates excluded-files|integrations|commands|build-commands|build-cache-files|server-groups list|create|update|delete -t <template>    (no show)
+dhq templates build-known-hosts list|create|delete -t <template>    (no update)
 dhq templates build-languages set <package> --version <v> -t <template>
-dhq templates build-configuration -t <template>
+dhq templates build-configuration -t <template>    (show only)
 
 Managed Hosting:
 dhq hosted-resources list|show|sync|retry-provision
@@ -142,7 +144,8 @@ dhq beta enroll [--protocol managed_vps|static_hosting]    (enroll the account i
 Account Resources:
 dhq agents list|create|update|delete|revoke
 dhq global-servers list|show|create|update|delete|copy-to-project
-dhq invoices list|download <number>       (billing history; billing-manager key required)
+dhq invoices list                         (billing history; billing-manager key required)
+dhq invoices download <number>            (download an invoice PDF; billing-manager key required)
 dhq zones list
 
 Utilities & Info:

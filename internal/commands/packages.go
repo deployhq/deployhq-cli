@@ -30,6 +30,14 @@ region. This endpoint is public. Use --json to include each plan's feature list.
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(plans, fmt.Sprintf("%d plans", len(plans))))
 			}
+			if env.QuietMode {
+				permalinks := make([]string, len(plans))
+				for i, p := range plans {
+					permalinks[i] = p.Permalink
+				}
+				env.WriteQuiet(permalinks)
+				return nil
+			}
 			rows := make([][]string, len(plans))
 			for i, p := range plans {
 				rows[i] = []string{

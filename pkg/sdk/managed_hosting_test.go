@@ -206,6 +206,11 @@ func TestListManagedHostingRegionRows(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, rows, 3)
 
+	// Ordering must be deterministic: groups sorted by name, regions by slug.
+	// Europe(ams3, lon1) then North America(nyc3).
+	gotOrder := []string{rows[0].Slug, rows[1].Slug, rows[2].Slug}
+	assert.Equal(t, []string{"ams3", "lon1", "nyc3"}, gotOrder)
+
 	// Find the lon1 row and assert it is flagged default within its group.
 	var lon1 *ManagedHostingRegionRow
 	for i := range rows {

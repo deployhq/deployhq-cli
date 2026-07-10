@@ -91,7 +91,8 @@ func newInvoicesDownloadCmd() *cobra.Command {
 			if outputPath == "" {
 				outputPath = fmt.Sprintf("invoice-%d.pdf", number)
 			}
-			if err := os.WriteFile(outputPath, data, 0o644); err != nil {
+			// Billing documents are sensitive; write them owner-only.
+			if err := os.WriteFile(outputPath, data, 0o600); err != nil {
 				return fmt.Errorf("write %s: %w", outputPath, err)
 			}
 			env.Status("Saved invoice %d to %s (%d bytes)", number, outputPath, len(data))

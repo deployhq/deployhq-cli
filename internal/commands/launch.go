@@ -887,15 +887,23 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 		}
 		size := cfg.size
 		monthlyCost := ""
-		if size == "" {
-			// Try to fetch first available size for cost estimate
-			sizes, sErr := client.ListManagedHostingSizes(ctx)
-			if sErr == nil && len(sizes) > 0 {
+		// Resolve the cost for both the default-size and explicit --size paths by
+		// looking up the matching size in the sizes list.
+		sizes, sErr := client.ListManagedHostingSizes(ctx)
+		if sErr == nil && len(sizes) > 0 {
+			if size == "" {
 				size = sizes[0].Slug
-				monthlyCost = fmt.Sprintf("$%.2f", sizes[0].MonthlyCost)
+				monthlyCost = formatManagedPrice(sizes[0].MonthlyCost, sizes[0].Currency)
 			} else {
-				size = "s-1vcpu-1gb"
+				for _, s := range sizes {
+					if s.Slug == size {
+						monthlyCost = formatManagedPrice(s.MonthlyCost, s.Currency)
+						break
+					}
+				}
 			}
+		} else if size == "" {
+			size = "s-1vcpu-1gb"
 		}
 		dr.Would.Region = region
 		dr.Would.Size = size
@@ -1424,6 +1432,29 @@ func managedSizeRanks(sizes []sdk.ManagedHostingSize) []int {
 	return ranks
 }
 
+// currencySymbols maps common ISO currency codes to their symbol. Unlisted
+// currencies fall back to the ISO code suffix form (e.g. "12.00 SEK").
+var currencySymbols = map[string]string{
+	"USD": "$",
+	"GBP": "£",
+	"EUR": "€",
+}
+
+// formatManagedPrice renders a monetary amount in the given ISO currency.
+// Known currencies use their symbol prefix (e.g. "$12.00"); unknown or empty
+// currencies use the ISO-code suffix form (e.g. "12.00 SEK"). An empty
+// currency defaults to a bare amount with no symbol.
+func formatManagedPrice(amount float64, currency string) string {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if sym, ok := currencySymbols[currency]; ok {
+		return fmt.Sprintf("%s%.2f", sym, amount)
+	}
+	if currency == "" {
+		return fmt.Sprintf("%.2f", amount)
+	}
+	return fmt.Sprintf("%.2f %s", amount, currency)
+}
+
 // managedSizeSpecs renders the hardware line for a size. The managed_hosting
 // sizes endpoint returns a single human-readable label (e.g. "1 vCPU / 1 GB
 // RAM"); we surface it as-is.
@@ -1445,7 +1476,7 @@ func managedSizeLabel(s sdk.ManagedHostingSize, rank int) string {
 	if specs := managedSizeSpecs(s); specs != "" {
 		parts = append(parts, specs)
 	}
-	parts = append(parts, fmt.Sprintf("$%.2f/mo", s.MonthlyCost))
+	parts = append(parts, fmt.Sprintf("%s/mo", formatManagedPrice(s.MonthlyCost, s.Currency)))
 	return fmt.Sprintf("%s  (%s)", strings.Join(parts, " · "), s.Slug)
 }
 
@@ -1462,8 +1493,10 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 	var selectedSize sdk.ManagedHostingSize
 	var monthlyCostStr string
 
-	// Fetch available regions and sizes
-	regions, err := client.ListManagedHostingRegions(ctx)
+	// Fetch available regions and sizes. We fetch the flattened rows (which carry
+	// the group's default flag) so the fallback picks the API-designated default
+	// region rather than an arbitrary one.
+	regionRows, err := client.ListManagedHostingRegionRows(ctx)
 	if err != nil {
 		// Fall back to hardcoded defaults if endpoint not available
 		if region == "" {
@@ -1474,14 +1507,34 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 		}
 		monthlyCostStr = "contact support for pricing"
 	} else {
+		// Flatten rows back into region records for the picker.
+		regions := make([]sdk.ManagedHostingRegion, 0, len(regionRows))
+		for _, r := range regionRows {
+			regions = append(regions, sdk.ManagedHostingRegion{
+				Slug:    r.Slug,
+				Name:    r.Name,
+				Flag:    r.Flag,
+				Country: r.Country,
+			})
+		}
+
 		// Pick region
 		if region == "" {
 			if len(regions) > 0 {
-				// The managed_hosting regions endpoint only returns regions
-				// that can currently be provisioned, so the first one is a
-				// safe default.
-				region = regions[0].Slug
-				selectedRegion = regions[0]
+				// Prefer the region its group marks as default; fall back to the
+				// first provisionable region only when no default is flagged.
+				defaultIdx := -1
+				for i, r := range regionRows {
+					if r.IsDefault {
+						defaultIdx = i
+						break
+					}
+				}
+				if defaultIdx < 0 {
+					defaultIdx = 0
+				}
+				region = regions[defaultIdx].Slug
+				selectedRegion = regions[defaultIdx]
 			} else {
 				region = "lon1"
 			}
@@ -1511,7 +1564,7 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 					selectedSize = sizes[0]
 				}
 			}
-			monthlyCostStr = fmt.Sprintf("$%.2f/month", selectedSize.MonthlyCost)
+			monthlyCostStr = fmt.Sprintf("%s/month", formatManagedPrice(selectedSize.MonthlyCost, selectedSize.Currency))
 		} else {
 			if size == "" {
 				size = "s-1vcpu-1gb"
@@ -1552,7 +1605,7 @@ func launchProvisionVPS(ctx context.Context, env *output.Envelope, cfg launchCon
 				if sIdx, _, sErr2 := sizePrompt.Run(); sErr2 == nil {
 					selectedSize = sizes[sIdx]
 					size = selectedSize.Slug
-					monthlyCostStr = fmt.Sprintf("$%.2f/month", selectedSize.MonthlyCost)
+					monthlyCostStr = fmt.Sprintf("%s/month", formatManagedPrice(selectedSize.MonthlyCost, selectedSize.Currency))
 				}
 			}
 		}

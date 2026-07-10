@@ -210,9 +210,12 @@ func TestGenerateAIDeploymentOverview(t *testing.T) {
 }
 
 func TestGenerateAIDeploymentOverview_RequiresEndRef(t *testing.T) {
-	c := newTestClient(t, httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("no HTTP request should be made when end_ref is empty")
-	})))
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
 	_, err := c.GenerateAIDeploymentOverview(context.Background(), "my-app", "abc123", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "end_ref is required")

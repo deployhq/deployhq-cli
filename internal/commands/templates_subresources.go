@@ -24,6 +24,18 @@ func addTemplateFlag(cmd *cobra.Command, target *string) {
 	cmd.Flags().StringVarP(target, "template", "t", "", "Template permalink (required)")
 }
 
+// requireUpdateFlags guards update handlers against sending a zero-value PATCH.
+// If none of the named field flags were set, it returns a UserError instead of
+// silently overwriting the resource with empty values.
+func requireUpdateFlags(cmd *cobra.Command, flags ...string) error {
+	for _, f := range flags {
+		if cmd.Flags().Changed(f) {
+			return nil
+		}
+	}
+	return &output.UserError{Message: "no fields to update; pass at least one flag"}
+}
+
 // requireTemplate validates that a template permalink was supplied.
 func requireTemplate(permalink string) (string, error) {
 	if permalink == "" {
@@ -194,6 +206,9 @@ func tcfUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := requireUpdateFlags(cmd, "path", "body", "description"); err != nil {
+				return err
+			}
 			f, err := client.UpdateTemplateConfigFile(cliCtx.Background(), permalink, args[0], sdk.ConfigFileCreateRequest{
 				Path: path, Body: body, Description: description,
 			})
@@ -340,6 +355,9 @@ func tefUpdateCmd() *cobra.Command {
 			}
 			client, err := cliCtx.Client()
 			if err != nil {
+				return err
+			}
+			if err := requireUpdateFlags(cmd, "path"); err != nil {
 				return err
 			}
 			f, err := client.UpdateTemplateExcludedFile(cliCtx.Background(), permalink, args[0], sdk.ExcludedFileCreateRequest{Path: path})
@@ -489,6 +507,9 @@ func tintUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := requireUpdateFlags(cmd, "name"); err != nil {
+				return err
+			}
 			in, err := client.UpdateTemplateIntegration(cliCtx.Background(), permalink, args[0], sdk.IntegrationCreateRequest{Name: name})
 			if err != nil {
 				return err
@@ -636,6 +657,9 @@ func tcmdUpdateCmd() *cobra.Command {
 			}
 			client, err := cliCtx.Client()
 			if err != nil {
+				return err
+			}
+			if err := requireUpdateFlags(cmd, "command", "description", "timing"); err != nil {
 				return err
 			}
 			cm, err := client.UpdateTemplateCommand(cliCtx.Background(), permalink, args[0], sdk.SSHCommandCreateRequest{
@@ -789,6 +813,9 @@ func tbcUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := requireUpdateFlags(cmd, "command", "description"); err != nil {
+				return err
+			}
 			cm, err := client.UpdateTemplateBuildCommand(cliCtx.Background(), permalink, args[0], sdk.BuildCommandCreateRequest{
 				Command: command, Description: description,
 			})
@@ -934,6 +961,9 @@ func tbcfUpdateCmd() *cobra.Command {
 			}
 			client, err := cliCtx.Client()
 			if err != nil {
+				return err
+			}
+			if err := requireUpdateFlags(cmd, "path"); err != nil {
 				return err
 			}
 			f, err := client.UpdateTemplateBuildCacheFile(cliCtx.Background(), permalink, args[0], sdk.BuildCacheFileCreateRequest{Path: path})
@@ -1319,6 +1349,9 @@ func tsrvUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := requireUpdateFlags(cmd, "name", "server-path", "environment"); err != nil {
+				return err
+			}
 			s, err := client.UpdateTemplateServer(cliCtx.Background(), permalink, args[0], sdk.ServerUpdateRequest{
 				Name: name, ServerPath: serverPath, Environment: environment,
 			})
@@ -1480,6 +1513,9 @@ func tsgUpdateCmd() *cobra.Command {
 			}
 			client, err := cliCtx.Client()
 			if err != nil {
+				return err
+			}
+			if err := requireUpdateFlags(cmd, "name", "environment", "transfer-order", "email-notify-on", "notification-email", "auto-deploy"); err != nil {
 				return err
 			}
 			req := sdk.TemplateServerGroupUpdateRequest{

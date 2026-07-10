@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -79,9 +80,19 @@ func (c *Client) ListManagedHostingRegionRows(ctx context.Context) ([]ManagedHos
 	if err != nil {
 		return nil, err
 	}
+	// Iterate groups in a stable order (map iteration is nondeterministic).
+	groups := make([]string, 0, len(resp.GroupedRegions))
+	for group := range resp.GroupedRegions {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+
 	var rows []ManagedHostingRegionRow
-	for group, g := range resp.GroupedRegions {
-		for _, r := range g.Regions {
+	for _, group := range groups {
+		g := resp.GroupedRegions[group]
+		regions := append([]ManagedHostingRegion(nil), g.Regions...)
+		sort.Slice(regions, func(i, j int) bool { return regions[i].Slug < regions[j].Slug })
+		for _, r := range regions {
 			rows = append(rows, ManagedHostingRegionRow{
 				Group:     group,
 				Slug:      r.Slug,
@@ -106,9 +117,19 @@ func (c *Client) ListManagedHostingRegions(ctx context.Context) ([]ManagedHostin
 	if err != nil {
 		return nil, err
 	}
+	// Iterate groups in a stable order (map iteration is nondeterministic).
+	groups := make([]string, 0, len(resp.GroupedRegions))
+	for group := range resp.GroupedRegions {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+
 	var regions []ManagedHostingRegion
-	for _, g := range resp.GroupedRegions {
-		regions = append(regions, g.Regions...)
+	for _, group := range groups {
+		g := resp.GroupedRegions[group]
+		grouped := append([]ManagedHostingRegion(nil), g.Regions...)
+		sort.Slice(grouped, func(i, j int) bool { return grouped[i].Slug < grouped[j].Slug })
+		regions = append(regions, grouped...)
 	}
 	return regions, nil
 }
