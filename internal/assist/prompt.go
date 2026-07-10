@@ -114,7 +114,7 @@ dhq language-versions list -p <project>    (alias: dhq lv list)
 
 SSH & Deployment Commands:
 dhq ssh-commands list|show|create|update|delete -p <project>
-dhq ssh-keys list|create|delete
+dhq ssh-keys list|create|download|delete
 
 Integrations & Automation:
 dhq integrations list|show|create|update|delete -p <project>
@@ -126,7 +126,12 @@ dhq templates list|show|public|public-show|create|update|delete
 
 Account Resources:
 dhq agents list|create|update|delete|revoke
+dhq folders list|create|update|delete
 dhq global-servers list|show|create|update|delete|copy-to-project
+dhq users list|show|create|update|delete|resend-invitation
+dhq account get|update|billing
+dhq profile get|update
+dhq api-keys create|delete
 dhq zones list
 
 Dashboard & Activity:

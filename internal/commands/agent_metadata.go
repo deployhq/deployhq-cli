@@ -276,6 +276,93 @@ var commandMetadataTable = map[string]AgentMetadata{
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"ssh_key"},
 	},
+	"dhq ssh-keys download": {
+		// Reads private key material; idempotent and safe to retry, but the
+		// output is sensitive. Requires an admin on a paid account (else 403).
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"ssh_key"},
+	},
+	// Users
+	"dhq users list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users show": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users delete": {
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users resend-invitation": {
+		// Not idempotent: each call sends a fresh invitation email, so agents
+		// should not treat it as blindly retry-safe.
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+
+	// Account
+	"dhq account get": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"account"},
+	},
+	"dhq account update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"account"},
+	},
+	"dhq account billing": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"account"},
+	},
+
+	// Profile
+	"dhq profile get": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"profile"},
+	},
+	"dhq profile update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"profile"},
+	},
+
+	// API keys
+	"dhq api-keys create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"api_key"},
+	},
+	"dhq api-keys delete": {
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"api_key"},
+	},
+
+	"dhq folders list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"folder"},
+	},
+	"dhq folders create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"folder"},
+	},
+	"dhq folders update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"folder"},
+	},
+	"dhq folders delete": {
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"folder"},
+	},
 	"dhq templates list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"template"},
