@@ -126,6 +126,7 @@ dhq templates list|show|public|public-show|create|update|delete
 
 Account Resources:
 dhq agents list|create|update|delete|revoke
+dhq teams list|show|create|update|delete
 dhq global-servers list|show|create|update|delete|copy-to-project
 dhq zones list
 
