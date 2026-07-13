@@ -190,6 +190,13 @@ func addTeamPermissionFlags(cmd *cobra.Command, f *teamPermissionFlags) {
 	cmd.Flags().IntSliceVar(&f.userIDs, "user-ids", nil, "Sync team members to these user IDs (comma-separated); omit to leave membership untouched")
 }
 
+// addClearMembersFlag adds the update-only --clear-members flag. It exists
+// because IntSliceVar cannot express an empty list from the command line
+// (--user-ids "" fails to parse), so "remove all members" needs its own flag.
+func addClearMembersFlag(cmd *cobra.Command, clear *bool) {
+	cmd.Flags().BoolVar(clear, "clear-members", false, "Remove all members from the team (mutually exclusive with --user-ids)")
+}
+
 func newTeamsCreateCmd() *cobra.Command {
 	var f teamPermissionFlags
 
@@ -244,12 +251,20 @@ func newTeamsCreateCmd() *cobra.Command {
 func newTeamsUpdateCmd() *cobra.Command {
 	var f teamPermissionFlags
 	var name string
+	var clearMembers bool
 
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update a team",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("user-ids") && clearMembers {
+				return &output.UserError{
+					Message: "--user-ids and --clear-members cannot be used together",
+					Hint:    "Use --user-ids to set members, or --clear-members to remove all members",
+				}
+			}
+
 			client, err := cliCtx.Client()
 			if err != nil {
 				return err
@@ -279,10 +294,16 @@ func newTeamsUpdateCmd() *cobra.Command {
 			if cmd.Flags().Changed("all-projects") {
 				req.AllProjectsAllowed = &f.allProjects
 			}
-			if cmd.Flags().Changed("user-ids") {
-				// Pointer so an explicit empty list (--user-ids "") clears all
-				// members instead of being dropped by omitempty. IntSliceVar
-				// yields a non-nil empty slice for "", not nil.
+			// Membership: --user-ids syncs to the given users; --clear-members
+			// removes all members. Both are sent as a non-nil *[]int so the
+			// empty case reaches the server as "user_ids":[] rather than being
+			// dropped by omitempty (which IntSliceVar can't express anyway,
+			// since --user-ids "" fails to parse).
+			switch {
+			case clearMembers:
+				empty := []int{}
+				req.UserIDs = &empty
+			case cmd.Flags().Changed("user-ids"):
 				ids := f.userIDs
 				if ids == nil {
 					ids = []int{}
@@ -308,6 +329,7 @@ func newTeamsUpdateCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&name, "name", "", "New team name")
 	addTeamPermissionFlags(cmd, &f)
+	addClearMembersFlag(cmd, &clearMembers)
 	return cmd
 }
 

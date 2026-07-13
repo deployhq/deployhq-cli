@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,6 +56,45 @@ func TestTeamsCreate_Help(t *testing.T) {
 	assert.Contains(t, out, "--can-create-projects")
 	assert.Contains(t, out, "--all-projects")
 	assert.Contains(t, out, "--user-ids")
+}
+
+func TestTeamsUpdate_Help(t *testing.T) {
+	cmd := NewRootCmd("test")
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"teams", "update", "--help"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	out := stdout.String()
+	// --clear-members is update-only (create has no membership to clear); it
+	// exists because --user-ids "" cannot be parsed as an int slice.
+	assert.Contains(t, out, "--clear-members")
+	assert.Contains(t, out, "--user-ids")
+}
+
+// --clear-members is not offered on create — "no members" there is just the
+// default of omitting --user-ids.
+func TestTeamsCreate_NoClearMembersFlag(t *testing.T) {
+	cmd := NewRootCmd("test")
+	createCmd, _, err := cmd.Find([]string{"teams", "create"})
+	require.NoError(t, err)
+	assert.Nil(t, createCmd.Flags().Lookup("clear-members"),
+		"--clear-members must not be registered on create")
+}
+
+func TestTeamsUpdate_UserIDsAndClearMembersConflict(t *testing.T) {
+	cmd := NewRootCmd("test")
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	// The mutual-exclusion guard runs before any API client is built, so this
+	// fails fast without network access or credentials.
+	cmd.SetArgs([]string{"teams", "update", "some-id", "--user-ids", "5", "--clear-members"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be used together")
 }
 
 func TestAgentMetadata_TeamsList(t *testing.T) {

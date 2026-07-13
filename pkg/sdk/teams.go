@@ -80,9 +80,10 @@ type TeamCreateRequest struct {
 // with omitempty so partial updates don't clobber unset fields.
 //
 // UserIDs syncs team membership. It is a pointer so the two intents stay
-// distinct: a nil pointer (flag omitted) leaves membership untouched, while a
-// non-nil pointer to an empty slice (e.g. --user-ids "") clears all members —
-// a plain []int with omitempty would drop the empty case and silently no-op.
+// distinct: a nil pointer leaves membership untouched, while a non-nil pointer
+// to an empty slice clears all members — a plain []int with omitempty would
+// drop the empty case and silently no-op. (The CLI reaches the empty case via
+// --clear-members, since --user-ids "" cannot be parsed as an int slice.)
 type TeamUpdateRequest struct {
 	Name               *string `json:"name,omitempty"`
 	IsAdmin            *bool   `json:"is_admin,omitempty"`
