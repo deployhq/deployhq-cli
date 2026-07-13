@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,16 +14,16 @@ func TestGetIPRanges(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/ip_ranges", r.URL.Path)
 		assert.Equal(t, http.MethodGet, r.Method)
-		_ = json.NewEncoder(w).Encode(IPRanges{
-			Shared: IPRangeSet{IPv4: []string{"1.2.3.0/24"}, IPv6: []string{"2001:db8::/32"}},
-			Zones: map[string]IPRangeZone{
-				"eu": {Name: "Europe", IPv4: []string{"10.0.0.0/24"}, IPv6: []string{"2001:db9::/32"}},
+		_, _ = w.Write([]byte(`{
+			"shared": {"ipv4": ["1.2.3.0/24"], "ipv6": ["2001:db8::/32"]},
+			"zones": {
+				"eu": {"name": "Europe", "ipv4": ["10.0.0.0/24"], "ipv6": ["2001:db9::/32"]}
 			},
-			NetworkAgent: IPRangeSet{IPv4: []string{"5.6.7.0/24"}},
-			AllIPv4:      []string{"1.2.3.0/24", "10.0.0.0/24", "5.6.7.0/24"},
-			AllIPv6:      []string{"2001:db8::/32", "2001:db9::/32"},
-			Ports:        []IPRangePort{{Protocol: "ssh", Description: "SSH deployments"}},
-		})
+			"network_agent": {"ipv4": ["5.6.7.0/24"]},
+			"all_ipv4": ["1.2.3.0/24", "10.0.0.0/24", "5.6.7.0/24"],
+			"all_ipv6": ["2001:db8::/32", "2001:db9::/32"],
+			"ports": [{"protocol": "ssh", "description": "SSH deployments"}]
+		}`))
 	}))
 	defer server.Close()
 

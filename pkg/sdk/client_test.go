@@ -94,9 +94,9 @@ func TestPublicClient_NoAuth(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/ip_ranges":
-			_ = json.NewEncoder(w).Encode(IPRanges{AllIPv4: []string{"1.2.3.0/24"}})
+			_, _ = w.Write([]byte(`{"all_ipv4":["1.2.3.0/24"]}`))
 		case "/packages":
-			_ = json.NewEncoder(w).Encode([]Package{{Permalink: "pro", Name: "Pro"}})
+			_, _ = w.Write([]byte(`[{"permalink":"pro","name":"Pro"}]`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

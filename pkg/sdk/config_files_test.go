@@ -35,6 +35,31 @@ func TestLinkGlobalConfigFile(t *testing.T) {
 	assert.Equal(t, "/etc/app.conf", f.Path)
 }
 
+func TestUpdateConfigFile_DescriptionOnly(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/projects/my-app/config_files/cf1", r.URL.Path)
+		// A description-only update must NOT send empty path/body, which would
+		// clear the existing values server-side.
+		var raw map[string]map[string]interface{}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&raw))
+		cf := raw["config_file"]
+		assert.Equal(t, "new desc", cf["description"])
+		_, hasPath := cf["path"]
+		_, hasBody := cf["body"]
+		assert.False(t, hasPath, "path must be omitted when unchanged")
+		assert.False(t, hasBody, "body must be omitted when unchanged")
+		_ = json.NewEncoder(w).Encode(ConfigFile{Identifier: "cf1", Path: "/etc/app.conf", Description: "new desc"})
+	}))
+	defer server.Close()
+
+	desc := "new desc"
+	c := newTestClient(t, server)
+	f, err := c.UpdateConfigFile(context.Background(), "my-app", "cf1", ConfigFileUpdateRequest{Description: &desc})
+	require.NoError(t, err)
+	assert.Equal(t, "new desc", f.Description)
+}
+
 func TestUnlinkGlobalConfigFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)

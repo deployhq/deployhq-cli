@@ -195,9 +195,19 @@ func newConfigFilesUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			f, err := client.UpdateConfigFile(cliCtx.Background(), projectID, args[0], sdk.ConfigFileCreateRequest{
-				Path: path, Body: body, Description: description,
-			})
+			// Only send fields the user explicitly set, so a partial update
+			// (e.g. --description alone) doesn't clear unset path/body.
+			var req sdk.ConfigFileUpdateRequest
+			if cmd.Flags().Changed("path") {
+				req.Path = &path
+			}
+			if cmd.Flags().Changed("body") {
+				req.Body = &body
+			}
+			if cmd.Flags().Changed("description") {
+				req.Description = &description
+			}
+			f, err := client.UpdateConfigFile(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
 				return err
 			}

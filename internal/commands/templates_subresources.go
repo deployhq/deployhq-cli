@@ -209,9 +209,17 @@ func tcfUpdateCmd() *cobra.Command {
 			if err := requireUpdateFlags(cmd, "path", "body", "description"); err != nil {
 				return err
 			}
-			f, err := client.UpdateTemplateConfigFile(cliCtx.Background(), permalink, args[0], sdk.ConfigFileCreateRequest{
-				Path: path, Body: body, Description: description,
-			})
+			var req sdk.ConfigFileUpdateRequest
+			if cmd.Flags().Changed("path") {
+				req.Path = &path
+			}
+			if cmd.Flags().Changed("body") {
+				req.Body = &body
+			}
+			if cmd.Flags().Changed("description") {
+				req.Description = &description
+			}
+			f, err := client.UpdateTemplateConfigFile(cliCtx.Background(), permalink, args[0], req)
 			if err != nil {
 				return err
 			}
@@ -481,6 +489,13 @@ func tintCreateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
+			if in.AuthRequired != nil && *in.AuthRequired {
+				if env.WantsJSON() {
+					return env.WriteJSON(output.NewResponse(in, "Authorization required"))
+				}
+				env.Status("Authorization required — visit: %s", in.AuthURL)
+				return nil
+			}
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(in, fmt.Sprintf("Created: %s", in.Identifier)))
 			}
@@ -515,6 +530,13 @@ func tintUpdateCmd() *cobra.Command {
 				return err
 			}
 			env := cliCtx.Envelope
+			if in.AuthRequired != nil && *in.AuthRequired {
+				if env.WantsJSON() {
+					return env.WriteJSON(output.NewResponse(in, "Authorization required"))
+				}
+				env.Status("Authorization required — visit: %s", in.AuthURL)
+				return nil
+			}
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(in, fmt.Sprintf("Updated: %s", in.Identifier)))
 			}

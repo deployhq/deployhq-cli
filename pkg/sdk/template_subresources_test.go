@@ -52,6 +52,31 @@ func TestCreateTemplateConfigFile(t *testing.T) {
 	assert.Equal(t, "/etc/app.conf", f.Path)
 }
 
+func TestUpdateTemplateConfigFile_DescriptionOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/templates/my-tmpl/config_files/cf1", r.URL.Path)
+		// A description-only update must NOT send empty path/body, which would
+		// clear the existing values server-side.
+		var raw map[string]map[string]interface{}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&raw))
+		cf := raw["config_file"]
+		assert.Equal(t, "new desc", cf["description"])
+		_, hasPath := cf["path"]
+		_, hasBody := cf["body"]
+		assert.False(t, hasPath, "path must be omitted when unchanged")
+		assert.False(t, hasBody, "body must be omitted when unchanged")
+		_ = json.NewEncoder(w).Encode(ConfigFile{Identifier: "cf1", Path: "/etc/app.conf", Description: "new desc"})
+	}))
+	defer srv.Close()
+
+	desc := "new desc"
+	c := newTestClient(t, srv)
+	f, err := c.UpdateTemplateConfigFile(context.Background(), "my-tmpl", "cf1", ConfigFileUpdateRequest{Description: &desc})
+	require.NoError(t, err)
+	assert.Equal(t, "new desc", f.Description)
+}
+
 func TestGetTemplateConfigFile(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/templates/my-tmpl/config_files/cf1", r.URL.Path)
@@ -155,6 +180,42 @@ func TestCreateTemplateIntegration(t *testing.T) {
 	in, err := c.CreateTemplateIntegration(context.Background(), "my-tmpl", IntegrationCreateRequest{HookType: "slack"})
 	require.NoError(t, err)
 	assert.Equal(t, "slack", in.HookType)
+}
+
+func TestCreateTemplateIntegration_ExternalAuth(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/templates/my-tmpl/integrations", r.URL.Path)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"auth_required":true,"auth_url":"https://example.com/oauth"}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	in, err := c.CreateTemplateIntegration(context.Background(), "my-tmpl", IntegrationCreateRequest{HookType: "github"})
+	require.NoError(t, err)
+	require.NotNil(t, in.AuthRequired)
+	assert.True(t, *in.AuthRequired)
+	assert.Equal(t, "https://example.com/oauth", in.AuthURL)
+}
+
+func TestUpdateTemplateIntegration_OmitsHookType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/templates/my-tmpl/integrations/in1", r.URL.Path)
+		// hook_type is immutable on update and must not be sent (even empty).
+		var raw map[string]map[string]interface{}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&raw))
+		_, hasHookType := raw["integration"]["hook_type"]
+		assert.False(t, hasHookType, "hook_type must be omitted on update")
+		assert.Equal(t, "New Name", raw["integration"]["name"])
+		_ = json.NewEncoder(w).Encode(Integration{Identifier: "in1", Name: "New Name"})
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	in, err := c.UpdateTemplateIntegration(context.Background(), "my-tmpl", "in1", IntegrationCreateRequest{Name: "New Name"})
+	require.NoError(t, err)
+	assert.Equal(t, "in1", in.Identifier)
 }
 
 // --- 4. commands ---

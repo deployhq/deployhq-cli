@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // HostedResourceSSHKey is the SSH key pair attached to a Managed VPS hosted
@@ -85,7 +86,7 @@ func (c *Client) ListHostedResources(ctx context.Context, opts *ListOptions) ([]
 // GetHostedResource returns a single hosted resource by its string identifier.
 func (c *Client) GetHostedResource(ctx context.Context, id string) (*HostedResource, error) {
 	var resource HostedResource
-	if err := c.get(ctx, fmt.Sprintf("/hosted_resources/%s", id), &resource); err != nil {
+	if err := c.get(ctx, fmt.Sprintf("/hosted_resources/%s", url.PathEscape(id)), &resource); err != nil {
 		return nil, err
 	}
 	return &resource, nil
@@ -95,12 +96,12 @@ func (c *Client) GetHostedResource(ctx context.Context, id string) (*HostedResou
 // state from the upstream provider. POSTs with no request body; the 200 response
 // carries {"status":"sync_requested"} which is not surfaced.
 func (c *Client) SyncHostedResource(ctx context.Context, id string) error {
-	return c.post(ctx, fmt.Sprintf("/hosted_resources/%s/sync", id), nil, nil)
+	return c.post(ctx, fmt.Sprintf("/hosted_resources/%s/sync", url.PathEscape(id)), nil, nil)
 }
 
 // RetryProvisionHostedResource retries provisioning of a resource that is in
 // the "error" state. POSTs with no request body; the 200 response carries
 // {"status":"provisioning"}. A resource not in the error state returns a 422.
 func (c *Client) RetryProvisionHostedResource(ctx context.Context, id string) error {
-	return c.post(ctx, fmt.Sprintf("/hosted_resources/%s/retry_provision", id), nil, nil)
+	return c.post(ctx, fmt.Sprintf("/hosted_resources/%s/retry_provision", url.PathEscape(id)), nil, nil)
 }

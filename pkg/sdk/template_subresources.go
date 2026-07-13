@@ -46,9 +46,9 @@ func (c *Client) CreateTemplateConfigFile(ctx context.Context, templatePermalink
 	return &file, nil
 }
 
-func (c *Client) UpdateTemplateConfigFile(ctx context.Context, templatePermalink, fileID string, req ConfigFileCreateRequest) (*ConfigFile, error) {
+func (c *Client) UpdateTemplateConfigFile(ctx context.Context, templatePermalink, fileID string, req ConfigFileUpdateRequest) (*ConfigFile, error) {
 	body := struct {
-		ConfigFile ConfigFileCreateRequest `json:"config_file"`
+		ConfigFile ConfigFileUpdateRequest `json:"config_file"`
 	}{ConfigFile: req}
 	var file ConfigFile
 	if err := c.put(ctx, fmt.Sprintf("/templates/%s/config_files/%s", templatePermalink, fileID), body, &file); err != nil {

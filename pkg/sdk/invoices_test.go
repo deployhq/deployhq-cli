@@ -16,14 +16,14 @@ func TestListInvoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/account/invoices", r.URL.Path)
 		assert.Equal(t, http.MethodGet, r.Method)
-		_ = json.NewEncoder(w).Encode([]Invoice{
+		_, _ = w.Write([]byte(`[
 			{
-				Number: 1001, Kind: "subscription", Currency: "USD",
-				Total: "25.00", VAT: "0.00", Paid: true, PaidAt: &paidAt,
-				CreatedAt: "2026-06-01T00:00:00Z", DownloadURL: "https://example.com/1001.pdf",
+				"number": 1001, "kind": "subscription", "currency": "USD",
+				"total": "25.00", "vat": "0.00", "paid": true, "paid_at": "` + paidAt + `",
+				"created_at": "2026-06-01T00:00:00Z", "download_url": "https://example.com/1001.pdf"
 			},
-			{Number: 1002, Kind: "subscription", Currency: "USD", Total: "25.00", Paid: false},
-		})
+			{"number": 1002, "kind": "subscription", "currency": "USD", "total": "25.00", "paid": false}
+		]`))
 	}))
 	defer server.Close()
 

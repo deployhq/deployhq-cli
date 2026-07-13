@@ -15,14 +15,14 @@ func TestListPackages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/packages", r.URL.Path)
 		assert.Equal(t, http.MethodGet, r.Method)
-		_ = json.NewEncoder(w).Encode([]Package{
+		_, _ = w.Write([]byte(`[
 			{
-				Permalink: "small", Name: "Small", Currency: "USD",
-				Price: 25, PriceBilledAnnually: 20,
-				Features: []string{"10 projects", "Unlimited deployments"},
+				"permalink": "small", "name": "Small", "currency": "USD",
+				"price": 25, "price_billed_annually": 20,
+				"features": ["10 projects", "Unlimited deployments"]
 			},
-			{Permalink: "medium", Name: "Medium", Currency: "USD", Price: 50, PriceBilledAnnually: 42},
-		})
+			{"permalink": "medium", "name": "Medium", "currency": "USD", "price": 50, "price_billed_annually": 42}
+		]`))
 	}))
 	defer server.Close()
 
