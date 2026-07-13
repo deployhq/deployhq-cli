@@ -84,6 +84,19 @@ func TestTeamsCreate_NoClearMembersFlag(t *testing.T) {
 		"--clear-members must not be registered on create")
 }
 
+func TestTeamsUpdate_RejectsEmptyName(t *testing.T) {
+	cmd := NewRootCmd("test")
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	// An explicit empty --name must fail fast (like create), before any API
+	// client is built — so this needs no network or credentials.
+	cmd.SetArgs([]string{"teams", "update", "some-id", "--name", ""})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Name cannot be empty")
+}
+
 func TestTeamsUpdate_UserIDsAndClearMembersConflict(t *testing.T) {
 	cmd := NewRootCmd("test")
 	cmd.SetOut(io.Discard)

@@ -258,6 +258,14 @@ func newTeamsUpdateCmd() *cobra.Command {
 		Short: "Update a team",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Fail fast on an explicit empty name, matching `teams create`,
+			// rather than sending "name":"" and relying on a server 422.
+			if cmd.Flags().Changed("name") && name == "" {
+				return &output.UserError{
+					Message: "Name cannot be empty",
+					Hint:    "Omit --name to leave the team name unchanged",
+				}
+			}
 			if cmd.Flags().Changed("user-ids") && clearMembers {
 				return &output.UserError{
 					Message: "--user-ids and --clear-members cannot be used together",
