@@ -201,8 +201,10 @@ func resolveDeployProject(ctx context.Context, client *sdk.Client, configured st
 		}
 		// Interactive: let the user pick rather than hard-failing. Agents and
 		// piped/--non-interactive callers still get the structured error+list
-		// so automation can retry with a concrete --project.
-		if !env.NonInteractive {
+		// so automation can retry with a concrete --project. JSON mode also
+		// takes the structured path: promptui renders to stdout, which would
+		// corrupt the machine-readable output contract.
+		if !env.NonInteractive && !env.WantsJSON() {
 			prompt := promptui.Select{
 				Label: "Select project to deploy",
 				Items: items,
@@ -428,7 +430,9 @@ func newDeployCmd() *cobra.Command {
 					resolvedServer = &servers[0]
 					env.Status("Auto-selected server: %s", servers[0].Name)
 				} else if err == nil && len(servers) > 1 {
-					if !env.NonInteractive {
+					// JSON mode joins the non-interactive path: promptui renders
+					// to stdout and would corrupt machine-readable output.
+					if !env.NonInteractive && !env.WantsJSON() {
 						// Interactive picker
 						items := make([]string, len(servers))
 						for i, s := range servers {

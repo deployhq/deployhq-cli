@@ -621,6 +621,31 @@ func TestResolveDeployProject_MultipleProjectsListsThem(t *testing.T) {
 	assert.Contains(t, msg, "c-id (Gamma)")
 }
 
+// TestResolveDeployProject_JSONModeSkipsPicker guards the stdout=data contract:
+// --json on a TTY leaves NonInteractive false, but the picker must NOT run
+// because promptui renders to stdout and would corrupt JSON output. JSON mode
+// must take the structured-error path instead.
+func TestResolveDeployProject_JSONModeSkipsPicker(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]sdk.Project{
+			{Identifier: "a-id", Name: "Alpha"},
+			{Identifier: "b-id", Name: "Beta"},
+		})
+	}))
+	defer srv.Close()
+	client := newTestSDKClient(t, srv)
+	// Interactive TTY (NonInteractive false) but JSON output requested. WantsJSON()
+	// is true via JSONMode, so the picker must be skipped.
+	env := &output.Envelope{Stdout: io.Discard, Stderr: io.Discard, IsTTY: true, JSONMode: true}
+	require.True(t, env.WantsJSON())
+	require.False(t, env.NonInteractive)
+
+	id, err := resolveDeployProject(t.Context(), client, "", env)
+	require.Error(t, err)
+	assert.Empty(t, id)
+	assert.Equal(t, "No project specified", strings.SplitN(err.Error(), "\n", 2)[0])
+}
+
 func TestResolveDeployProject_ZeroProjects(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode([]sdk.Project{})
