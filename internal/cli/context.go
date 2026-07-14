@@ -18,8 +18,8 @@ type Context struct {
 	Config   *config.Config
 	Envelope *output.Envelope
 	Logger   *output.Logger
-	IsAgent bool // true when invoked by an AI agent
-	Version string
+	IsAgent  bool // true when invoked by an AI agent
+	Version  string
 
 	// Lazy-initialized API client (only when a command needs it)
 	client *sdk.Client
@@ -88,6 +88,56 @@ func (c *Context) Client() (*sdk.Client, error) {
 		return nil, err
 	}
 
+	client, err := sdk.New(account, email, apiKey, c.clientOpts(account)...)
+	if err != nil {
+		return nil, fmt.Errorf("create api client: %w", err)
+	}
+
+	c.client = client
+	return c.client, nil
+}
+
+// PublicClient returns an SDK client for the public, no-auth endpoints
+// (e.g. `dhq ip-ranges`, `dhq plans`). These endpoints return 200 without
+// credentials, so email/apiKey are not required — but an account is still
+// needed to know which subdomain to target.
+//
+// The account is resolved from config (flags/env/files) and, if absent
+// there, from the stored auth credentials. It is NOT cached on the Context
+// (that cache is reserved for the authenticated client).
+func (c *Context) PublicClient() (*sdk.Client, error) {
+	account, err := c.publicAccount()
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := sdk.NewPublic(account, c.clientOpts(account)...)
+	if err != nil {
+		return nil, fmt.Errorf("create api client: %w", err)
+	}
+	return client, nil
+}
+
+// publicAccount resolves just the account subdomain for public endpoints,
+// without requiring email/apiKey. A public endpoint still needs to know
+// which account's subdomain to hit.
+func (c *Context) publicAccount() (string, error) {
+	if c.Config.Account != "" {
+		return c.Config.Account, nil
+	}
+	// Fall back to any stored auth account, if available.
+	if creds, err := auth.LoadByAccount(""); err == nil && creds.Account != "" {
+		return creds.Account, nil
+	}
+	return "", &output.UserError{
+		Message: "Account not configured",
+		Hint:    "This is a public endpoint, but it still needs an account subdomain to query.\nSet via --account flag, DEPLOYHQ_ACCOUNT env var, or 'dhq config set account <name>'",
+	}
+}
+
+// clientOpts builds the shared SDK options (user agent, base URL) used by
+// both the authenticated and public clients.
+func (c *Context) clientOpts(account string) []sdk.Option {
 	opts := []sdk.Option{}
 	agent := harness.AgentInfo{}
 	if c.IsAgent {
@@ -102,14 +152,7 @@ func (c *Context) Client() (*sdk.Client, error) {
 	if baseURL := c.Config.BaseURL(account); baseURL != "" {
 		opts = append(opts, sdk.WithBaseURL(baseURL))
 	}
-
-	client, err := sdk.New(account, email, apiKey, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("create api client: %w", err)
-	}
-
-	c.client = client
-	return c.client, nil
+	return opts
 }
 
 // RequireProject returns the project identifier, or a UserError if not set.

@@ -72,3 +72,53 @@ func (c *Client) DeleteServer(ctx context.Context, projectID, serverID string) e
 func (c *Client) ResetServerHostKey(ctx context.Context, projectID, serverID string) error {
 	return c.post(ctx, fmt.Sprintf("/projects/%s/servers/%s/reset_host_key", projectID, serverID), nil, nil)
 }
+
+// CreateServerFromGlobal creates a project server from a global server template.
+// The request body is FLAT (top-level global_server_id), not wrapped.
+func (c *Client) CreateServerFromGlobal(ctx context.Context, projectID, globalServerID string) (*Server, error) {
+	body := struct {
+		GlobalServerID string `json:"global_server_id"`
+	}{GlobalServerID: globalServerID}
+	var server Server
+	if err := c.post(ctx, fmt.Sprintf("/projects/%s/servers/from_global", projectID), body, &server); err != nil {
+		return nil, err
+	}
+	return &server, nil
+}
+
+// ServerMetrics is a point-in-time snapshot of a server's resource usage.
+// The cpu/memory/disk/profile blocks vary in shape, so they are modeled as
+// free-form maps.
+// ServerMetrics is a point-in-time snapshot. The backend deep-camelizes every
+// key, and the shapes vary by field, so the nested values are kept as generic
+// JSON: status/cpu/memory/profile/lastDeploy are objects, disk is an array of
+// per-partition objects, and uptime is an object ({formatted, seconds}), NOT a
+// string. Mirrors the nine keys the server_metrics endpoint returns.
+type ServerMetrics struct {
+	Status        map[string]interface{}   `json:"status"`
+	Uptime        ServerUptime             `json:"uptime"`
+	CPU           map[string]interface{}   `json:"cpu"`
+	Memory        map[string]interface{}   `json:"memory"`
+	Disk          []map[string]interface{} `json:"disk"`
+	LastDeploy    map[string]interface{}   `json:"lastDeploy"`
+	Profile       map[string]interface{}   `json:"profile"`
+	SharedHosting bool                     `json:"sharedHosting"`
+	Hostname      string                   `json:"hostname"`
+}
+
+// ServerUptime is the nested uptime object returned by server_metrics.
+type ServerUptime struct {
+	Formatted string `json:"formatted"`
+	Seconds   int64  `json:"seconds"`
+}
+
+// GetServerMetrics returns a point-in-time metrics snapshot for a server.
+// Only available for beta accounts on SSH servers; otherwise the API returns
+// 403 Not available.
+func (c *Client) GetServerMetrics(ctx context.Context, projectID, serverID string) (*ServerMetrics, error) {
+	var metrics ServerMetrics
+	if err := c.get(ctx, fmt.Sprintf("/projects/%s/servers/%s/server_metrics", projectID, serverID), &metrics); err != nil {
+		return nil, err
+	}
+	return &metrics, nil
+}

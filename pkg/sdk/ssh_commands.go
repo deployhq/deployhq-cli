@@ -3,20 +3,21 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"net/http"
 )
 
 // SSHCommand represents an SSH command configured on a project.
 type SSHCommand struct {
-	Identifier  string   `json:"identifier"`
-	CBack       string   `json:"cback,omitempty"`
-	Position    int      `json:"position"`
-	Description string   `json:"description"`
-	Command     string   `json:"command"`
-	HaltOnError bool     `json:"halt_on_error"`
+	Identifier  string        `json:"identifier"`
+	CBack       string        `json:"cback,omitempty"`
+	Position    int           `json:"position"`
+	Description string        `json:"description"`
+	Command     string        `json:"command"`
+	HaltOnError bool          `json:"halt_on_error"`
 	Servers     []interface{} `json:"servers,omitempty"`
-	Timing      string   `json:"timing"`
-	Timeout     int      `json:"timeout"`
-	Enabled     bool     `json:"enabled"`
+	Timing      string        `json:"timing"`
+	Timeout     int           `json:"timeout"`
+	Enabled     bool          `json:"enabled"`
 }
 
 // SSHCommandCreateRequest is the payload for creating/updating an SSH command.
@@ -70,4 +71,26 @@ func (c *Client) UpdateSSHCommand(ctx context.Context, projectID, cmdID string, 
 
 func (c *Client) DeleteSSHCommand(ctx context.Context, projectID, cmdID string) error {
 	return c.delete(ctx, fmt.Sprintf("/projects/%s/commands/%s", projectID, cmdID))
+}
+
+// LinkGlobalCommand links an account-wide global SSH command into a project.
+// The request body is FLAT (top-level command_id), not wrapped.
+func (c *Client) LinkGlobalCommand(ctx context.Context, projectID, commandID string) (*SSHCommand, error) {
+	body := struct {
+		CommandID string `json:"command_id"`
+	}{CommandID: commandID}
+	var cmd SSHCommand
+	if err := c.post(ctx, fmt.Sprintf("/projects/%s/commands/link_global", projectID), body, &cmd); err != nil {
+		return nil, err
+	}
+	return &cmd, nil
+}
+
+// UnlinkGlobalCommand removes the link between a project and a global SSH
+// command. This is a DELETE request that carries a FLAT body.
+func (c *Client) UnlinkGlobalCommand(ctx context.Context, projectID, commandID string) error {
+	body := struct {
+		CommandID string `json:"command_id"`
+	}{CommandID: commandID}
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/projects/%s/commands/unlink_global", projectID), body, nil)
 }

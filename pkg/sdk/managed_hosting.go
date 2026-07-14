@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -48,15 +49,87 @@ func (c *Client) EnrollBeta(ctx context.Context, protocol string) (*BetaEnrollme
 	return &resp, nil
 }
 
+// ManagedHostingRegionRow is a flattened region carrying its group name and
+// whether it is that group's default. Used to render the regions table without
+// losing the grouping the API imposes.
+type ManagedHostingRegionRow struct {
+	Group     string `json:"group"`
+	Slug      string `json:"slug"`
+	Name      string `json:"name"`
+	Flag      string `json:"flag"`
+	Country   string `json:"country"`
+	IsDefault bool   `json:"is_default"`
+}
+
+// GetManagedHostingRegions returns the raw grouped regions payload from
+// GET /managed_hosting/regions. This endpoint requires beta_features to be
+// enabled on the account (require_beta_features gate on the backend).
+func (c *Client) GetManagedHostingRegions(ctx context.Context) (*ManagedHostingRegionsResponse, error) {
+	var resp ManagedHostingRegionsResponse
+	if err := c.get(ctx, "/managed_hosting/regions", &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ListManagedHostingRegionRows returns the grouped regions flattened into rows
+// (one per region, carrying the group name and default flag), suitable for a
+// table. Group order is not guaranteed (map iteration).
+func (c *Client) ListManagedHostingRegionRows(ctx context.Context) ([]ManagedHostingRegionRow, error) {
+	resp, err := c.GetManagedHostingRegions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Iterate groups in a stable order (map iteration is nondeterministic).
+	groups := make([]string, 0, len(resp.GroupedRegions))
+	for group := range resp.GroupedRegions {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+
+	var rows []ManagedHostingRegionRow
+	for _, group := range groups {
+		g := resp.GroupedRegions[group]
+		regions := append([]ManagedHostingRegion(nil), g.Regions...)
+		sort.Slice(regions, func(i, j int) bool { return regions[i].Slug < regions[j].Slug })
+		for _, r := range regions {
+			rows = append(rows, ManagedHostingRegionRow{
+				Group:     group,
+				Slug:      r.Slug,
+				Name:      r.Name,
+				Flag:      r.Flag,
+				Country:   r.Country,
+				IsDefault: r.Slug == g.Default,
+			})
+		}
+	}
+	return rows, nil
+}
+
 // ListManagedHostingRegions returns the DigitalOcean regions available for
-// Managed VPS provisioning. This endpoint requires beta_features to be enabled
-// on the account (require_beta_features gate on the backend).
+// Managed VPS provisioning as a flat slice (all groups merged). This endpoint
+// requires beta_features to be enabled on the account (require_beta_features
+// gate on the backend).
 //
 // Use the returned Region.Slug as ServerCreateRequest.Region.
 func (c *Client) ListManagedHostingRegions(ctx context.Context) ([]ManagedHostingRegion, error) {
-	var regions []ManagedHostingRegion
-	if err := c.get(ctx, "/managed_hosting/regions", &regions); err != nil {
+	resp, err := c.GetManagedHostingRegions(ctx)
+	if err != nil {
 		return nil, err
+	}
+	// Iterate groups in a stable order (map iteration is nondeterministic).
+	groups := make([]string, 0, len(resp.GroupedRegions))
+	for group := range resp.GroupedRegions {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+
+	var regions []ManagedHostingRegion
+	for _, group := range groups {
+		g := resp.GroupedRegions[group]
+		grouped := append([]ManagedHostingRegion(nil), g.Regions...)
+		sort.Slice(grouped, func(i, j int) bool { return grouped[i].Slug < grouped[j].Slug })
+		regions = append(regions, grouped...)
 	}
 	return regions, nil
 }
@@ -67,11 +140,11 @@ func (c *Client) ListManagedHostingRegions(ctx context.Context) ([]ManagedHostin
 //
 // Use the returned Size.Slug as ServerCreateRequest.Size.
 func (c *Client) ListManagedHostingSizes(ctx context.Context) ([]ManagedHostingSize, error) {
-	var sizes []ManagedHostingSize
-	if err := c.get(ctx, "/managed_hosting/sizes", &sizes); err != nil {
+	var resp ManagedHostingSizesResponse
+	if err := c.get(ctx, "/managed_hosting/sizes", &resp); err != nil {
 		return nil, err
 	}
-	return sizes, nil
+	return resp.Sizes, nil
 }
 
 // GetServerProvisioningState returns the current server record from the

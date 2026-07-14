@@ -422,9 +422,9 @@ func TestHumanMB(t *testing.T) {
 func TestManagedSizeRanksAndTiers(t *testing.T) {
 	// Deliberately out of price order to prove ranking is by price, not position.
 	sizes := []sdk.ManagedHostingSize{
-		{Slug: "mid", PriceMonthly: 12},
-		{Slug: "cheap", PriceMonthly: 6},
-		{Slug: "dear", PriceMonthly: 24},
+		{Slug: "mid", MonthlyCost: 12},
+		{Slug: "cheap", MonthlyCost: 6},
+		{Slug: "dear", MonthlyCost: 24},
 	}
 	ranks := managedSizeRanks(sizes)
 	assert.Equal(t, []int{1, 0, 2}, ranks)
@@ -437,18 +437,36 @@ func TestManagedSizeRanksAndTiers(t *testing.T) {
 }
 
 func TestManagedSizeLabel(t *testing.T) {
-	s := sdk.ManagedHostingSize{Slug: "s-1vcpu-1gb", VCPUs: 1, Memory: 1024, Disk: 25, PriceMonthly: 6}
+	s := sdk.ManagedHostingSize{Slug: "s-1vcpu-1gb", Label: "1 vCPU / 1 GB RAM", MonthlyCost: 6, Currency: "USD"}
 	label := managedSizeLabel(s, 0)
 	assert.Contains(t, label, "Starter")
-	assert.Contains(t, label, "1 vCPU")
-	assert.Contains(t, label, "1 GB RAM")
-	assert.Contains(t, label, "25 GB SSD")
+	assert.Contains(t, label, "1 vCPU / 1 GB RAM")
 	assert.Contains(t, label, "$6.00/mo")
 	assert.Contains(t, label, "(s-1vcpu-1gb)", "slug stays visible for --size discoverability")
 
-	// Missing structured specs → fall back to the API Description, no tier crash.
-	bare := sdk.ManagedHostingSize{Slug: "x", Description: "custom", PriceMonthly: 9}
-	assert.Contains(t, managedSizeLabel(bare, 9), "custom")
+	// No label → tier + price only, no crash.
+	bare := sdk.ManagedHostingSize{Slug: "x", MonthlyCost: 9, Currency: "USD"}
+	assert.Contains(t, managedSizeLabel(bare, 9), "$9.00/mo")
+
+	// Non-USD currency renders with the right symbol/code, never a bare "$".
+	gbp := sdk.ManagedHostingSize{Slug: "g", Label: "spec", MonthlyCost: 5, Currency: "GBP"}
+	gbpLabel := managedSizeLabel(gbp, 0)
+	assert.Contains(t, gbpLabel, "£5.00/mo")
+	assert.NotContains(t, gbpLabel, "$")
+}
+
+func TestFormatManagedPrice(t *testing.T) {
+	assert.Equal(t, "$12.00", formatManagedPrice(12, "USD"))
+	assert.Equal(t, "£12.00", formatManagedPrice(12, "GBP"))
+	assert.Equal(t, "€12.00", formatManagedPrice(12, "EUR"))
+	// Unknown currency → ISO-code suffix, no false "$".
+	sek := formatManagedPrice(12, "SEK")
+	assert.Equal(t, "12.00 SEK", sek)
+	assert.NotContains(t, sek, "$")
+	// Case/whitespace normalisation.
+	assert.Equal(t, "$12.00", formatManagedPrice(12, " usd "))
+	// Empty currency → bare amount, no symbol.
+	assert.Equal(t, "12.00", formatManagedPrice(12, ""))
 }
 
 // ── rate_limited (429 provisioning rate limit) ───────────────────────────────
@@ -504,18 +522,27 @@ func TestLaunchVPS_AcceptCostRequired_NonInteractive(t *testing.T) {
 		case "/profile":
 			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
 				"account": map[string]interface{}{
-					"beta_features":          true,
+					"beta_features":           true,
 					"static_hosting_eligible": true,
-					"managed_vps_eligible":   true,
+					"managed_vps_eligible":    true,
 				},
 			})
 		case "/managed_hosting/regions":
-			json.NewEncoder(w).Encode([]map[string]interface{}{ //nolint:errcheck
-				{"slug": "lon1", "name": "London", "available": true},
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"grouped_regions": map[string]interface{}{
+					"UK": map[string]interface{}{
+						"default": "lon1",
+						"regions": []map[string]interface{}{
+							{"slug": "lon1", "name": "London 1", "flag": "🇬🇧", "country": "UK"},
+						},
+					},
+				},
 			})
 		case "/managed_hosting/sizes":
-			json.NewEncoder(w).Encode([]map[string]interface{}{ //nolint:errcheck
-				{"slug": "s-1vcpu-1gb", "description": "1 vCPU / 1 GB", "price_monthly": 6.0},
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"sizes": []map[string]interface{}{
+					{"slug": "s-1vcpu-1gb", "label": "1 vCPU / 1 GB", "monthly_cost": 6.0, "currency": "USD"},
+				},
 			})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -554,12 +581,21 @@ func TestLaunchVPS_AcceptCostPresent_ProvisionsCalled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/managed_hosting/regions":
-			json.NewEncoder(w).Encode([]map[string]interface{}{ //nolint:errcheck
-				{"slug": "lon1", "name": "London", "available": true},
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"grouped_regions": map[string]interface{}{
+					"UK": map[string]interface{}{
+						"default": "lon1",
+						"regions": []map[string]interface{}{
+							{"slug": "lon1", "name": "London 1", "flag": "🇬🇧", "country": "UK"},
+						},
+					},
+				},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/managed_hosting/sizes":
-			json.NewEncoder(w).Encode([]map[string]interface{}{ //nolint:errcheck
-				{"slug": "s-1vcpu-1gb", "description": "1 vCPU", "price_monthly": 6.0},
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"sizes": []map[string]interface{}{
+					{"slug": "s-1vcpu-1gb", "label": "1 vCPU", "monthly_cost": 6.0, "currency": "USD"},
+				},
 			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/servers"):
 			provisionCalled = true
@@ -730,9 +766,9 @@ func TestLaunchDryRun_Static_JSON(t *testing.T) {
 		if r.Method == http.MethodGet && r.URL.Path == "/profile" {
 			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
 				"account": map[string]interface{}{
-					"beta_features":          true,
+					"beta_features":           true,
 					"static_hosting_eligible": true,
-					"managed_vps_eligible":   true,
+					"managed_vps_eligible":    true,
 				},
 			})
 			return
@@ -776,8 +812,10 @@ func TestLaunchDryRun_VPS_JSON_RequiresAcceptCost(t *testing.T) {
 	// VPS dry-run without --accept-cost must list it in "requires".
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/managed_hosting/sizes" {
-			json.NewEncoder(w).Encode([]map[string]interface{}{ //nolint:errcheck
-				{"slug": "s-1vcpu-1gb", "description": "1 vCPU", "price_monthly": 6.0},
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"sizes": []map[string]interface{}{
+					{"slug": "s-1vcpu-1gb", "label": "1 vCPU", "monthly_cost": 6.0, "currency": "USD"},
+				},
 			})
 			return
 		}
@@ -1037,17 +1075,19 @@ func TestLaunchDryRun_NoBetaEnroll(t *testing.T) {
 		if r.Method == http.MethodGet && r.URL.Path == "/profile" {
 			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
 				"account": map[string]interface{}{
-					"beta_features":          false, // not enrolled
+					"beta_features":           false, // not enrolled
 					"static_hosting_eligible": false,
-					"managed_vps_eligible":   false,
+					"managed_vps_eligible":    false,
 				},
 			})
 			return
 		}
 		// Sizes endpoint for cost estimate
 		if r.Method == http.MethodGet && r.URL.Path == "/managed_hosting/sizes" {
-			json.NewEncoder(w).Encode([]map[string]interface{}{ //nolint:errcheck
-				{"slug": "s-1vcpu-1gb", "description": "1 vCPU", "price_monthly": 6.0},
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"sizes": []map[string]interface{}{
+					{"slug": "s-1vcpu-1gb", "label": "1 vCPU", "monthly_cost": 6.0, "currency": "USD"},
+				},
 			})
 			return
 		}
