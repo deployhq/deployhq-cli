@@ -50,9 +50,9 @@ func newAPICmd() *cobra.Command {
 			if isShellMangledPath(path) {
 				return &output.UserError{
 					Message: "API path was rewritten by your shell (Git Bash/MSYS turned it into a Windows path)",
-					Hint: "Your shell converted the leading '/' into a filesystem path. Re-run either way:\n" +
-						fmt.Sprintf("  MSYS_NO_PATHCONV=1 dhq api %s /<path>   (disable path conversion)\n", method) +
-						fmt.Sprintf("  dhq api %s <path>                       (omit the leading slash, e.g. projects/my-app)", method),
+					Hint: "Your shell converted the leading '/' into a filesystem path. Re-run either way (substitute your real path):\n" +
+						fmt.Sprintf("  MSYS_NO_PATHCONV=1 dhq api %s /projects/my-app   (disable path conversion)\n", method) +
+						fmt.Sprintf("  dhq api %s projects/my-app                       (omit the leading slash)", method),
 				}
 			}
 
