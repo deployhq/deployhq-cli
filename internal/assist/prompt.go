@@ -143,6 +143,7 @@ dhq beta enroll [--protocol managed_vps|static_hosting]    (enroll the account i
 
 Account Resources:
 dhq agents list|create|update|delete|revoke
+dhq teams list|show|create|update|delete
 dhq folders list|create|update|delete
 dhq global-servers list|show|create|update|delete|copy-to-project
 dhq invoices list                         (billing history; billing-manager key required)

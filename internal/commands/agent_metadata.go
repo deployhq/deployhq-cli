@@ -276,6 +276,29 @@ var commandMetadataTable = map[string]AgentMetadata{
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"ssh_key"},
 	},
+
+	// Teams (account-level permission groups)
+	"dhq teams list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"team"},
+	},
+	"dhq teams show": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"team"},
+	},
+	"dhq teams create": {
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"team"},
+	},
+	"dhq teams update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"team"},
+	},
+	"dhq teams delete": {
+		Destructive: true, RequiresConfirmation: true,
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"team"},
+	},
 	"dhq ssh-keys download": {
 		// Emits raw private key material. Idempotent, but sensitive enough that
 		// an agent should confirm before running and not treat it as safe to run
