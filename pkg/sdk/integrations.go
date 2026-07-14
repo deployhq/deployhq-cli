@@ -15,11 +15,19 @@ type Integration struct {
 	SendOnFailure    bool   `json:"send_on_failure"`
 	CreatedAt        string `json:"created_at"`
 	UpdatedAt        string `json:"updated_at"`
+
+	// External-auth hook types do not return an integration on create/update.
+	// Instead the API responds with {auth_required, auth_url} so the caller can
+	// continue the OAuth-style flow. These populate only in that case.
+	AuthRequired *bool  `json:"auth_required,omitempty"`
+	AuthURL      string `json:"auth_url,omitempty"`
 }
 
 // IntegrationCreateRequest is the payload for creating/updating an integration.
+// HookType is omitempty so update calls (where hook_type is immutable) don't
+// send an empty value; create always sets a non-empty HookType.
 type IntegrationCreateRequest struct {
-	HookType         string `json:"hook_type"`
+	HookType         string `json:"hook_type,omitempty"`
 	Name             string `json:"name,omitempty"`
 	SendOnStart      *bool  `json:"send_on_start,omitempty"`
 	SendOnCompletion *bool  `json:"send_on_completion,omitempty"`

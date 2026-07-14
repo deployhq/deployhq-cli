@@ -64,6 +64,8 @@ Build commands run on the build server; SSH commands run on the deploy target.`,
 		},
 		newSSHCommandsCreateCmd(),
 		newSSHCommandsUpdateCmd(),
+		newSSHCommandsLinkGlobalCmd(),
+		newSSHCommandsUnlinkGlobalCmd(),
 		&cobra.Command{
 			Use: "delete <id>", Short: "Delete an SSH command", Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -134,6 +136,65 @@ func newSSHCommandsUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&description, "description", "", "Description")
 	cmd.Flags().StringVar(&timing, "timing", "", "Timing: all, first, or after_first")
 	return cmd
+}
+
+func newSSHCommandsLinkGlobalCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "link-global <command-id>",
+		Short: "Link a global SSH command into this project",
+		Args:  cobra.ExactArgs(1),
+		Example: `  # Link an account-wide SSH command into the current project
+  dhq ssh-commands link-global cmd-abc123 -p my-app`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			c, err := client.LinkGlobalCommand(cliCtx.Background(), projectID, args[0])
+			if err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(c, fmt.Sprintf("Linked global SSH command: %s", c.Identifier)))
+			}
+			env.Status("Linked global SSH command: %s", c.Identifier)
+			return nil
+		},
+	}
+}
+
+func newSSHCommandsUnlinkGlobalCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "unlink-global <command-id>",
+		Short: "Unlink a global SSH command from this project",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			if err := client.UnlinkGlobalCommand(cliCtx.Background(), projectID, args[0]); err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(
+					map[string]string{"command_id": args[0], "status": "unlinked"},
+					fmt.Sprintf("Unlinked: %s", args[0])))
+			}
+			env.Status("Unlinked global SSH command: %s", args[0])
+			return nil
+		},
+	}
 }
 
 func newSSHCommandsCreateCmd() *cobra.Command {

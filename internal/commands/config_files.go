@@ -22,8 +22,69 @@ Each config file is scoped to one project and pinned to a target path on the ser
 		newConfigFilesCreateCmd(),
 		newConfigFilesUpdateCmd(),
 		newConfigFilesDeleteCmd(),
+		newConfigFilesLinkGlobalCmd(),
+		newConfigFilesUnlinkGlobalCmd(),
 	)
 	return cmd
+}
+
+func newConfigFilesLinkGlobalCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "link-global <config-file-id>",
+		Short: "Link a global config file into this project",
+		Args:  cobra.ExactArgs(1),
+		Example: `  # Link an account-wide config file into the current project
+  dhq config-files link-global cfg-abc123 -p my-app`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			f, err := client.LinkGlobalConfigFile(cliCtx.Background(), projectID, args[0])
+			if err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(f, fmt.Sprintf("Linked global config file: %s", f.Path)))
+			}
+			env.Status("Linked global config file: %s", f.Path)
+			return nil
+		},
+	}
+}
+
+func newConfigFilesUnlinkGlobalCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "unlink-global <config-file-id>",
+		Short: "Unlink a global config file from this project",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			if err := client.UnlinkGlobalConfigFile(cliCtx.Background(), projectID, args[0]); err != nil {
+				return err
+			}
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(
+					map[string]string{"config_file_id": args[0], "status": "unlinked"},
+					fmt.Sprintf("Unlinked: %s", args[0])))
+			}
+			env.Status("Unlinked global config file: %s", args[0])
+			return nil
+		},
+	}
 }
 
 func newConfigFilesListCmd() *cobra.Command {
@@ -134,9 +195,19 @@ func newConfigFilesUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			f, err := client.UpdateConfigFile(cliCtx.Background(), projectID, args[0], sdk.ConfigFileCreateRequest{
-				Path: path, Body: body, Description: description,
-			})
+			// Only send fields the user explicitly set, so a partial update
+			// (e.g. --description alone) doesn't clear unset path/body.
+			var req sdk.ConfigFileUpdateRequest
+			if cmd.Flags().Changed("path") {
+				req.Path = &path
+			}
+			if cmd.Flags().Changed("body") {
+				req.Body = &body
+			}
+			if cmd.Flags().Changed("description") {
+				req.Description = &description
+			}
+			f, err := client.UpdateConfigFile(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
 				return err
 			}

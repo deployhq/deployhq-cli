@@ -28,7 +28,7 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq retry": {
-		Idempotent: false,
+		Idempotent:   false,
 		SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
@@ -122,7 +122,7 @@ var commandMetadataTable = map[string]AgentMetadata{
 	},
 	"dhq env-vars create": {
 		Interactive: true, // prompts for value if --value omitted
-		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		Idempotent:  false, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"env_var"},
 	},
 	"dhq env-vars delete": {
@@ -165,23 +165,23 @@ var commandMetadataTable = map[string]AgentMetadata{
 		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
 	},
 	"dhq init": {
-		Interactive: true,
+		Interactive:  true,
 		SupportsJSON: false, SafeForAutomation: false,
 	},
 	"dhq hello": {
-		Interactive: true,
+		Interactive:  true,
 		SupportsJSON: false, SafeForAutomation: false,
 	},
 	"dhq configure": {
-		Interactive: true,
+		Interactive:  true,
 		SupportsJSON: false, SafeForAutomation: false,
 	},
 	"dhq signup": {
-		Interactive: true,
+		Interactive:  true,
 		SupportsJSON: true, SafeForAutomation: true,
 	},
 	"dhq mcp": {
-		Interactive: true,
+		Interactive:  true,
 		SupportsJSON: false, SafeForAutomation: false,
 	},
 
@@ -299,10 +299,222 @@ var commandMetadataTable = map[string]AgentMetadata{
 		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"team"},
 	},
+	"dhq ssh-keys download": {
+		// Emits raw private key material. Idempotent, but sensitive enough that
+		// an agent should confirm before running and not treat it as safe to run
+		// unattended (the key would land in logs/transcripts). Requires an admin
+		// on a paid account (else 403).
+		Idempotent: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: false,
+		ResourceTypes: []string{"ssh_key"},
+	},
+	// Users
+	"dhq users list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users show": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users delete": {
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+	"dhq users resend-invitation": {
+		// Not idempotent: each call sends a fresh invitation email, so agents
+		// should not treat it as blindly retry-safe.
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"user"},
+	},
+
+	// Account
+	"dhq account get": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"account"},
+	},
+	"dhq account update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"account"},
+	},
+	"dhq account billing": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"account"},
+	},
+
+	// Profile
+	"dhq profile get": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"profile"},
+	},
+	"dhq profile update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"profile"},
+	},
+
+	// API keys
+	"dhq api-keys create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"api_key"},
+	},
+	"dhq api-keys delete": {
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"api_key"},
+	},
+
+	"dhq folders list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"folder"},
+	},
+	"dhq folders create": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"folder"},
+	},
+	"dhq folders update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"folder"},
+	},
+	"dhq folders delete": {
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"folder"},
+	},
 	"dhq templates list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"template"},
 	},
+
+	// Hosted resources (Managed VPS + Static Hosting lifecycle)
+	"dhq hosted-resources list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"hosted_resource"},
+	},
+	"dhq hosted-resources show": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"hosted_resource"},
+	},
+	"dhq hosted-resources sync": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"hosted_resource"},
+	},
+	"dhq hosted-resources retry-provision": {
+		// Only valid when the resource is in the error state; not blindly retry-safe.
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: false,
+		ResourceTypes: []string{"hosted_resource"},
+	},
+
+	// Managed hosting catalog (read-only)
+	"dhq managed-hosting regions": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"managed_hosting_region"},
+	},
+	"dhq managed-hosting sizes": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"managed_hosting_size"},
+	},
+
+	// Template sub-resources (all take -t <template>)
+	"dhq templates config-files list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates config-files show":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates config-files create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates config-files update": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates config-files delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates excluded-files list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates excluded-files create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates excluded-files update": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates excluded-files delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates integrations list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates integrations create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates integrations update": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates integrations delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates commands list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates commands create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates commands update": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates commands delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates build-commands list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates build-commands create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates build-commands update": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates build-commands delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates build-cache-files list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates build-cache-files create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates build-cache-files update": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates build-cache-files delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates build-known-hosts list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates build-known-hosts create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates build-known-hosts delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates build-languages set": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates build-configuration": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	"dhq templates servers list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template", "server"}},
+	"dhq templates servers show":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template", "server"}},
+	"dhq templates servers create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template", "server"}},
+	"dhq templates servers update": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template", "server"}},
+	"dhq templates servers delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template", "server"}},
+
+	"dhq templates server-groups list":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates server-groups create": {SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates server-groups update": {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+	"dhq templates server-groups delete": {Destructive: true, RequiresConfirmation: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"template"}},
+
+	// Phase 4 — project & server actions
+	"dhq projects regenerate-key": {
+		// Invalidates the existing deploy key — servers must be updated with the new one.
+		Destructive: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: false,
+		ResourceTypes: []string{"project"},
+	},
+	"dhq projects undeployed-changes": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"project"},
+	},
+	"dhq projects ai-overview": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"project"},
+	},
+	"dhq servers from-global": {
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"server"},
+	},
+	"dhq servers metrics": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"server"},
+	},
+	"dhq config-files link-global":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"config_file"}},
+	"dhq config-files unlink-global": {Destructive: true, Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"config_file"}},
+	"dhq ssh-commands link-global":   {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"ssh_command"}},
+	"dhq ssh-commands unlink-global": {Destructive: true, Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"ssh_command"}},
+
+	// Phase 7 — long-tail resources
+	"dhq ip-ranges":         {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"ip_range"}},
+	"dhq plans":             {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"package"}},
+	"dhq invoices list":     {Idempotent: true, SupportsJSON: true, SafeForAutomation: true, ResourceTypes: []string{"invoice"}},
+	"dhq invoices download": {Idempotent: true, SupportsJSON: false, SafeForAutomation: true, ResourceTypes: []string{"invoice"}},
+	"dhq detect":            {Idempotent: true, SupportsJSON: true, SafeForAutomation: true},
+	"dhq beta enroll": {
+		// Admin-gated (403 for non-admins); re-enrolling is a no-op.
+		Idempotent: true, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"beta_enrollment"},
+	},
+
 	"dhq zones list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"zone"},

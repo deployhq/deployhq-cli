@@ -61,3 +61,47 @@ func readAllJSON(r *http.Request) (map[string]interface{}, error) {
 	}
 	return out, nil
 }
+
+func TestLinkGlobalCommand(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/projects/my-app/commands/link_global", r.URL.Path)
+
+		// Body must be FLAT (top-level command_id).
+		var body map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, "cmd-1", body["command_id"])
+		_, hasWrapper := body["command"]
+		assert.False(t, hasWrapper, "body should be flat, not wrapped in command")
+
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(SSHCommand{Identifier: "cmd-1", Command: "echo hi", Timing: "all"})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	cmd, err := c.LinkGlobalCommand(context.Background(), "my-app", "cmd-1")
+	require.NoError(t, err)
+	assert.Equal(t, "cmd-1", cmd.Identifier)
+	assert.Equal(t, "echo hi", cmd.Command)
+}
+
+func TestUnlinkGlobalCommand(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/projects/my-app/commands/unlink_global", r.URL.Path)
+
+		// DELETE carries a FLAT body.
+		var body map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, "cmd-1", body["command_id"])
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	err := c.UnlinkGlobalCommand(context.Background(), "my-app", "cmd-1")
+	require.NoError(t, err)
+}

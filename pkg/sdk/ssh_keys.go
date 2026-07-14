@@ -44,3 +44,16 @@ func (c *Client) CreateSSHKey(ctx context.Context, req SSHKeyCreateRequest) (*SS
 func (c *Client) DeleteSSHKey(ctx context.Context, keyID string) error {
 	return c.delete(ctx, fmt.Sprintf("/ssh_keys/%s", keyID))
 }
+
+// DownloadSSHKeyPrivateKey returns the private key material for a global SSH
+// key. The API gates this on the account being an admin on a paid plan; a
+// non-admin or free account receives a 403 (see IsForbidden).
+func (c *Client) DownloadSSHKeyPrivateKey(ctx context.Context, keyID string) (string, error) {
+	var resp struct {
+		PrivateKey string `json:"private_key"`
+	}
+	if err := c.get(ctx, fmt.Sprintf("/ssh_keys/%s/download_private_key", keyID), &resp); err != nil {
+		return "", err
+	}
+	return resp.PrivateKey, nil
+}

@@ -87,9 +87,14 @@ dhq signup                            — Create a new DeployHQ account
 Projects:
 dhq projects list|show|create|update|delete|star|insights
 dhq projects update <permalink> --name|--permalink|--zone|--email-notify-on|--notification-email|--notify-pusher|--check-undeployed-changes|--store-artifacts
+dhq projects regenerate-key <project> [--key-type ED25519|RSA]    (regenerates the SSH deploy key; prints the new public key)
+dhq projects undeployed-changes <project>                         (commits not yet deployed)
+dhq projects ai-overview <project> --end-ref <rev> [--start-ref <rev>]   (AI summary of changes)
 
 Servers & Groups:
 dhq servers list|show|create|update|delete|reset-host-key -p <project>
+dhq servers from-global <global-server-id> -p <project>          (add a global server template to a project)
+dhq servers metrics <server-id> -p <project>                     (point-in-time metrics snapshot; beta, SSH only, use --json)
 dhq server-groups list|show|create|update|delete -p <project>
 
 Deployments:
@@ -105,6 +110,7 @@ Configuration:
 dhq env-vars list|show|create|update|delete -p <project>
 dhq global-env-vars list|show|create|update|delete
 dhq config-files list|show|create|update|delete -p <project>
+dhq config-files link-global|unlink-global <config-file-id> -p <project>    (link/unlink an account-wide config file)
 dhq excluded-files list|show|create|update|delete -p <project>
 
 Build Pipeline:
@@ -114,7 +120,8 @@ dhq language-versions list -p <project>    (alias: dhq lv list)
 
 SSH & Deployment Commands:
 dhq ssh-commands list|show|create|update|delete -p <project>
-dhq ssh-keys list|create|delete
+dhq ssh-commands link-global|unlink-global <command-id> -p <project>    (link/unlink an account-wide SSH command)
+dhq ssh-keys list|create|download|delete
 
 Integrations & Automation:
 dhq integrations list|show|create|update|delete -p <project>
@@ -123,12 +130,34 @@ dhq scheduled-deploys list|show|create|update|delete -p <project>
 
 Templates:
 dhq templates list|show|public|public-show|create|update|delete
+dhq templates config-files|servers list|show|create|update|delete -t <template>    (full CRUD)
+dhq templates excluded-files|integrations|commands|build-commands|build-cache-files|server-groups list|create|update|delete -t <template>    (no show)
+dhq templates build-known-hosts list|create|delete -t <template>    (no update)
+dhq templates build-languages set <package> --version <v> -t <template>
+dhq templates build-configuration -t <template>    (show only)
+
+Managed Hosting:
+dhq hosted-resources list|show|sync|retry-provision
+dhq managed-hosting regions|sizes
+dhq beta enroll [--protocol managed_vps|static_hosting]    (enroll the account in the managed-resources beta)
 
 Account Resources:
 dhq agents list|create|update|delete|revoke
 dhq teams list|show|create|update|delete
+dhq folders list|create|update|delete
 dhq global-servers list|show|create|update|delete|copy-to-project
+dhq invoices list                         (billing history; billing-manager key required)
+dhq invoices download <number>            (download an invoice PDF; billing-manager key required)
+dhq users list|show|create|update|delete|resend-invitation
+dhq account get|update|billing
+dhq profile get|update
+dhq api-keys create|delete
 dhq zones list
+
+Utilities & Info:
+dhq ip-ranges                             (DeployHQ IP ranges/ports for firewall allowlisting)
+dhq plans                                 (subscription plans and pricing; alias: pricing)
+dhq detect [path]                         (detect a project's framework and suggested deploy config)
 
 Dashboard & Activity:
 dhq status                             — Quick dashboard (deploy stats + recent activity)

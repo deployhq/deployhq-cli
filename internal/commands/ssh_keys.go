@@ -2,6 +2,8 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -41,6 +43,7 @@ Centralizing keys here means rotation is one update instead of touching every se
 			},
 		},
 		newSSHKeysCreateCmd(),
+		newSSHKeysDownloadCmd(),
 		&cobra.Command{
 			Use: "delete <id>", Short: "Delete an SSH key", Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -89,4 +92,96 @@ func newSSHKeysCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&title, "title", "", "Key title (required)")
 	cmd.Flags().StringVar(&keyType, "type", "ED25519", "Key type: RSA or ED25519")
 	return cmd
+}
+
+func newSSHKeysDownloadCmd() *cobra.Command {
+	var outputFile string
+	cmd := &cobra.Command{
+		Use: "download <id>", Short: "Download an SSH key's private key", Args: cobra.ExactArgs(1),
+		Long: `Download the private key material for a global SSH key.
+
+Only available to account admins on a paid plan; other accounts receive a
+permission error.
+
+In an interactive terminal the raw key is printed to stdout. When output is
+piped or redirected it is emitted as JSON (the standard CLI data contract), so
+to save the raw key to a file use --output rather than shell redirection:
+
+  dhq ssh-keys download <id> --output key.pem   # raw key, mode 0600
+
+--output writes with secure owner-only (0600) permissions.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+			privateKey, err := client.DownloadSSHKeyPrivateKey(cliCtx.Background(), args[0])
+			if err != nil {
+				return err
+			}
+			// Guard against a success response with no key material rather than
+			// silently emitting an empty file / empty stdout.
+			if privateKey == "" {
+				return fmt.Errorf("server returned an empty private key for %s", args[0])
+			}
+			env := cliCtx.Envelope
+
+			if outputFile != "" {
+				if err := writeSecureFile(outputFile, privateKey); err != nil {
+					return fmt.Errorf("write key to %s: %w", outputFile, err)
+				}
+				if env.WantsJSON() {
+					return env.WriteJSON(output.NewResponse(
+						map[string]string{"identifier": args[0], "output": outputFile, "status": "written"},
+						fmt.Sprintf("Wrote private key to %s", outputFile),
+					))
+				}
+				env.Status("Wrote private key to %s (mode 0600)", outputFile)
+				return nil
+			}
+
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(
+					map[string]string{"identifier": args[0], "private_key": privateKey},
+					"Private key downloaded",
+				))
+			}
+
+			env.Warn("Printing private key material to stdout — handle with care.")
+			fmt.Fprintln(env.Stdout, privateKey) //nolint:errcheck // best-effort stdout
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write the private key to a file (mode 0600) instead of stdout")
+	return cmd
+}
+
+// writeSecureFile writes private key material with owner-only (0600)
+// permissions, atomically. It writes to a temporary 0600 file in the same
+// directory and renames it into place, so a write failure or interruption
+// never truncates or partially overwrites an existing valid key — and the
+// destination ends up 0600 even if a looser-permissioned file was already
+// there.
+func writeSecureFile(path, contents string) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".dhq-key-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	// Best-effort cleanup if we bail before the rename.
+	defer func() { _ = os.Remove(tmpName) }()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.WriteString(contents); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }

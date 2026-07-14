@@ -30,6 +30,8 @@ Use these commands to create, configure, and list the servers attached to a proj
 		newServersUpdateCmd(),
 		newServersDeleteCmd(),
 		newServersResetHostKeyCmd(),
+		newServersFromGlobalCmd(),
+		newServersMetricsCmd(),
 	)
 
 	return cmd
@@ -530,6 +532,94 @@ func newServersResetHostKeyCmd() *cobra.Command {
 				return err
 			}
 			cliCtx.Envelope.Status("Reset host key for server: %s", args[0])
+			return nil
+		},
+	}
+}
+
+func newServersFromGlobalCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "from-global <global-server-id>",
+		Short: "Create a project server from a global server template",
+		Args:  cobra.ExactArgs(1),
+		Example: `  # Add a global server to the current project
+  dhq servers from-global glob-abc123 -p my-app`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			server, err := client.CreateServerFromGlobal(cliCtx.Background(), projectID, args[0])
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(server,
+					fmt.Sprintf("Created server: %s", server.Name),
+					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq servers show %s -p %s", server.Identifier, projectID)},
+					output.Breadcrumb{Action: "deploy", Cmd: fmt.Sprintf("dhq deploy -p %s", projectID)},
+				))
+			}
+			env.Status("Created server: %s (%s)", server.Name, server.Identifier)
+			return nil
+		},
+	}
+}
+
+func newServersMetricsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "metrics <identifier>",
+		Short:             "Show a point-in-time metrics snapshot for a server (beta, SSH only)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeServerNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := cliCtx.RequireProject()
+			if err != nil {
+				return err
+			}
+
+			client, err := cliCtx.Client()
+			if err != nil {
+				return err
+			}
+
+			metrics, err := client.GetServerMetrics(cliCtx.Background(), projectID, args[0])
+			if err != nil {
+				return err
+			}
+
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(metrics,
+					fmt.Sprintf("Metrics for server: %s", args[0]),
+				))
+			}
+
+			rows := [][]string{}
+			if metrics.Hostname != "" {
+				rows = append(rows, []string{"Hostname", metrics.Hostname})
+			}
+			if online, ok := metrics.Status["online"].(bool); ok {
+				reachable := "no"
+				if online {
+					reachable = "yes"
+				}
+				rows = append(rows, []string{"Reachable", reachable})
+			}
+			rows = append(rows,
+				[]string{"Uptime", metrics.Uptime.Formatted},
+				[]string{"Partitions", fmt.Sprintf("%d", len(metrics.Disk))},
+			)
+			env.WriteTable([]string{"Field", "Value"}, rows)
+			env.Status("\nMetrics are nested; run with --json for the full status/cpu/memory/disk/profile snapshot.")
 			return nil
 		},
 	}

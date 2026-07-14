@@ -28,6 +28,10 @@ Apply a template at project creation: "dhq projects create --template <id>".`,
 		newTemplatesDeleteCmd(),
 	)
 
+	// Template sub-resource tree (config-files, servers, build-*, etc.) — each
+	// leaf command takes --template/-t <permalink> to identify the template.
+	cmd.AddCommand(newTemplatesSubresourceCmds()...)
+
 	return cmd
 }
 

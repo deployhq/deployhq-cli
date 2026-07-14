@@ -66,14 +66,32 @@ func WithBaseURL(rawURL string) Option {
 // account is the subdomain (e.g. "mycompany" for mycompany.deployhq.com).
 // email and apiKey are used for HTTP Basic authentication.
 func New(account, email, apiKey string, opts ...Option) (*Client, error) {
-	if account == "" {
-		return nil, fmt.Errorf("deployhq: account is required")
-	}
 	if email == "" {
 		return nil, fmt.Errorf("deployhq: email is required")
 	}
 	if apiKey == "" {
 		return nil, fmt.Errorf("deployhq: api key is required")
+	}
+	return newClient(account, email, apiKey, opts...)
+}
+
+// NewPublic creates a DeployHQ API client for the public, no-auth endpoints
+// (e.g. GET /ip_ranges and GET /packages). These return 200 without HTTP
+// Basic authentication, so email and apiKey are left empty and no
+// Authorization header is meaningfully populated (an empty one is harmless
+// and ignored by the server).
+//
+// An account is still required because every request targets the account's
+// subdomain (https://<account>.deployhq.com/...).
+func NewPublic(account string, opts ...Option) (*Client, error) {
+	return newClient(account, "", "", opts...)
+}
+
+// newClient builds a Client. account is always required; email/apiKey may be
+// empty for public (no-auth) endpoints — callers enforce their own validation.
+func newClient(account, email, apiKey string, opts ...Option) (*Client, error) {
+	if account == "" {
+		return nil, fmt.Errorf("deployhq: account is required")
 	}
 
 	// Tolerate users passing a full hostname (e.g. "mycompany.deployhq.com")
