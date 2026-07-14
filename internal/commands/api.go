@@ -42,6 +42,20 @@ func newAPICmd() *cobra.Command {
 				}
 			}
 
+			// Detect a path that a Git Bash / MSYS shell has rewritten into a
+			// Windows filesystem path (POSIX path conversion turns a leading "/"
+			// into "C:/Program Files/Git/..."). We refuse rather than guess the
+			// intended endpoint — this is a raw escape hatch and reconstructing
+			// the wrong path could fire a destructive call.
+			if isShellMangledPath(path) {
+				return &output.UserError{
+					Message: "API path was rewritten by your shell (Git Bash/MSYS turned it into a Windows path)",
+					Hint: "Your shell converted the leading '/' into a filesystem path. Re-run either way (substitute your real path):\n" +
+						fmt.Sprintf("  MSYS_NO_PATHCONV=1 dhq api %s /projects/my-app   (disable path conversion)\n", method) +
+						fmt.Sprintf("  dhq api %s projects/my-app                       (omit the leading slash)", method),
+				}
+			}
+
 			client, err := cliCtx.Client()
 			if err != nil {
 				return err
@@ -73,4 +87,19 @@ func newAPICmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&jsonBody, "body", "", "JSON request body")
 	return cmd
+}
+
+// isShellMangledPath reports whether p looks like an API path that a Git Bash /
+// MSYS shell has rewritten into a Windows filesystem path via POSIX path
+// conversion. A real API path is relative ("projects/x") or root-absolute
+// ("/projects/x") and never begins with a drive letter, so a leading "C:/" or
+// "C:\" is a reliable signal that the argument was mangled before the CLI saw
+// it.
+func isShellMangledPath(p string) bool {
+	if len(p) < 3 {
+		return false
+	}
+	c := p[0]
+	isLetter := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+	return isLetter && p[1] == ':' && (p[2] == '/' || p[2] == '\\')
 }
