@@ -602,7 +602,10 @@ func TestResolveDeployProject_MultipleProjectsListsThem(t *testing.T) {
 	}))
 	defer srv.Close()
 	client := newTestSDKClient(t, srv)
-	env, _ := testEnvelope()
+	// Non-interactive (agents, piped output): the multi-project case must fail
+	// with the structured list rather than prompt. Interactive callers instead
+	// get a picker (see resolveDeployProject), which isn't exercised here.
+	env := &output.Envelope{Stdout: io.Discard, Stderr: io.Discard, NonInteractive: true}
 
 	id, err := resolveDeployProject(t.Context(), client, "", env)
 	require.Error(t, err)
