@@ -80,9 +80,11 @@ On failure the error carries a stable `reason`, a `retryable` boolean, and a `ne
 
 `launch` handles enrollment automatically, but an agent can inspect or drive it directly via `dhq api`:
 
-```
-# Am I eligible? Returns beta_features, static_hosting_eligible, managed_vps_eligible.
-dhq api GET /account/capabilities --json
+```bash
+# Am I eligible? The flags live on the `account` sub-object of the profile
+# response: account.beta_features, account.static_hosting_eligible,
+# account.managed_vps_eligible.
+dhq api GET /profile --json
 
 # Enable the managed-resources beta (admin required for the first enrollment;
 # already-enrolled accounts are idempotent).
