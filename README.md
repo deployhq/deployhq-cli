@@ -2,6 +2,8 @@
 
 DeployHQ from your terminal -- for humans and agents.
 
+[![Agent skill on skills.sh](https://skills.sh/b/deployhq/deployhq-cli)](https://skills.sh/deployhq/deployhq-cli)
+
 ![dhq demo](assets/demo.gif)
 
 ## Install
@@ -40,6 +42,18 @@ Download from [Releases](https://github.com/deployhq/deployhq-cli/releases) (Lin
 ```bash
 dhq update
 ```
+
+### Install as an agent skill (skills.sh)
+
+Add the DeployHQ skill to any supported AI agent (Claude Code, Cursor, Codex,
+Gemini CLI, Copilot, and more) directly from this repo:
+
+```bash
+npx skills add deployhq/deployhq-cli
+```
+
+(This is the cross-agent equivalent of `dhq skills install`, for users
+discovering DeployHQ through the skills.sh directory.)
 
 ## Quick Start
 
@@ -332,8 +346,8 @@ dhq commands --json
 DEPLOYHQ_AGENT=my-bot dhq deploy -p my-app --json
 ```
 
-Standalone skill guides are also available at `.claude/SKILL.md`,
-`.codex/SKILL.md`, `.cursor/SKILL.md`, `.windsurf/SKILL.md`, and `docs/SKILL.md`.
+The canonical agent skill lives at [`skills/deployhq/SKILL.md`](skills/deployhq/SKILL.md)
+and is what `dhq skills install` and `npx skills add deployhq/deployhq-cli` install.
 
 ### Non-Interactive Mode
 
