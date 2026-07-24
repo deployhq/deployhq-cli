@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [0.20.1] - 2026-07-24
+
+### Fixed
+
+- **`dhq deploy` / `dhq api`**: prompt with an interactive project picker when
+  `-p/--project` is omitted, and detect shell-mangled API paths so `dhq api`
+  calls with rewritten slashes still resolve (#35).
+
+### Documentation
+
+- **Agent skill discovery**: removed three stale, frontmatter-less `SKILL.md`
+  copies (`.claude/`, `.codex/`, `docs/`) that caused `npx skills add` to emit
+  "missing required frontmatter" warnings on every install. The canonical skill
+  remains `skills/deployhq/SKILL.md`. Added a skills.sh install badge and section
+  to the README, and documented the managed-resources eligibility check
+  (`dhq api GET /profile`) and beta-enrollment escape hatch in the launch
+  reference (#37).
+
 ## [0.20.0] - 2026-07-14
 
 Broad expansion of API coverage (DHQ-639): account-level resources, template
@@ -58,4 +76,5 @@ rather than regressed.
   flags are no longer sent, so they are left untouched server-side instead of
   being cleared.
 
+[0.20.1]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.20.1
 [0.20.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.20.0
