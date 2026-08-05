@@ -176,7 +176,7 @@ dhq servers create -p my-app --name "My Site" --protocol-type static_hosting \
 # Managed VPS (beta)
 # Note: requires managed-resources beta enabled; use `dhq launch` for guided setup
 dhq servers create -p my-app --name "My VPS" --protocol-type managed_vps \
-  --region lon1 --size s-1vcpu-1gb --json
+  --region lon1 --size s-1vcpu-1gb --accept-cost --json
 
 # Server with deployment configuration set up front
 dhq servers create -p my-app --name Production --protocol-type ssh \
@@ -197,14 +197,14 @@ at create time — before either server has ever been deployed to.
 
 # Staging — preferred branch `staging`, native auto-deploy DISABLED, atomic ON
 dhq servers create -p my-app --name Staging --protocol-type managed_vps \
-  --region lon1 --size s-1vcpu-1gb \
+  --region lon1 --size s-1vcpu-1gb --accept-cost \
   --branch staging \
   --auto-deploy=false \
   --atomic --atomic-strategy copy_release --atomic-retention 3 --json
 
 # Production — preferred branch `main`, native auto-deploy ENABLED, atomic ON
 dhq servers create -p my-app --name Production --protocol-type managed_vps \
-  --region lon1 --size s-2vcpu-2gb \
+  --region lon1 --size s-2vcpu-2gb --accept-cost \
   --branch main \
   --auto-deploy \
   --atomic --atomic-strategy copy_release --atomic-retention 5 --json
