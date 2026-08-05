@@ -550,7 +550,63 @@
         "flags": ["-p", "my-app", "-s", "staging", "--wait", "--timeout", "180"]
       },
       "notes": "Agent should convert 3 minutes to 180 seconds for the --timeout flag."
+    },
+    {
+      "id": "create-server-deployment-config",
+      "category": "servers",
+      "prompt": "Add a staging server to my-app that deploys the staging branch with zero-downtime deployments, and don't let DeployHQ deploy it automatically on push",
+      "expected": {
+        "command": "dhq servers create",
+        "flags": ["-p", "my-app", "--branch", "staging", "--auto-deploy=false", "--atomic"]
+      },
+      "must_not_contain": ["api POST"],
+      "notes": "Deployment settings are first-class flags on servers create - no dhq api escape hatch needed. Atomic must be set at create time."
+    },
+    {
+      "id": "update-server-branch",
+      "category": "servers",
+      "prompt": "Change server srv-001 in my-app so it deploys the main branch",
+      "expected": {
+        "command": "dhq servers update",
+        "args": ["srv-001"],
+        "flags": ["-p", "my-app", "--branch", "main"]
+      },
+      "must_not_contain": ["api PUT", "api PATCH"],
+      "notes": "--branch is a first-class flag on servers update; omitted flags leave other settings untouched."
+    },
+    {
+      "id": "update-server-auto-deploy",
+      "category": "servers",
+      "prompt": "Turn on DeployHQ's automatic deployments for server srv-001 in my-app",
+      "expected": {
+        "command": "dhq servers update",
+        "args": ["srv-001"],
+        "flags": ["-p", "my-app", "--auto-deploy"]
+      },
+      "must_not_contain": ["api PUT", "api PATCH"],
+      "notes": "Native auto-deployment is toggled with --auto-deploy / --auto-deploy=false."
+    },
+    {
+      "id": "update-atomic-retention",
+      "category": "servers",
+      "prompt": "Keep the last 10 releases on server srv-001 in my-app",
+      "expected": {
+        "command": "dhq servers update",
+        "args": ["srv-001"],
+        "flags": ["-p", "my-app", "--atomic-retention", "10"]
+      },
+      "notes": "Retention is tunable on an existing atomic server; only atomic itself is locked after the first deployment. Must be >= 1."
+    },
+    {
+      "id": "atomic-before-first-deployment",
+      "category": "gotchas",
+      "prompt": "Enable zero-downtime deployments on server srv-001 in my-app - it has been serving production traffic for months",
+      "expected": {
+        "command": "dhq deployments list",
+        "flags": ["-p", "my-app"]
+      },
+      "must_not_contain": ["servers update srv-001 --atomic"],
+      "notes": "Atomic cannot be changed once a server has any deployment. The agent must check for existing deployments or warn the user rather than blindly issuing 'dhq servers update --atomic', which the backend rejects."
     }
   ]
 }
-

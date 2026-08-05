@@ -137,6 +137,32 @@ type ServerCreateRequest struct {
 	AgentID      string `json:"agent_id,omitempty"`
 	Enabled      *bool  `json:"enabled,omitempty"`
 
+	// Deployment configuration. Booleans and retention are pointers so an
+	// omitted setting stays off the wire while an explicit `false` is still sent.
+	//
+	// Branch is the server's preferred branch, e.g. "main" or "staging".
+	// It is a pointer so an explicitly-empty branch survives serialisation:
+	// the backend accepts and persists `branch: ""`, and every consumer resolves
+	// it with `.presence`, so empty means "unpinned — fall back to the
+	// repository default". A plain string with omitempty would silently drop
+	// that intent. Note the API echoes the cleared value back as `""`, not null.
+	Branch *string `json:"branch,omitempty"`
+	// AutoDeploy enables DeployHQ's native repository auto-deployment. The
+	// backend suppresses auto-deploy while a server belongs to a server group,
+	// regardless of this value.
+	AutoDeploy *bool `json:"auto_deploy,omitempty"`
+	// Atomic enables zero-downtime (atomic) deployments. Supported only on ssh,
+	// rsync, digitalocean, hetzner_cloud and managed_vps servers, and only for
+	// accounts with atomic deployments enabled. The backend REJECTS any change
+	// to this field once the server has been deployed to, so atomic must be
+	// configured before the server's first deployment.
+	Atomic *bool `json:"atomic,omitempty"`
+	// AtomicStrategy is "copy_release" (backend default) or "copy_cache".
+	AtomicStrategy string `json:"atomic_strategy,omitempty"`
+	// AtomicRetention is how many past releases to keep; must be >= 1
+	// (backend default: 3).
+	AtomicRetention *int `json:"atomic_retention,omitempty"`
+
 	// SSH / FTP / FTPS / Rsync
 	Hostname        string `json:"hostname,omitempty"`
 	Port            *int   `json:"port,omitempty"`
@@ -190,6 +216,8 @@ type ServerCreateRequest struct {
 }
 
 // ServerUpdateRequest is the payload for updating a server.
+// Only the fields set here are sent, so an update never disturbs settings the
+// caller did not ask to change.
 type ServerUpdateRequest struct {
 	Name         string `json:"name,omitempty"`
 	ProtocolType string `json:"protocol_type,omitempty"`
@@ -197,6 +225,16 @@ type ServerUpdateRequest struct {
 	Environment  string `json:"environment,omitempty"`
 	RootPath     string `json:"root_path,omitempty"`
 	Enabled      *bool  `json:"enabled,omitempty"`
+
+	// Deployment configuration — same semantics as the matching fields on
+	// ServerCreateRequest. Atomic in particular cannot be changed once the
+	// server has been deployed to, and Branch is a pointer so `--branch ""`
+	// (unpin from a branch) reaches the wire instead of being dropped.
+	Branch          *string `json:"branch,omitempty"`
+	AutoDeploy      *bool   `json:"auto_deploy,omitempty"`
+	Atomic          *bool   `json:"atomic,omitempty"`
+	AtomicStrategy  string  `json:"atomic_strategy,omitempty"`
+	AtomicRetention *int    `json:"atomic_retention,omitempty"`
 }
 
 // ServerGroup represents a group of servers.

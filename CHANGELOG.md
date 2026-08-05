@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Added
+
+- **`dhq servers create` / `dhq servers update`**: five deployment-configuration
+  flags — `--branch` (the server's preferred branch), `--auto-deploy`
+  (DeployHQ's native repository auto-deployment), `--atomic` (zero-downtime
+  deployments), `--atomic-strategy` (`copy_release` — the default — or
+  `copy_cache`) and `--atomic-retention` (past releases to keep; must be `>= 1`,
+  rejected locally otherwise, backend default `3`). Both commands accept the
+  same set; on `update`, only flags that are explicitly passed are sent, so an
+  update never disturbs a setting the operator did not name. `--atomic` must be
+  configured **before** the server's first deployment — the backend refuses to
+  change it once a deployment exists — and is supported only on `ssh`, `rsync`,
+  `digitalocean`, `hetzner_cloud` and `managed_vps` servers. On accounts without
+  atomic deployments enabled the atomic fields are stripped server-side and the
+  request still succeeds, so verify with
+  `dhq servers show <id> -p <project> --json atomic,atomic_strategy,atomic_retention`
+  rather than trusting the exit code (DHQ-691).
+- **`dhq servers create` / `dhq servers update`**: `--branch ""` now unpins a
+  server so it falls back to the repository default. Previously the empty value
+  was dropped by `omitempty`, and the command reported success having changed
+  nothing. The backend accepts and persists a blank branch (it echoes it back as
+  `""`, not `null`).
+- **`dhq servers create` / `dhq servers update`**: warn on stderr when `--atomic`
+  was requested but the server comes back with atomic off. On accounts without
+  atomic deployments enabled the backend strips the atomic params before
+  validation and returns 2xx, so this was previously a silent success. The
+  create/update response is the read-back the docs asked operators to perform,
+  so no extra request is made. stdout stays pure data.
+- **`dhq servers create` / `dhq servers update`**: warn on stderr when
+  `--branch` is set on a server that belongs to a server group. The backend
+  resolves the branch as `server_group.branch || server.branch ||
+  repository.branch`, and grouped servers are excluded from auto-deployment
+  entirely, so a branch stored on a grouped server never deploys — previously a
+  silent no-op. stdout stays pure data.
+- **SDK**: `ServerCreateRequest` and `ServerUpdateRequest` gained matching
+  `Branch`, `AutoDeploy`, `Atomic`, `AtomicStrategy` and `AtomicRetention`
+  fields. Purely additive — no existing field changed, so this is not a breaking
+  change for importers of `github.com/deployhq/deployhq-cli/pkg/sdk`. `Branch`
+  is a `*string` so an explicitly-cleared branch survives serialisation.
+
 ## [0.20.1] - 2026-07-24
 
 ### Fixed
@@ -76,5 +118,6 @@ rather than regressed.
   flags are no longer sent, so they are left untouched server-side instead of
   being cleared.
 
+[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/v0.20.1...HEAD
 [0.20.1]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.20.1
 [0.20.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.20.0

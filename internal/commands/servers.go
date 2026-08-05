@@ -9,7 +9,215 @@ import (
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+// atomicStrategyCopyRelease is DeployHQ's own default. `servers create` sends
+// it explicitly when --atomic is enabled without a strategy, so the payload the
+// CLI produces is deterministic rather than dependent on a backend default.
+const atomicStrategyCopyRelease = "copy_release"
+
+// atomicStrategies are the values the DeployHQ backend accepts.
+var atomicStrategies = []string{atomicStrategyCopyRelease, "copy_cache"}
+
+// serverDeploymentFlags binds the deployment-configuration flags shared by
+// `dhq servers create` and `dhq servers update`, so the two commands cannot
+// drift apart.
+//
+// Every field is applied only when its flag was explicitly supplied. That is
+// what keeps `servers update` from mutating settings the operator never named,
+// and it is also why the booleans and the retention count reach the SDK as
+// pointers: an explicit `--auto-deploy=false` must serialise as `false`, while
+// an omitted one must not appear in the request body at all.
+//
+// The CLI deliberately does NOT replicate the backend's protocol/account policy
+// for atomic deployments. Those checks live server-side and their structured
+// errors pass through untouched.
+type serverDeploymentFlags struct {
+	branch          string
+	autoDeploy      bool
+	atomic          bool
+	atomicStrategy  string
+	atomicRetention int
+
+	// flags is the set the values were registered on; it answers "was this
+	// flag actually supplied?" via Changed().
+	flags *pflag.FlagSet
+}
+
+// register adds the five flags to cmd and records the flag set.
+func (f *serverDeploymentFlags) register(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&f.branch, "branch", "",
+		`Branch this server deploys from, e.g. main or staging. `+
+			`Pass --branch "" to unpin the server and fall back to the repository default. `+
+			`Has no effect while the server belongs to a server group — the group's branch wins`)
+	cmd.Flags().BoolVar(&f.autoDeploy, "auto-deploy", false,
+		"Deploy automatically when new commits reach the server's branch. "+
+			"The backend suppresses auto-deploy while the server belongs to a server group. "+
+			"Use --auto-deploy=false to turn it off")
+	cmd.Flags().BoolVar(&f.atomic, "atomic", false,
+		"Enable zero-downtime (atomic) deployments. Must be set before the server's first deployment — "+
+			"the backend rejects any change afterwards. Requires a supported protocol "+
+			"(ssh, rsync, digitalocean, hetzner_cloud, managed_vps) and an account with "+
+			"atomic deployments enabled. Use --atomic=false to turn it off")
+	cmd.Flags().StringVar(&f.atomicStrategy, "atomic-strategy", "",
+		"Atomic release strategy: copy_release or copy_cache (DeployHQ default: copy_release)")
+	cmd.Flags().IntVar(&f.atomicRetention, "atomic-retention", 0,
+		"Number of past atomic releases to keep; must be 1 or greater (DeployHQ default: 3)")
+
+	f.flags = cmd.Flags()
+}
+
+// supplied reports whether the named flag was explicitly given on the command
+// line. An unregistered flag set (helper never registered) counts as "no".
+func (f *serverDeploymentFlags) supplied(name string) bool {
+	return f.flags != nil && f.flags.Changed(name)
+}
+
+// validate runs the purely local checks. It must be called before the command
+// resolves a project or builds an API client, so a malformed invocation fails
+// with zero network access and no credentials.
+func (f *serverDeploymentFlags) validate() error {
+	if f.supplied("atomic-strategy") {
+		valid := false
+		for _, s := range atomicStrategies {
+			if f.atomicStrategy == s {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return &output.UserError{
+				Message: fmt.Sprintf("Invalid --atomic-strategy %q", f.atomicStrategy),
+				Hint:    "Use one of: " + strings.Join(atomicStrategies, ", "),
+			}
+		}
+	}
+
+	if f.supplied("atomic-retention") && f.atomicRetention < 1 {
+		return &output.UserError{
+			Message: fmt.Sprintf("Invalid --atomic-retention %d", f.atomicRetention),
+			Hint:    "Retention is the number of past releases to keep, so it must be 1 or greater (DeployHQ default: 3).",
+		}
+	}
+
+	return nil
+}
+
+// applyToCreate copies the supplied flags onto a create request.
+//
+// Create additionally pins the strategy to copy_release when --atomic is
+// enabled without one, matching the backend default and making the emitted
+// payload deterministic. Update deliberately does NOT do this.
+func (f *serverDeploymentFlags) applyToCreate(req *sdk.ServerCreateRequest) {
+	if f.supplied("branch") {
+		v := f.branch
+		req.Branch = &v
+	}
+	if f.supplied("auto-deploy") {
+		v := f.autoDeploy
+		req.AutoDeploy = &v
+	}
+	if f.supplied("atomic") {
+		v := f.atomic
+		req.Atomic = &v
+	}
+	if f.supplied("atomic-strategy") {
+		req.AtomicStrategy = f.atomicStrategy
+	}
+	if f.supplied("atomic-retention") {
+		v := f.atomicRetention
+		req.AtomicRetention = &v
+	}
+
+	if req.Atomic != nil && *req.Atomic && req.AtomicStrategy == "" {
+		req.AtomicStrategy = atomicStrategyCopyRelease
+	}
+}
+
+// branchIsDormant reports whether a branch the operator just set will have no
+// effect on deployments because the server belongs to a server group.
+//
+// The backend resolves a server's branch as
+// `server_group&.branch&.presence || branch.presence || repository.branch`, and
+// grouped servers are excluded from auto-deployment altogether (the group is
+// the deployable). So a branch stored on a grouped server is inert — the write
+// succeeds and is echoed back, but nothing ever deploys from it. The Rails UI
+// sidesteps this by hiding the field for grouped servers; the API does not, so
+// the CLI says it out loud instead of letting the operator believe it took.
+func branchIsDormant(branchSupplied bool, server *sdk.Server) bool {
+	if !branchSupplied || server == nil {
+		return false
+	}
+	return server.ServerGroupIdentifier != nil && *server.ServerGroupIdentifier != ""
+}
+
+// atomicNotApplied reports whether atomic deployments were requested but the
+// server came back with them off.
+//
+// An account without atomic deployments enabled has `atomic`, `atomic_strategy`
+// and `atomic_retention` stripped from the request by the backend's permit
+// list, before any validation runs — so the call returns 2xx with atomic
+// silently off and no error to surface. The three params are permitted as a
+// group, so checking `atomic` alone covers all of them. The other two atomic
+// failure modes (unsupported protocol, change after the first deployment) do
+// return real validation errors and need no client-side detection.
+func atomicNotApplied(atomicRequested bool, server *sdk.Server) bool {
+	if !atomicRequested || server == nil {
+		return false
+	}
+	return server.Atomic == nil || !*server.Atomic
+}
+
+// warnIfAtomicNotApplied emits the silent-strip warning on stderr. The response
+// the CLI already holds is the read-back the docs tell operators to perform, so
+// this reports what the backend actually did rather than delegating the check
+// to a reference doc an agent may never load.
+func warnIfAtomicNotApplied(env *output.Envelope, atomicRequested bool, server *sdk.Server) {
+	if !atomicNotApplied(atomicRequested, server) {
+		return
+	}
+	env.Warn("Atomic deployments were requested but the server reports atomic=false — " +
+		"this account does not have atomic deployments enabled. The rest of the " +
+		"request was applied; ask an account admin to enable atomic deployments.")
+}
+
+// warnIfBranchDormant emits the dormant-branch warning on stderr, keeping
+// stdout pure data.
+func warnIfBranchDormant(env *output.Envelope, branchSupplied bool, server *sdk.Server) {
+	if !branchIsDormant(branchSupplied, server) {
+		return
+	}
+	env.Warn("Branch saved, but it has no effect while this server belongs to server group %q — "+
+		"deployments use the group's branch (or the repository default). "+
+		"Remove the server from the group, or set the branch on the group instead.",
+		*server.ServerGroupIdentifier)
+}
+
+// applyToUpdate copies the supplied flags onto an update request. Flags that
+// were not given stay absent from the payload — silently writing a strategy or
+// a retention the operator did not ask for would clobber existing settings.
+func (f *serverDeploymentFlags) applyToUpdate(req *sdk.ServerUpdateRequest) {
+	if f.supplied("branch") {
+		v := f.branch
+		req.Branch = &v
+	}
+	if f.supplied("auto-deploy") {
+		v := f.autoDeploy
+		req.AutoDeploy = &v
+	}
+	if f.supplied("atomic") {
+		v := f.atomic
+		req.Atomic = &v
+	}
+	if f.supplied("atomic-strategy") {
+		req.AtomicStrategy = f.atomicStrategy
+	}
+	if f.supplied("atomic-retention") {
+		v := f.atomicRetention
+		req.AtomicRetention = &v
+	}
+}
 
 func newServersCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -181,6 +389,8 @@ func newServersCreateCmd() *cobra.Command {
 	var region, size, osImage string
 	// Billing guardrail (mirrors the gate in `dhq launch`)
 	var acceptCost bool
+	// Deployment configuration shared with `dhq servers update`
+	deployFlags := &serverDeploymentFlags{}
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -209,7 +419,12 @@ func newServersCreateCmd() *cobra.Command {
 
   # Managed VPS droplet (beta — requires managed-resources beta)
   dhq servers create -p my-app --name vps --protocol-type managed_vps \
-    --region lon1 --size s-1vcpu-1gb`,
+    --region lon1 --size s-1vcpu-1gb
+
+  # Staging Managed VPS deploying the staging branch with atomic releases
+  dhq servers create -p my-app --name staging --protocol-type managed_vps \
+    --region lon1 --size s-1vcpu-1gb --accept-cost \
+    --branch staging --auto-deploy --atomic --atomic-retention 5`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if name == "" {
 				return &output.UserError{Message: "Server name is required", Hint: "Use --name flag"}
@@ -219,6 +434,11 @@ func newServersCreateCmd() *cobra.Command {
 					Message: "Protocol type is required",
 					Hint:    "Use --protocol-type with one of: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify, static_hosting, managed_vps",
 				}
+			}
+			// Local, offline validation — runs before a project is resolved or a
+			// client is built, so a malformed invocation never touches the network.
+			if err := deployFlags.validate(); err != nil {
+				return err
 			}
 
 			projectID, err := cliCtx.RequireProject()
@@ -266,6 +486,7 @@ func newServersCreateCmd() *cobra.Command {
 				Size:    size,
 				OSImage: osImage,
 			}
+			deployFlags.applyToCreate(&req)
 			// Static Hosting (beta) — nested attributes
 			if protocolType == "static_hosting" && subdomain != "" {
 				req.HostedWebsiteAttributes = &sdk.HostedWebsiteAttributes{
@@ -378,6 +599,9 @@ func newServersCreateCmd() *cobra.Command {
 				}
 			}
 
+			warnIfBranchDormant(env, deployFlags.supplied("branch"), server)
+			warnIfAtomicNotApplied(env, deployFlags.supplied("atomic") && deployFlags.atomic, server)
+
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Created server: %s", server.Name)))
 			}
@@ -391,6 +615,9 @@ func newServersCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&protocolType, "protocol-type", "", "Protocol (required): ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean, hetzner_cloud, heroku, netlify, shopify, static_hosting, managed_vps")
 	cmd.Flags().StringVar(&serverPath, "path", "", "Server path")
 	cmd.Flags().StringVar(&environment, "environment", "", "Environment name")
+
+	// Deployment configuration (shared with `dhq servers update`)
+	deployFlags.register(cmd)
 
 	// SSH / FTP / FTPS / Rsync
 	cmd.Flags().StringVar(&hostname, "hostname", "", "Server hostname or IP address (ssh, ftp, ftps, rsync)")
@@ -447,13 +674,29 @@ func newServersCreateCmd() *cobra.Command {
 
 func newServersUpdateCmd() *cobra.Command {
 	var name, serverPath, environment string
+	// Deployment configuration shared with `dhq servers create`
+	deployFlags := &serverDeploymentFlags{}
 
 	cmd := &cobra.Command{
 		Use:               "update <identifier>",
 		Short:             "Update a server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeServerNames,
+		Example: `  # Point a server at a different branch
+  dhq servers update prod -p my-app --branch release
+
+  # Turn atomic deployments on before the server's first deploy
+  dhq servers update prod -p my-app --atomic --atomic-strategy copy_cache --atomic-retention 5
+
+  # Turn auto-deploy off without touching any other setting
+  dhq servers update prod -p my-app --auto-deploy=false`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Local, offline validation — runs before a project is resolved or a
+			// client is built, so a malformed invocation never touches the network.
+			if err := deployFlags.validate(); err != nil {
+				return err
+			}
+
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
 				return err
@@ -465,12 +708,19 @@ func newServersUpdateCmd() *cobra.Command {
 			}
 
 			req := sdk.ServerUpdateRequest{Name: name, ServerPath: serverPath, Environment: environment}
+			// Only flags the operator actually supplied reach the payload, so an
+			// update never disturbs deployment settings that were left unnamed.
+			deployFlags.applyToUpdate(&req)
+
 			server, err := client.UpdateServer(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
 				return err
 			}
 
 			env := cliCtx.Envelope
+			warnIfBranchDormant(env, deployFlags.supplied("branch"), server)
+			warnIfAtomicNotApplied(env, deployFlags.supplied("atomic") && deployFlags.atomic, server)
+
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Updated server: %s", server.Name)))
 			}
@@ -482,6 +732,7 @@ func newServersUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Server name")
 	cmd.Flags().StringVar(&serverPath, "path", "", "Server path")
 	cmd.Flags().StringVar(&environment, "environment", "", "Environment name")
+	deployFlags.register(cmd)
 	return cmd
 }
 
