@@ -31,6 +31,12 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   was dropped by `omitempty`, and the command reported success having changed
   nothing. The backend accepts and persists a blank branch (it echoes it back as
   `""`, not `null`).
+- **`dhq servers create` / `dhq servers update`**: warn on stderr when `--atomic`
+  was requested but the server comes back with atomic off. On accounts without
+  atomic deployments enabled the backend strips the atomic params before
+  validation and returns 2xx, so this was previously a silent success. The
+  create/update response is the read-back the docs asked operators to perform,
+  so no extra request is made. stdout stays pure data.
 - **`dhq servers create` / `dhq servers update`**: warn on stderr when
   `--branch` is set on a server that belongs to a server group. The backend
   resolves the branch as `server_group.branch || server.branch ||

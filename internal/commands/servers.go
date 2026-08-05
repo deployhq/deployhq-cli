@@ -152,6 +152,36 @@ func branchIsDormant(branchSupplied bool, server *sdk.Server) bool {
 	return server.ServerGroupIdentifier != nil && *server.ServerGroupIdentifier != ""
 }
 
+// atomicNotApplied reports whether atomic deployments were requested but the
+// server came back with them off.
+//
+// An account without atomic deployments enabled has `atomic`, `atomic_strategy`
+// and `atomic_retention` stripped from the request by the backend's permit
+// list, before any validation runs — so the call returns 2xx with atomic
+// silently off and no error to surface. The three params are permitted as a
+// group, so checking `atomic` alone covers all of them. The other two atomic
+// failure modes (unsupported protocol, change after the first deployment) do
+// return real validation errors and need no client-side detection.
+func atomicNotApplied(atomicRequested bool, server *sdk.Server) bool {
+	if !atomicRequested || server == nil {
+		return false
+	}
+	return server.Atomic == nil || !*server.Atomic
+}
+
+// warnIfAtomicNotApplied emits the silent-strip warning on stderr. The response
+// the CLI already holds is the read-back the docs tell operators to perform, so
+// this reports what the backend actually did rather than delegating the check
+// to a reference doc an agent may never load.
+func warnIfAtomicNotApplied(env *output.Envelope, atomicRequested bool, server *sdk.Server) {
+	if !atomicNotApplied(atomicRequested, server) {
+		return
+	}
+	env.Warn("Atomic deployments were requested but the server reports atomic=false — " +
+		"this account does not have atomic deployments enabled. The rest of the " +
+		"request was applied; ask an account admin to enable atomic deployments.")
+}
+
 // warnIfBranchDormant emits the dormant-branch warning on stderr, keeping
 // stdout pure data.
 func warnIfBranchDormant(env *output.Envelope, branchSupplied bool, server *sdk.Server) {
@@ -570,6 +600,7 @@ func newServersCreateCmd() *cobra.Command {
 			}
 
 			warnIfBranchDormant(env, deployFlags.supplied("branch"), server)
+			warnIfAtomicNotApplied(env, deployFlags.supplied("atomic") && deployFlags.atomic, server)
 
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Created server: %s", server.Name)))
@@ -688,6 +719,7 @@ func newServersUpdateCmd() *cobra.Command {
 
 			env := cliCtx.Envelope
 			warnIfBranchDormant(env, deployFlags.supplied("branch"), server)
+			warnIfAtomicNotApplied(env, deployFlags.supplied("atomic") && deployFlags.atomic, server)
 
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Updated server: %s", server.Name)))

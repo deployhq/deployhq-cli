@@ -605,6 +605,7 @@
         "command": "dhq deployments list",
         "flags": ["-p", "my-app"]
       },
+      "must_not_contain": ["servers update srv-001 --atomic"],
       "notes": "Atomic cannot be changed once a server has any deployment. The agent must check for existing deployments or warn the user rather than blindly issuing 'dhq servers update --atomic', which the backend rejects."
     }
   ]

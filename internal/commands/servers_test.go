@@ -528,3 +528,68 @@ func TestBranchIsDormant(t *testing.T) {
 		})
 	}
 }
+
+// ── #4: atomic requested but not applied (silent account-level strip) ─────────
+
+func TestAtomicNotApplied(t *testing.T) {
+	yes, no := true, false
+
+	cases := []struct {
+		name      string
+		requested bool
+		server    *sdk.Server
+		want      bool
+	}{
+		{"requested, came back false", true, &sdk.Server{Atomic: &no}, true},
+		{"requested, came back absent", true, &sdk.Server{}, true},
+		{"requested, came back true", true, &sdk.Server{Atomic: &yes}, false},
+		{"not requested, came back false", false, &sdk.Server{Atomic: &no}, false},
+		{"nil server", true, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, atomicNotApplied(tc.requested, tc.server))
+		})
+	}
+}
+
+// ── #5: the Managed VPS billing guardrail must precede the API call ──────────
+//
+// The gate is the only thing between a non-interactive invocation and a
+// billable provisioning call, and this change inserted statements on both
+// sides of it. blockNetwork turns "no request was made" into a fact.
+
+func TestServersCreate_ManagedVPSRequiresAcceptCost_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	called := blockNetwork(t)
+
+	err := runServersCmd(t, "servers", "create",
+		"--name", "vps", "--protocol-type", "managed_vps",
+		"--region", "lon1", "--size", "s-1vcpu-1gb",
+		// deployment flags on the same command must not let the gate be skipped
+		"--branch", "staging", "--atomic",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "accept-cost")
+	assert.False(t, *called, "the cost gate must fire before any API request")
+}
+
+func TestServersCreate_ManagedVPSWithAcceptCost_Proceeds(t *testing.T) {
+	withResolvableContext(t)
+	cap := captureRequest(t)
+
+	err := runServersCmd(t, "servers", "create",
+		"--name", "vps", "--protocol-type", "managed_vps",
+		"--region", "lon1", "--size", "s-1vcpu-1gb", "--accept-cost",
+		"--branch", "staging",
+	)
+	require.NoError(t, err)
+
+	srv := cap.server(t)
+	assert.Equal(t, "staging", srv["branch"])
+	// provisioning params stay top-level siblings of `server`
+	cap.mu.Lock()
+	defer cap.mu.Unlock()
+	assert.Equal(t, "lon1", cap.body["region"])
+	assert.Equal(t, "s-1vcpu-1gb", cap.body["size"])
+}
