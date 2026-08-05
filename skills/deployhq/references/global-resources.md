@@ -117,7 +117,7 @@ pass an internal database id, by design.
 
 ```bash
 dhq ssh-keys list --json
-dhq ssh-keys list --json title,identifier,fingerprint
+dhq ssh-keys list --json=title,identifier,fingerprint
 ```
 
 ### `dhq ssh-keys create`

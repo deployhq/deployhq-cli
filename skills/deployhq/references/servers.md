@@ -7,7 +7,7 @@ List servers in project.
 
 ```bash
 dhq servers list -p my-app --json
-dhq servers list -p my-app --json name,identifier,protocol_type
+dhq servers list -p my-app --json=name,identifier,protocol_type
 ```
 
 ### `dhq servers show <identifier>`
@@ -64,7 +64,7 @@ Two further backend constraints on `--atomic` — note that they fail *different
 > the setting back:
 >
 > ```bash
-> dhq servers show srv-001 -p my-app --json atomic,atomic_strategy,atomic_retention
+> dhq servers show srv-001 -p my-app --json=atomic,atomic_strategy,atomic_retention
 > ```
 >
 > If `atomic` is `false` after a command that exited 0, the account does not
@@ -99,7 +99,7 @@ treat the two as equivalent.
 ```bash
 # Unpin a server from its branch; it reverts to the repository default
 dhq servers update srv-001 -p my-app --branch "" --json
-dhq servers show srv-001 -p my-app --json branch,preferred_branch
+dhq servers show srv-001 -p my-app --json=branch,preferred_branch
 ```
 
 **Static Hosting flags (beta, requires managed-resources beta on account):**
@@ -131,7 +131,7 @@ is never accepted from a client.
 
 ```bash
 # 1. find the key
-dhq ssh-keys list --json title,identifier,fingerprint
+dhq ssh-keys list --json=title,identifier,fingerprint
 
 # 2. provision with it
 dhq servers create -p my-app --name ops --protocol-type managed_vps \
@@ -139,7 +139,7 @@ dhq servers create -p my-app --name ops --protocol-type managed_vps \
   --key-pair-identifier key-abc123 --json
 
 # 3. verify which key was actually applied
-dhq servers show <identifier> -p my-app --json managed_vps
+dhq servers show <identifier> -p my-app --json=managed_vps
 ```
 
 The read-back returns the key under `managed_vps.ssh_key` as
@@ -249,9 +249,9 @@ dhq servers create -p my-app --name Production --protocol-type managed_vps \
 # (accounts without atomic deployments enabled have the fields stripped silently).
 # Use the identifiers returned by the two create calls above.
 dhq servers show <staging-identifier> -p my-app \
-  --json atomic,atomic_strategy,atomic_retention
+  --json=atomic,atomic_strategy,atomic_retention
 dhq servers show <production-identifier> -p my-app \
-  --json atomic,atomic_strategy,atomic_retention
+  --json=atomic,atomic_strategy,atomic_retention
 
 # Staging has no native auto-deployment, so ship it explicitly when you want to.
 # No -b needed: the server's preferred branch (`staging`) is used.
@@ -295,7 +295,7 @@ dhq servers update srv-001 -p my-app --atomic-retention 10 --json
 # Enabling atomic — only valid while the server has NO deployments yet,
 # and it can succeed with a 2xx without applying, so read the value back
 dhq servers update srv-002 -p my-app --atomic --json
-dhq servers show srv-002 -p my-app --json atomic,atomic_strategy,atomic_retention
+dhq servers show srv-002 -p my-app --json=atomic,atomic_strategy,atomic_retention
 ```
 
 ### `dhq servers delete <identifier>`
