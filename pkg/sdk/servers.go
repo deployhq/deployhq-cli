@@ -44,6 +44,9 @@ func (c *Client) CreateServer(ctx context.Context, projectID string, req ServerC
 	if req.OSImage != "" {
 		body["os_image"] = req.OSImage
 	}
+	if req.KeyPairIdentifier != "" {
+		body["key_pair_identifier"] = req.KeyPairIdentifier
+	}
 	var server Server
 	if err := c.post(ctx, fmt.Sprintf("/projects/%s/servers", projectID), body, &server); err != nil {
 		return nil, err

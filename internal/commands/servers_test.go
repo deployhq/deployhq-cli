@@ -593,3 +593,65 @@ func TestServersCreate_ManagedVPSWithAcceptCost_Proceeds(t *testing.T) {
 	assert.Equal(t, "lon1", cap.body["region"])
 	assert.Equal(t, "s-1vcpu-1gb", cap.body["size"])
 }
+
+// ── Managed VPS SSH key selection (DHQ-692) ──────────────────────────────────
+
+func TestServersCreate_RegistersKeyPairIdentifierFlag(t *testing.T) {
+	root := NewRootCmd("test")
+	createCmd, _, err := root.Find([]string{"servers", "create"})
+	require.NoError(t, err)
+	require.NotNil(t, createCmd.Flags().Lookup("key-pair-identifier"))
+
+	// It is Managed-VPS-only; update has no provisioning boundary to hoist to.
+	updateCmd, _, err := root.Find([]string{"servers", "update"})
+	require.NoError(t, err)
+	assert.Nil(t, updateCmd.Flags().Lookup("key-pair-identifier"),
+		"--key-pair-identifier applies to Managed VPS provisioning, not update")
+}
+
+func TestServersCreate_KeyPairIdentifierRejectedForNonVPS_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	called := blockNetwork(t)
+
+	err := runServersCmd(t, "servers", "create",
+		"--name", "web", "--protocol-type", "ssh", "--hostname", "h", "--username", "u",
+		"--key-pair-identifier", "key-uuid-123",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "managed_vps")
+	assert.False(t, *called, "must fail locally, before any request")
+}
+
+func TestServersCreate_KeyPairIdentifierConflictsWithGlobalKeyPairID_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	called := blockNetwork(t)
+
+	err := runServersCmd(t, "servers", "create",
+		"--name", "vps", "--protocol-type", "managed_vps",
+		"--region", "lon1", "--size", "s-1vcpu-1gb", "--accept-cost",
+		"--key-pair-identifier", "key-uuid-123",
+		"--global-key-pair-id", "other-key",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mutually exclusive")
+	assert.False(t, *called, "must fail locally, before any request")
+}
+
+func TestServersCreate_ManagedVPSSendsKeyPairIdentifierTopLevel(t *testing.T) {
+	withResolvableContext(t)
+	cap := captureRequest(t)
+
+	err := runServersCmd(t, "servers", "create",
+		"--name", "vps", "--protocol-type", "managed_vps",
+		"--region", "lon1", "--size", "s-1vcpu-1gb", "--accept-cost",
+		"--key-pair-identifier", "key-uuid-123",
+	)
+	require.NoError(t, err)
+
+	srv := cap.server(t)
+	assert.NotContains(t, srv, "key_pair_identifier", "must not nest inside server")
+
+	cap.mu.Lock()
+	defer cap.mu.Unlock()
+	assert.Equal(t, "key-uuid-123", cap.body["key_pair_identifier"])
+}
