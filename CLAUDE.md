@@ -90,6 +90,41 @@ All handled by `FlexString` or `[]interface{}`.
 3. Add CLI command in `internal/commands/`
 4. Register in `internal/commands/root.go`
 5. Add tests
+6. Add a `CHANGELOG.md` entry under `## [Unreleased]` (see Changelog & Releases)
+
+## Changelog & Releases
+
+**Every PR that changes observable behaviour adds an entry under `## [Unreleased]`
+in `CHANGELOG.md`**, grouped under `### Added` / `### Changed` / `### Fixed` /
+`### Breaking (SDK)`. Entries accumulate there across PRs; releasing is then just
+renaming the heading. Note `skills/` is `go:embed`-ed into the binary, so a skill
+or reference-doc correction ships to users and warrants an entry — only genuinely
+internal changes (refactors, test-only work, CI config) can skip it.
+
+Releasing is **manual and tag-driven**. Merging to `main` publishes nothing.
+
+1. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`.
+2. Update the compare links at the bottom of the file:
+   - `[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/vX.Y.Z...HEAD`
+   - `[X.Y.Z]: https://github.com/deployhq/deployhq-cli/releases/tag/vX.Y.Z`
+3. Commit on `main`.
+4. `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`
+
+The tag push is what triggers `release.yml` → GoReleaser. Tags are annotated
+(`-a`) by convention.
+
+**The version is not stored in the repo.** GoReleaser injects it from the tag
+(`-X main.version={{.Version}}`); `cmd/dhq/main.go` defaults to `dev` for local
+builds. There is no version file to bump.
+
+Two things that are easy to conflate:
+
+- GoReleaser's `changelog:` block in `.goreleaser.yaml` generates the **GitHub
+  release notes** from commit subjects. It never reads or writes `CHANGELOG.md`,
+  and it filters out `docs:`, `chore:`, `test:` and `ci:` commits.
+- `internal/version/update.go` polls the GitHub releases API, so tagging
+  immediately advertises the upgrade to every installed CLI. Don't tag ahead of
+  an API change the release depends on — deploy the backend first.
 
 ## Distribution
 
