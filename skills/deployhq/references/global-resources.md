@@ -107,15 +107,50 @@ dhq global-config-files delete 12345
 
 ## SSH Keys
 
+Account-level SSH keys. These are the same keys a Managed VPS can be provisioned
+with — see `--key-pair-identifier` in [servers.md](servers.md).
+
 ### `dhq ssh-keys list`
+Columns: `Title | Identifier | Type | Fingerprint`. **`Identifier` is the public
+identifier** — the value every other command takes. There is no way to obtain or
+pass an internal database id, by design.
+
 ```bash
 dhq ssh-keys list --json
+dhq ssh-keys list --json=title,identifier,fingerprint
 ```
 
 ### `dhq ssh-keys create`
+Keys are **generated server-side** — you do not supply your own public key.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--title` | yes | Key title |
+| `--type` | no | `ED25519` (default) or `RSA` |
+
 ```bash
-dhq ssh-keys create --name "Deploy Key" --public-key "ssh-rsa AAAA..." --json
+dhq ssh-keys create --title "Ops Recovery Key" --json
+dhq ssh-keys create --title "Legacy Host Key" --type RSA --json
 ```
+
+### `dhq ssh-keys download <identifier>`
+Writes the **private** key. Without `-o/--output` it goes to stdout, which for a
+secret is almost never what you want in an agent or CI context — prefer a file.
+
+```bash
+dhq ssh-keys download key-abc123 -o ~/.ssh/deployhq_ops
+chmod 600 ~/.ssh/deployhq_ops
+```
+
+Never paste the output into a log, a PR, an issue, or a chat transcript.
+
+### `dhq ssh-keys delete <identifier>`
+```bash
+dhq ssh-keys delete key-abc123
+```
+
+A key still attached to a Managed VPS cannot be deleted — the backend rejects it
+and names the resources using it. Delete or re-key the resource first.
 
 ## Templates
 

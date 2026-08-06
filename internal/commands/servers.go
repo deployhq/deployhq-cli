@@ -386,7 +386,7 @@ func newServersCreateCmd() *cobra.Command {
 	var spaMode bool
 	var subdirectory string
 	// Managed VPS (beta)
-	var region, size, osImage string
+	var region, size, osImage, keyPairIdentifier string
 	// Billing guardrail (mirrors the gate in `dhq launch`)
 	var acceptCost bool
 	// Deployment configuration shared with `dhq servers update`
@@ -440,6 +440,23 @@ func newServersCreateCmd() *cobra.Command {
 			if err := deployFlags.validate(); err != nil {
 				return err
 			}
+			if keyPairIdentifier != "" {
+				// The identifier is hoisted to the Managed VPS provisioning
+				// boundary; no other protocol has one, and the backend would
+				// silently drop it rather than error.
+				if protocolType != "managed_vps" {
+					return &output.UserError{
+						Message: fmt.Sprintf("--key-pair-identifier is only valid with --protocol-type managed_vps (got %q)", protocolType),
+						Hint:    "For ssh and rsync servers use --global-key-pair-id instead.",
+					}
+				}
+				if globalKeyPairID != "" {
+					return &output.UserError{
+						Message: "--key-pair-identifier and --global-key-pair-id are mutually exclusive",
+						Hint:    "Use --key-pair-identifier for managed_vps; --global-key-pair-id applies to ssh and rsync servers.",
+					}
+				}
+			}
 
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -485,6 +502,8 @@ func newServersCreateCmd() *cobra.Command {
 				Region:  region,
 				Size:    size,
 				OSImage: osImage,
+				// Hoisted to a top-level sibling of `server` by CreateServer.
+				KeyPairIdentifier: keyPairIdentifier,
 			}
 			deployFlags.applyToCreate(&req)
 			// Static Hosting (beta) — nested attributes
@@ -665,6 +684,10 @@ func newServersCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&region, "region", "", "DigitalOcean region slug, e.g. lon1, nyc3 (managed_vps)")
 	cmd.Flags().StringVar(&size, "size", "", "DigitalOcean droplet size slug, e.g. s-1vcpu-1gb (managed_vps)")
 	cmd.Flags().StringVar(&osImage, "os-image", "", "OS image slug (managed_vps, default: ubuntu-24-04-x64)")
+	cmd.Flags().StringVar(&keyPairIdentifier, "key-pair-identifier", "",
+		"Public identifier of an existing account SSH key to provision the droplet with (managed_vps). "+
+			"Use the Identifier column from `dhq ssh-keys list`. "+
+			"Omit to let DeployHQ create and reuse its shared managed key")
 
 	// Cost-acknowledgement guardrail — required for managed_vps in non-interactive mode
 	cmd.Flags().BoolVar(&acceptCost, "accept-cost", false, "Acknowledge Managed VPS provisioning — "+managedVPSAcknowledgePhrase()+" (required for non-interactive managed_vps creation)")

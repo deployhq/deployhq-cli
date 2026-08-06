@@ -11,6 +11,26 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Added
 
+- **`dhq servers create`**: `--key-pair-identifier` provisions a Managed VPS with
+  an existing account SSH key, selected by the public identifier that
+  `dhq ssh-keys list` prints. Sent as a top-level provisioning param alongside
+  `--region`/`--size`/`--os-image`. Omit it to keep the current behaviour, where
+  DeployHQ creates and reuses one shared managed key. Rejected locally, before
+  any request, for a non-`managed_vps` protocol or alongside
+  `--global-key-pair-id` (the ssh/rsync equivalent). Requires the matching API
+  change (DHQ-692).
+- **SDK**: `ServerCreateRequest.KeyPairIdentifier` (hoisted, `json:"-"`), and
+  `ManagedVPSInfo.SSHKey` (`*ManagedVPSSSHKey` — identifier, title, fingerprint)
+  for the read-back. Purely additive.
+
+### Fixed
+
+- **Agent skill**: `references/global-resources.md` documented
+  `dhq ssh-keys create --name --public-key`; neither flag exists. Keys are
+  generated server-side and the flags are `--title` (required) and `--type`
+  (`ED25519` default, or `RSA`). Also documents `ssh-keys download -o` and
+  `ssh-keys delete`.
+
 - **`dhq servers create` / `dhq servers update`**: five deployment-configuration
   flags — `--branch` (the server's preferred branch), `--auto-deploy`
   (DeployHQ's native repository auto-deployment), `--atomic` (zero-downtime

@@ -41,7 +41,7 @@ Verify with: `dhq auth status`
 
 - **TTY mode**: Table output with headers
 - **Piped/non-TTY**: Auto-switches to JSON
-- **`--json`**: Force JSON output. Optionally select fields: `--json name,status,identifier`
+- **`--json`**: Force JSON output. Optionally select fields: `--json=name,status,identifier`
 - **Breadcrumbs**: JSON responses include `breadcrumbs` array with suggested next commands
 - **Exit codes**: 0 = success, non-zero = failure
 
@@ -136,7 +136,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - `dhq env-vars create` prompts for value if `--value` is omitted (not agent-friendly — always pass `--value`)
 - `dhq servers create` / `dhq servers update` configure deployment behaviour with `--branch` (preferred branch), `--auto-deploy` (DeployHQ's native auto-deployment), `--atomic`, `--atomic-strategy` and `--atomic-retention`. On `update`, only flags you explicitly pass are sent — omitted flags never disturb existing settings
 - **`--atomic` must be set before the server's first deployment.** The backend refuses to change it once any deployment exists ("cannot be changed after a deployment has been made to this server") and there is no override — the only remedy is a new server. Set it at `create` time; check `dhq deployments list -p <project> --json` before ever putting `--atomic` on an `update`
-- `--atomic` fails **silently** on accounts without atomic deployments enabled: the fields are stripped server-side and the request still returns 2xx with atomic off. A zero exit code does not prove it applied — read it back with `dhq servers show <id> -p <project> --json atomic,atomic_strategy,atomic_retention`
+- `--atomic` fails **silently** on accounts without atomic deployments enabled: the fields are stripped server-side and the request still returns 2xx with atomic off. A zero exit code does not prove it applied — read it back with `dhq servers show <id> -p <project> --json=atomic,atomic_strategy,atomic_retention`
 
 ## Triggers
 

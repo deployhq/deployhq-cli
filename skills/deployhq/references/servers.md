@@ -7,7 +7,7 @@ List servers in project.
 
 ```bash
 dhq servers list -p my-app --json
-dhq servers list -p my-app --json name,identifier,protocol_type
+dhq servers list -p my-app --json=name,identifier,protocol_type
 ```
 
 ### `dhq servers show <identifier>`
@@ -64,7 +64,7 @@ Two further backend constraints on `--atomic` — note that they fail *different
 > the setting back:
 >
 > ```bash
-> dhq servers show srv-001 -p my-app --json atomic,atomic_strategy,atomic_retention
+> dhq servers show srv-001 -p my-app --json=atomic,atomic_strategy,atomic_retention
 > ```
 >
 > If `atomic` is `false` after a command that exited 0, the account does not
@@ -99,7 +99,7 @@ treat the two as equivalent.
 ```bash
 # Unpin a server from its branch; it reverts to the repository default
 dhq servers update srv-001 -p my-app --branch "" --json
-dhq servers show srv-001 -p my-app --json branch,preferred_branch
+dhq servers show srv-001 -p my-app --json=branch,preferred_branch
 ```
 
 **Static Hosting flags (beta, requires managed-resources beta on account):**
@@ -117,6 +117,42 @@ dhq servers show srv-001 -p my-app --json branch,preferred_branch
 | `--region` | DigitalOcean region slug (e.g. lon1, nyc3). Use `dhq api GET /managed_hosting/regions` to list. |
 | `--size` | DigitalOcean droplet size slug (e.g. s-1vcpu-1gb). Use `dhq api GET /managed_hosting/sizes` to list. |
 | `--os-image` | OS image slug (default: ubuntu-24-04-x64) |
+| `--key-pair-identifier` | Public identifier of an existing account SSH key to provision the droplet with. Use the `Identifier` column from `dhq ssh-keys list`. Omit to let DeployHQ create and reuse its shared managed key. |
+
+**Choosing the SSH key for a Managed VPS**
+
+By default DeployHQ creates one shared account key (titled `Managed VPS Key`) on
+first use and reuses it for every subsequent droplet. Pass
+`--key-pair-identifier` to provision with a specific existing account key
+instead — which is what you want for deterministic operator recovery access.
+
+Use the **public identifier** from `dhq ssh-keys list`. The internal database id
+is never accepted from a client.
+
+```bash
+# 1. find the key
+dhq ssh-keys list --json=title,identifier,fingerprint
+
+# 2. provision with it
+dhq servers create -p my-app --name ops --protocol-type managed_vps \
+  --region lon1 --size s-1vcpu-1gb --accept-cost \
+  --key-pair-identifier key-abc123 --json
+
+# 3. verify which key was actually applied
+dhq servers show <identifier> -p my-app --json=managed_vps
+```
+
+The read-back returns the key under `managed_vps.ssh_key` as
+`{identifier, title, fingerprint}` — enough to confirm the selection, and
+deliberately no key material and no internal id.
+
+An identifier that does not exist, or belongs to a different account, is
+rejected with **422** and creates neither a server nor a hosted resource. Unlike
+the atomic account-permission case, this one fails loudly.
+
+`--key-pair-identifier` is Managed-VPS-only and is rejected locally, before any
+request, if paired with another protocol or with `--global-key-pair-id` (which
+is the ssh/rsync equivalent).
 
 **SSH/FTP/FTPS/Rsync flags:**
 
@@ -213,9 +249,9 @@ dhq servers create -p my-app --name Production --protocol-type managed_vps \
 # (accounts without atomic deployments enabled have the fields stripped silently).
 # Use the identifiers returned by the two create calls above.
 dhq servers show <staging-identifier> -p my-app \
-  --json atomic,atomic_strategy,atomic_retention
+  --json=atomic,atomic_strategy,atomic_retention
 dhq servers show <production-identifier> -p my-app \
-  --json atomic,atomic_strategy,atomic_retention
+  --json=atomic,atomic_strategy,atomic_retention
 
 # Staging has no native auto-deployment, so ship it explicitly when you want to.
 # No -b needed: the server's preferred branch (`staging`) is used.
@@ -259,7 +295,7 @@ dhq servers update srv-001 -p my-app --atomic-retention 10 --json
 # Enabling atomic — only valid while the server has NO deployments yet,
 # and it can succeed with a 2xx without applying, so read the value back
 dhq servers update srv-002 -p my-app --atomic --json
-dhq servers show srv-002 -p my-app --json atomic,atomic_strategy,atomic_retention
+dhq servers show srv-002 -p my-app --json=atomic,atomic_strategy,atomic_retention
 ```
 
 ### `dhq servers delete <identifier>`

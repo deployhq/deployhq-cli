@@ -607,6 +607,49 @@
       },
       "must_not_contain": ["servers update srv-001 --atomic"],
       "notes": "Atomic cannot be changed once a server has any deployment. The agent must check for existing deployments or warn the user rather than blindly issuing 'dhq servers update --atomic', which the backend rejects."
+    },
+    {
+      "id": "list-ssh-keys",
+      "category": "global",
+      "prompt": "Show me the SSH keys on my account",
+      "expected": {
+        "command": "dhq ssh-keys list",
+        "flags": ["--json"]
+      },
+      "notes": "The Identifier column is the public identifier used everywhere else."
+    },
+    {
+      "id": "create-ssh-key",
+      "category": "global",
+      "prompt": "Create a new SSH key called 'Ops Recovery Key'",
+      "expected": {
+        "command": "dhq ssh-keys create",
+        "flags": ["--title", "Ops Recovery Key"]
+      },
+      "must_not_contain": ["--name", "--public-key"],
+      "notes": "Keys are generated server-side; --title is the flag, not --name, and there is no --public-key."
+    },
+    {
+      "id": "create-managed-vps-with-existing-key",
+      "category": "servers",
+      "prompt": "Create a Managed VPS called ops in my-app using my existing SSH key key-abc123, in lon1 at s-1vcpu-1gb",
+      "expected": {
+        "command": "dhq servers create",
+        "flags": ["-p", "my-app", "--protocol-type", "managed_vps", "--key-pair-identifier", "key-abc123", "--accept-cost"]
+      },
+      "must_not_contain": ["--global-key-pair-id", "api POST"],
+      "notes": "managed_vps uses --key-pair-identifier with the public identifier; --global-key-pair-id is the ssh/rsync flag and is rejected here. --accept-cost is required non-interactively."
+    },
+    {
+      "id": "verify-managed-vps-key",
+      "category": "servers",
+      "prompt": "Which SSH key was my Managed VPS srv-001 in my-app provisioned with?",
+      "expected": {
+        "command": "dhq servers show",
+        "args": ["srv-001"],
+        "flags": ["-p", "my-app", "managed_vps"]
+      },
+      "notes": "The key is under managed_vps.ssh_key in the read-back."
     }
   ]
 }

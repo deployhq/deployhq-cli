@@ -213,6 +213,13 @@ type ServerCreateRequest struct {
 	Size string `json:"-"`
 	// OSImage is the DigitalOcean image slug (defaults to "ubuntu-24-04-x64" when empty).
 	OSImage string `json:"-"`
+	// KeyPairIdentifier selects an existing account SSH key for a Managed VPS by
+	// its PUBLIC identifier — the one `dhq ssh-keys list` prints. The backend
+	// resolves it against the account's own keys and rejects an unknown or
+	// foreign identifier with 422, creating neither a server nor a hosted
+	// resource. Leave empty to let DeployHQ create and reuse its shared managed
+	// key. Not the internal database id, which the API never accepts from a client.
+	KeyPairIdentifier string `json:"-"`
 }
 
 // ServerUpdateRequest is the payload for updating a server.
@@ -531,6 +538,21 @@ type ManagedVPSInfo struct {
 	Size string `json:"size,omitempty"`
 	// MonthlyCost is the droplet's monthly cost (string or number on the wire).
 	MonthlyCost FlexString `json:"monthly_cost,omitempty"`
+	// SSHKey identifies the account SSH key the droplet was provisioned with.
+	// Nil until a key has been assigned. Deliberately narrow — the API exposes
+	// no key material and no internal id on this endpoint.
+	SSHKey *ManagedVPSSSHKey `json:"ssh_key,omitempty"`
+}
+
+// ManagedVPSSSHKey is the account SSH key a Managed VPS was provisioned with,
+// as reported by the server read-back.
+type ManagedVPSSSHKey struct {
+	// Identifier is the key's public identifier, matching `dhq ssh-keys list`.
+	Identifier string `json:"identifier"`
+	// Title is the key's human-readable name.
+	Title string `json:"title,omitempty"`
+	// Fingerprint is the key's fingerprint.
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 // StaticHostingInfo is the nested `static_hosting` object within a server response for static_hosting servers.
