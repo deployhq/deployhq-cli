@@ -107,8 +107,12 @@ Releasing is **manual and tag-driven**. Merging to `main` publishes nothing.
 2. Update the compare links at the bottom of the file:
    - `[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/vX.Y.Z...HEAD`
    - `[X.Y.Z]: https://github.com/deployhq/deployhq-cli/releases/tag/vX.Y.Z`
-3. Commit on `main`.
+3. Commit on `main` and **push it**: `git push origin main`.
 4. `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`
+
+Push `main` *before* the tag. Pushing a tag sends the reachable objects but does
+not move `refs/heads/main`, so tagging first leaves the release containing the
+changelog while `origin/main` still lacks it.
 
 The tag push is what triggers `release.yml` → GoReleaser. Tags are annotated
 (`-a`) by convention.
@@ -122,9 +126,11 @@ Two things that are easy to conflate:
 - GoReleaser's `changelog:` block in `.goreleaser.yaml` generates the **GitHub
   release notes** from commit subjects. It never reads or writes `CHANGELOG.md`,
   and it filters out `docs:`, `chore:`, `test:` and `ci:` commits.
-- `internal/version/update.go` polls the GitHub releases API, so tagging
-  immediately advertises the upgrade to every installed CLI. Don't tag ahead of
-  an API change the release depends on — deploy the backend first.
+- `internal/version/update.go` reads `/releases/latest`, i.e. the latest
+  *published* release — not the tag. So the sequence is: tag → GoReleaser builds
+  → release published → each installed CLI notices on its **next invocation**.
+  Not instant, but not something you can take back either: don't tag ahead of an
+  API change the release depends on — deploy the backend first.
 
 ## Distribution
 
