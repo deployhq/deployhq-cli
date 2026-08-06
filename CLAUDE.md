@@ -42,10 +42,10 @@ internal/skillinstaller/  Detects installed AI agents (12 supported) and
                     write into the repo (opt-in via --agent). Powers
                     `dhq skills` and the `dhq hello` onboarding step.
 
-skills/deployhq/    Agent skill guide + per-domain reference docs (8 files)
+skills/deployhq/    Agent skill guide + per-domain reference docs (9 files)
                     SKILL.md is the entry point for any AI agent.
 
-skill-evals/deployhq/  Eval suite (49 cases) testing LLM → CLI translation
+skill-evals/deployhq/  Eval suite (69 cases) testing LLM → CLI translation
                         run-evals.sh drives Claude API, checks command accuracy.
 ```
 

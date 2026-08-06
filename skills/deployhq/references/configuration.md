@@ -168,6 +168,45 @@ dhq ssh-commands list -p my-app --json
 dhq ssh-commands create -p my-app --command "sudo systemctl restart app" --description "Restart" --json
 ```
 
+> **Limitation — `ssh-commands create` cannot express a complete SSH command.**
+> The CLI sends only `command`, `description` and `timing`. It cannot set the
+> callback phase, server targeting, timeout, or halt-on-error, and the backend
+> requires a valid timeout and description while defaulting the callback to
+> `before_changes` and halt-on-error to `false`. So a command created this way
+> runs **before changes are uploaded, on every server, and does not fail the
+> deployment when it errors** — rarely what a release hook wants.
+>
+> **For post-release reconciliation or health gates, use a deployment check
+> instead** — it is first-class in the CLI and expresses everything the hook
+> needs:
+
+```bash
+dhq deployment-checks create \
+  -p my-app \
+  --name "Reconcile release" \
+  --stage post_deploy \
+  --check-type ssh \
+  --command 'cd %current_path% && ./scripts/deploy-release.sh %endrev%' \
+  --servers srv-abc123 \
+  --timeout 600 \
+  --json
+```
+
+Post-deploy SSH checks:
+
+| Property | Behaviour |
+|---|---|
+| Ordering | Run **after** the atomic `symlink_release` step, so `%current_path%` is the new release |
+| Variables | `%current_path%` and `%endrev%` are expanded |
+| Failure | A non-zero exit **fails the deployment** |
+| Timeout | Maximum **600 seconds** |
+| Targeting | `--servers` takes exact server identifiers (not fuzzy names) |
+| Availability | Beta-feature gated |
+
+If first-time bootstrap on a host can exceed 600 seconds, do that installation
+separately and enrol the check afterwards, so the timeout applies only to the
+steady-state reconcile.
+
 ### `dhq ssh-commands update <id>`
 
 Update fields on an existing SSH command. Only flags you pass are sent — omit `--timing` to leave the current value untouched.

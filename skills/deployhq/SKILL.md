@@ -43,7 +43,7 @@ Verify with: `dhq auth status`
 - **Piped/non-TTY**: Auto-switches to JSON
 - **`--json`**: Force JSON output. Optionally select fields: `--json=name,status,identifier`
 - **Breadcrumbs**: JSON responses include `breadcrumbs` array with suggested next commands
-- **Exit codes**: 0 = success, non-zero = failure
+- **Exit codes**: 0 = success, non-zero = failure — with one exception: a **cancelled** deployment also exits 0. Never infer deployment success from the exit code alone; assert `status == "completed"` via `dhq deployments show <id> --json=status`
 
 ## Non-Interactive Mode
 
@@ -131,7 +131,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - Some API fields return strings OR numbers inconsistently (handled internally by `FlexString`)
 - `dhq deploy` auto-fetches latest revision if `--revision` is omitted
 - `dhq deploy` is **incremental by default** — it picks up from the server's last successful deploy. Use `--full` for a full-branch deploy or `--start-revision <sha>` to pin a specific start commit
-- `dhq deploy --wait` blocks until deployment completes (use `--timeout` to cap)
+- `dhq deploy --wait` blocks **only in an interactive terminal**. Output auto-switches to JSON whenever stdout is not a TTY, and the JSON path returns as soon as the deployment is queued — so in any pipe, CI job or agent, `--wait` does nothing and the command exits 0 immediately. In automation use create → `dhq deployments watch <id>` → `dhq deployments show <id> --json=status` and require `completed` (see [deployments.md](references/deployments.md))
 - Deployment `watch` uses TUI in TTY mode, append-only in pipes
 - `dhq env-vars create` prompts for value if `--value` is omitted (not agent-friendly — always pass `--value`)
 - `dhq servers create` / `dhq servers update` configure deployment behaviour with `--branch` (preferred branch), `--auto-deploy` (DeployHQ's native auto-deployment), `--atomic`, `--atomic-strategy` and `--atomic-retention`. On `update`, only flags you explicitly pass are sent — omitted flags never disturb existing settings

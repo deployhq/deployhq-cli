@@ -255,11 +255,16 @@ dhq servers show <production-identifier> -p my-app \
 
 # Staging has no native auto-deployment, so ship it explicitly when you want to.
 # No -b needed: the server's preferred branch (`staging`) is used.
-dhq deploy -p my-app -s Staging --wait --json
+# --wait is omitted deliberately: it has no effect outside a terminal, so this
+# creates, follows, then asserts the final status. See deployments.md.
+id=$(dhq deploy -p my-app -s Staging --json | jq -r '.data.identifier')
+dhq deployments watch "$id" -p my-app
+# NB: --json=<fields> unwraps the envelope, so it is .status here, not .data.status
+[ "$(dhq deployments show "$id" -p my-app --json=status | jq -r '.status')" = "completed" ] || exit 1
 
 # Production needs no CLI deploy — DeployHQ auto-deploys `main` on push.
-# Deploy it manually only when you want an out-of-band release:
-dhq deploy -p my-app -s Production --wait --json
+# Deploy it manually only when you want an out-of-band release (same pattern).
+dhq deploy -p my-app -s Production --json
 ```
 
 ### `dhq servers update <identifier>`
