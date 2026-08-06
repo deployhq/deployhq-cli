@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
-## [Unreleased]
+## [0.21.0] - 2026-08-06
 
 ### Added
 
@@ -157,6 +157,7 @@ rather than regressed.
   flags are no longer sent, so they are left untouched server-side instead of
   being cleared.
 
-[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.21.0
 [0.20.1]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.20.1
 [0.20.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.20.0
