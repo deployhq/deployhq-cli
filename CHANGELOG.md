@@ -19,17 +19,10 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   any request, for a non-`managed_vps` protocol or alongside
   `--global-key-pair-id` (the ssh/rsync equivalent). Requires the matching API
   change (DHQ-692).
+
 - **SDK**: `ServerCreateRequest.KeyPairIdentifier` (hoisted, `json:"-"`), and
   `ManagedVPSInfo.SSHKey` (`*ManagedVPSSSHKey` — identifier, title, fingerprint)
   for the read-back. Purely additive.
-
-### Fixed
-
-- **Agent skill**: `references/global-resources.md` documented
-  `dhq ssh-keys create --name --public-key`; neither flag exists. Keys are
-  generated server-side and the flags are `--title` (required) and `--type`
-  (`ED25519` default, or `RSA`). Also documents `ssh-keys download -o` and
-  `ssh-keys delete`.
 
 - **`dhq servers create` / `dhq servers update`**: five deployment-configuration
   flags — `--branch` (the server's preferred branch), `--auto-deploy`
@@ -46,28 +39,54 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   request still succeeds, so verify with
   `dhq servers show <id> -p <project> --json atomic,atomic_strategy,atomic_retention`
   rather than trusting the exit code (DHQ-691).
+
 - **`dhq servers create` / `dhq servers update`**: `--branch ""` now unpins a
   server so it falls back to the repository default. Previously the empty value
   was dropped by `omitempty`, and the command reported success having changed
   nothing. The backend accepts and persists a blank branch (it echoes it back as
   `""`, not `null`).
+
 - **`dhq servers create` / `dhq servers update`**: warn on stderr when `--atomic`
   was requested but the server comes back with atomic off. On accounts without
   atomic deployments enabled the backend strips the atomic params before
   validation and returns 2xx, so this was previously a silent success. The
   create/update response is the read-back the docs asked operators to perform,
   so no extra request is made. stdout stays pure data.
+
 - **`dhq servers create` / `dhq servers update`**: warn on stderr when
   `--branch` is set on a server that belongs to a server group. The backend
   resolves the branch as `server_group.branch || server.branch ||
   repository.branch`, and grouped servers are excluded from auto-deployment
   entirely, so a branch stored on a grouped server never deploys — previously a
   silent no-op. stdout stays pure data.
+
 - **SDK**: `ServerCreateRequest` and `ServerUpdateRequest` gained matching
   `Branch`, `AutoDeploy`, `Atomic`, `AtomicStrategy` and `AtomicRetention`
   fields. Purely additive — no existing field changed, so this is not a breaking
   change for importers of `github.com/deployhq/deployhq-cli/pkg/sdk`. `Branch`
   is a `*string` so an explicitly-cleared branch survives serialisation.
+
+### Fixed
+
+- **Agent skill**: corrected commands and semantics that did not match the CLI.
+  `dhq deploy --wait` was documented as blocking, but output auto-switches to
+  JSON whenever stdout is not a TTY and the JSON path returns as soon as the
+  deployment is queued — so in any pipe, CI job or agent it exits 0 immediately
+  without waiting. The skill now documents the create → `deployments watch` →
+  `deployments show` composition and requires asserting `status == "completed"`.
+  Also: a cancelled deployment exits 0 (only `failed` is non-zero), so the
+  blanket "non-zero = failure" claim is now qualified; `ssh-commands create`
+  cannot set callback phase, server targeting, timeout or halt-on-error, so a
+  `post_deploy` SSH deployment check is documented as the first-class
+  alternative; and `--json=<fields>` unwraps the response envelope, so selected
+  fields are read as `.<field>` rather than `.data.<field>`. Reference-file and
+  eval-suite counts in `CLAUDE.md` corrected (DHQ-695).
+
+- **Agent skill**: `references/global-resources.md` documented
+  `dhq ssh-keys create --name --public-key`; neither flag exists. Keys are
+  generated server-side and the flags are `--title` (required) and `--type`
+  (`ED25519` default, or `RSA`). Also documents `ssh-keys download -o` and
+  `ssh-keys delete`.
 
 ## [0.20.1] - 2026-07-24
 
