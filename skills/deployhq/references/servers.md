@@ -259,7 +259,8 @@ dhq servers show <production-identifier> -p my-app \
 # creates, follows, then asserts the final status. See deployments.md.
 id=$(dhq deploy -p my-app -s Staging --json | jq -r '.data.identifier')
 dhq deployments watch "$id" -p my-app
-[ "$(dhq deployments show "$id" -p my-app --json=status | jq -r '.data.status')" = "completed" ] || exit 1
+# NB: --json=<fields> unwraps the envelope, so it is .status here, not .data.status
+[ "$(dhq deployments show "$id" -p my-app --json=status | jq -r '.status')" = "completed" ] || exit 1
 
 # Production needs no CLI deploy — DeployHQ auto-deploys `main` on push.
 # Deploy it manually only when you want an out-of-band release (same pattern).

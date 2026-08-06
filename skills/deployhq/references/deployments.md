@@ -78,9 +78,16 @@ id=$(dhq deploy -p my-app -s Production --json | jq -r '.data.identifier')
 dhq deployments watch "$id" -p my-app
 
 # 3. assert the final status — this is the step that actually decides success
-status=$(dhq deployments show "$id" -p my-app --json=status | jq -r '.data.status')
+status=$(dhq deployments show "$id" -p my-app --json=status | jq -r '.status')
 [ "$status" = "completed" ] || { echo "deployment $id ended as: $status"; exit 1; }
 ```
+
+> **Note — field selection changes the JSON shape.** With `--json` alone the
+> response is the full envelope (`{"ok":…, "data":{…}}`), so read values with
+> `.data.<field>`. With `--json=<fields>` the envelope is unwrapped and only the
+> selected fields are emitted at the **top level** (`{"status":"completed"}`), so
+> read them with `.<field>`. Using `.data.status` after `--json=status` yields
+> `null`, which would fail the check above on every successful deployment.
 
 Verify the deployed revision and server too when it matters:
 

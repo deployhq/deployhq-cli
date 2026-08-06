@@ -656,11 +656,11 @@
       "category": "gotchas",
       "prompt": "In a CI pipeline, deploy my-app to Production and make the job fail if the deployment doesn't succeed",
       "expected": {
-        "command": "dhq deployments show",
-        "flags": ["-p", "my-app", "status"]
+        "command": "dhq deploy",
+        "flags": ["-p", "my-app", "watch", "show", "completed"]
       },
       "must_not_contain": ["--wait"],
-      "notes": "--wait is inert outside a TTY: output auto-switches to JSON and the JSON path returns as soon as the deploy is queued, exiting 0. Automation must create, watch, then assert status == completed via deployments show."
+      "notes": "check_eval word-splits expected.flags and substring-matches each token, so single words are used: watch + show + completed together force the whole create -> watch -> assert sequence rather than any one step. --wait is inert outside a TTY: output auto-switches to JSON and the JSON path returns as soon as the deploy is queued, exiting 0."
     },
     {
       "id": "cancelled-deploy-not-success",
