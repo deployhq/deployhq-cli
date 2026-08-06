@@ -650,6 +650,38 @@
         "flags": ["-p", "my-app", "managed_vps"]
       },
       "notes": "The key is under managed_vps.ssh_key in the read-back."
+    },
+    {
+      "id": "deploy-and-verify-in-automation",
+      "category": "gotchas",
+      "prompt": "In a CI pipeline, deploy my-app to Production and make the job fail if the deployment doesn't succeed",
+      "expected": {
+        "command": "dhq deployments show",
+        "flags": ["-p", "my-app", "status"]
+      },
+      "must_not_contain": ["--wait"],
+      "notes": "--wait is inert outside a TTY: output auto-switches to JSON and the JSON path returns as soon as the deploy is queued, exiting 0. Automation must create, watch, then assert status == completed via deployments show."
+    },
+    {
+      "id": "cancelled-deploy-not-success",
+      "category": "gotchas",
+      "prompt": "My deploy script exits 0 but nothing was deployed. How do I detect a cancelled deployment?",
+      "expected": {
+        "command": "dhq deployments show",
+        "flags": ["status"]
+      },
+      "notes": "A cancelled deployment exits 0 from the watcher; only failed is non-zero. The status must be asserted explicitly."
+    },
+    {
+      "id": "post-deploy-reconcile-check",
+      "category": "configuration",
+      "prompt": "Run a reconcile script on my-app's server srv-abc123 after each release, and fail the deployment if it errors",
+      "expected": {
+        "command": "dhq deployment-checks create",
+        "flags": ["-p", "my-app", "--stage", "post_deploy", "--check-type", "ssh", "--servers", "srv-abc123"]
+      },
+      "must_not_contain": ["ssh-commands create"],
+      "notes": "ssh-commands create cannot set callback phase, targeting, timeout or halt-on-error; a post_deploy ssh deployment check can, and fails the deployment on non-zero exit."
     }
   ]
 }

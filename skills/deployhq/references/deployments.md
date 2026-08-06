@@ -22,7 +22,7 @@ Shortcut for creating a deployment with smart defaults.
 | `--revision` | `-r` | End revision SHA (auto-fetches latest if omitted) |
 | `--start-revision` | | Start revision SHA (default: server's last deployed commit) |
 | `--full` | | Deploy entire branch from the first commit (overrides incremental default) |
-| `--wait` | `-w` | Block until deployment completes |
+| `--wait` | `-w` | Block until the deployment completes. **Interactive terminals only** — see the warning below. |
 | `--timeout` | | Timeout in seconds for `--wait` (0 = no timeout) |
 
 ```bash
@@ -32,11 +32,13 @@ dhq deploy -p my-app --json
 # Deploy specific branch to specific server
 dhq deploy -p my-app -b staging -s "Staging Server" --json
 
-# Deploy and wait for completion
-dhq deploy -p my-app -s Production --wait --json
+# Deploy and wait for completion — INTERACTIVE TERMINAL ONLY.
+# In a pipe, CI job or agent, --wait does nothing (see the warning below);
+# use the create -> watch -> show composition instead.
+dhq deploy -p my-app -s Production --wait
 
-# Deploy with timeout
-dhq deploy -p my-app --wait --timeout 300 --json
+# Deploy with timeout (also interactive-only)
+dhq deploy -p my-app --wait --timeout 300
 
 # Deploy a specific commit range (e.g. a hotfix)
 dhq deploy -p my-app --start-revision a1b2c3d --revision e4f5g6h --json
@@ -52,7 +54,47 @@ dhq deploy -p my-app --full --json
 - **Start revision resolution (incremental by default):** `--full` forces an empty start (full-branch deploy). Otherwise `--start-revision` is used if set. Otherwise the resolved server's `last_revision` (last successful deploy) is used — this is what makes deploys incremental. Servers with no prior deploy and server-group identifiers fall through to a full deploy because there's no single baseline to start from.
 - An unknown `--branch` errors out instead of silently deploying the wrong branch.
 - `--full` and `--start-revision` are mutually exclusive.
-- `--wait` shows TUI progress in TTY, append-only in pipes
+- `--wait` shows TUI progress in a TTY. It has **no effect** outside one — see the warning below.
+
+> **Warning — `--wait` does not wait unless stdout is a terminal.**
+> Output auto-switches to JSON whenever stdout is not a TTY (`WantsJSON()` is
+> `JSONMode || !IsTTY`), and the JSON path returns as soon as the deployment is
+> **queued**, before the wait begins. So in any pipe, CI job, agent invocation,
+> or redirect, `dhq deploy --wait` prints the queued-deployment JSON and exits
+> **0 immediately** — the deployment may still be running, and may still fail.
+> Passing `--json` explicitly does the same thing; the trigger is the missing
+> TTY, not the flag.
+>
+> **Never treat a zero exit from `dhq deploy` as "the deployment succeeded".**
+> Use the composition below, which is safe everywhere.
+
+**Deploy and verify (the safe composition — use this in automation):**
+
+```bash
+# 1. create, and capture the identifier
+id=$(dhq deploy -p my-app -s Production --json | jq -r '.data.identifier')
+
+# 2. follow it to a terminal state (this genuinely blocks)
+dhq deployments watch "$id" -p my-app
+
+# 3. assert the final status — this is the step that actually decides success
+status=$(dhq deployments show "$id" -p my-app --json=status | jq -r '.data.status')
+[ "$status" = "completed" ] || { echo "deployment $id ended as: $status"; exit 1; }
+```
+
+Verify the deployed revision and server too when it matters:
+
+```bash
+dhq deployments show "$id" -p my-app --json=status,end_revision,server
+```
+
+> **Warning — a cancelled deployment exits 0.**
+> `dhq deployments watch` returns success for a cancelled deployment
+> (`watch.go` treats `cancelled` as a clean terminal state), and `dhq rollback`
+> shares the same watcher. Only `failed` produces a non-zero exit. A cancelled
+> deployment has **not** deployed your code, so the explicit
+> `status == "completed"` assertion in step 3 is required — for rollbacks as
+> well as deploys. Do not rely on exit codes alone.
 
 ### `dhq deployments list`
 List recent deployments with pagination.
