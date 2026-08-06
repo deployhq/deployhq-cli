@@ -92,7 +92,7 @@ status=$(dhq deployments show "$id" -p my-app --json=status | jq -r '.status')
 Verify the deployed revision and server too when it matters:
 
 ```bash
-dhq deployments show "$id" -p my-app --json=status,end_revision,server
+dhq deployments show "$id" -p my-app --json=status,end_revision,servers
 ```
 
 > **Warning — a cancelled deployment exits 0.**

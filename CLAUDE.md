@@ -45,7 +45,7 @@ internal/skillinstaller/  Detects installed AI agents (12 supported) and
 skills/deployhq/    Agent skill guide + per-domain reference docs (9 files)
                     SKILL.md is the entry point for any AI agent.
 
-skill-evals/deployhq/  Eval suite (49 cases) testing LLM → CLI translation
+skill-evals/deployhq/  Eval suite (69 cases) testing LLM → CLI translation
                         run-evals.sh drives Claude API, checks command accuracy.
 ```
 
