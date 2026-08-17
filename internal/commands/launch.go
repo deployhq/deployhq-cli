@@ -408,7 +408,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// ── Step 8: Plan / limit pre-flight ─────────────────────────────────────
 	// Only apply eligibility gates when we have real capability data.
 	if capsKnown {
-		if err := launchCheckPlanLimits(env, cfg, caps); err != nil {
+		if err := launchCheckPlanLimits(env, cfg, caps, accountSubdomain); err != nil {
 			return err
 		}
 	}
@@ -1243,13 +1243,28 @@ func projectNameFromRemote(remote string) string {
 
 // ── Plan / limit pre-flight ───────────────────────────────────────────────────
 
-func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities) error {
+// accountSubdomain is the account permalink, which is also its DeployHQ
+// subdomain -- account pages live at https://<permalink>.deployhq.com/account/...
+// and NOT under a shared app host.
+func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities, accountSubdomain string) error {
+	// Both metered resources are refused for the same two reasons, and
+	// AccountCapabilities carries only a boolean per resource -- no reason code --
+	// so the CLI cannot tell which of the two applies and must name both.
+	nextStep := func(resource string) string {
+		return fmt.Sprintf(
+			"%s requires a paid plan and an accepted payment method. Review your plan at "+
+				"https://%s.deployhq.com/account/packages and your payment details at "+
+				"https://%s.deployhq.com/account/payment_details",
+			resource, accountSubdomain, accountSubdomain,
+		)
+	}
+
 	if cfg.targetProtocol == detect.ProtocolStaticHosting && !caps.StaticHostingEligible {
 		// Not eligible = plan limit or billing wall
 		return &launchError{
 			Reason:   reasonPlanLimitReached,
 			Message:  "Your account cannot provision Static Hosting sites",
-			NextStep: "Check your plan or billing at https://app.deployhq.com/account/plan. Free plans support 1 site.",
+			NextStep: nextStep("Static Hosting"),
 			Details:  map[string]string{"target": detect.ProtocolStaticHosting},
 		}
 	}
@@ -1257,7 +1272,7 @@ func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.Acc
 		return &launchError{
 			Reason:   reasonPlanLimitReached,
 			Message:  "Your account cannot provision Managed VPS servers",
-			NextStep: "Ensure your billing details are set up at https://app.deployhq.com/account/billing",
+			NextStep: nextStep("Managed VPS"),
 			Details:  map[string]string{"target": detect.ProtocolManagedVPS},
 		}
 	}

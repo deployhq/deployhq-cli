@@ -63,7 +63,7 @@ On failure the error carries a stable `reason`, a `retryable` boolean, and a `ne
 | `beta_enroll_required` | Managed-resources beta not enabled and the user isn't an admin — `details.admin_required=true`; an admin enables it (or use your own server via `dhq init`) |
 | `accept_cost_required` | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
 | `repo_unreachable` | No git remote DeployHQ can deploy from — push a remote / connect a provider first |
-| `plan_limit_reached` | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
+| `plan_limit_reached` | The account cannot provision this managed resource — Managed VPS and Static Hosting both require a paid plan and an accepted payment method. Upgrade the plan, fix the billing details, or remove an existing resource if a per-plan cap was hit |
 | `subdomain_taken` | Static Hosting subdomain already in use — choose another `--subdomain` |
 | `rate_limited` | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
 | `provision_failed` | The server failed to provision — check the named resource; retry |
