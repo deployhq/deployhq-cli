@@ -873,6 +873,40 @@ func TestLaunchError_ErrorMethodNoNextStep(t *testing.T) {
 
 // ── Integration: plan_limit_reached ──────────────────────────────────────────
 
+// testClient builds a client for the plan-limit tests. Deliberately a real
+// sdk.Client rather than a bare string: the URLs under test are derived from
+// the client's normalised base URL, and that normalisation is the thing these
+// tests exist to protect.
+func testClient(t *testing.T) *sdk.Client {
+	t.Helper()
+	c, err := sdk.NewPublic("acme")
+	require.NoError(t, err)
+	return c
+}
+
+// Codex P2. pkg/sdk/client.go tolerates DEPLOYHQ_ACCOUNT being given as a full
+// hostname and trims the suffix — its comment names this exact failure. Building
+// the guidance URLs from the RAW credential therefore produced
+// acme.deployhq.com.deployhq.com, i.e. still a dead link, which is the very bug
+// this PR exists to fix. Derived from the client now, so the normalisation (and
+// any WithBaseURL override) is honoured in one place.
+func TestLaunchCheckPlanLimits_NormalisesFullHostnameAccount(t *testing.T) {
+	env, _, _ := testLaunchEnvelope()
+	client, err := sdk.NewPublic("acme.deployhq.com")
+	require.NoError(t, err)
+
+	caps := &sdk.AccountCapabilities{BetaFeatures: true, StaticHostingEligible: false}
+	cfg := launchConfig{targetProtocol: "static_hosting"}
+
+	checkErr := launchCheckPlanLimits(env, cfg, caps, client)
+	require.Error(t, checkErr)
+	var le *launchError
+	require.True(t, isLaunchErr(checkErr, &le))
+
+	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/packages")
+	assert.NotContains(t, le.NextStep, "deployhq.com.deployhq.com")
+}
+
 func TestLaunchCheckPlanLimits_StaticIneligible(t *testing.T) {
 	env, _, _ := testLaunchEnvelope()
 	caps := &sdk.AccountCapabilities{
@@ -881,7 +915,7 @@ func TestLaunchCheckPlanLimits_StaticIneligible(t *testing.T) {
 		ManagedVPSEligible:    true,
 	}
 	cfg := launchConfig{targetProtocol: "static_hosting"}
-	err := launchCheckPlanLimits(env, cfg, caps, "acme")
+	err := launchCheckPlanLimits(env, cfg, caps, testClient(t))
 	require.Error(t, err)
 	var le *launchError
 	require.True(t, isLaunchErr(err, &le))
@@ -893,6 +927,10 @@ func TestLaunchCheckPlanLimits_StaticIneligible(t *testing.T) {
 	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/payment_details")
 	assert.NotContains(t, le.NextStep, "app.deployhq.com")
 	assert.NotContains(t, le.NextStep, "Free plans support")
+	// The PR contract says these fields are unchanged; pin them so a future
+	// error-construction change cannot break JSON consumers silently.
+	assert.False(t, le.Retryable)
+	assert.Equal(t, detect.ProtocolStaticHosting, le.Details["target"])
 }
 
 func TestLaunchCheckPlanLimits_VPSIneligible(t *testing.T) {
@@ -902,7 +940,7 @@ func TestLaunchCheckPlanLimits_VPSIneligible(t *testing.T) {
 		ManagedVPSEligible: false,
 	}
 	cfg := launchConfig{targetProtocol: "managed_vps"}
-	err := launchCheckPlanLimits(env, cfg, caps, "acme")
+	err := launchCheckPlanLimits(env, cfg, caps, testClient(t))
 	require.Error(t, err)
 	var le *launchError
 	require.True(t, isLaunchErr(err, &le))
@@ -910,6 +948,8 @@ func TestLaunchCheckPlanLimits_VPSIneligible(t *testing.T) {
 	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/packages")
 	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/payment_details")
 	assert.NotContains(t, le.NextStep, "app.deployhq.com")
+	assert.False(t, le.Retryable)
+	assert.Equal(t, detect.ProtocolManagedVPS, le.Details["target"])
 }
 
 func TestLaunchCheckPlanLimits_BothEligible_NoError(t *testing.T) {
@@ -921,7 +961,7 @@ func TestLaunchCheckPlanLimits_BothEligible_NoError(t *testing.T) {
 	}
 	for _, proto := range []string{"static_hosting", "managed_vps"} {
 		cfg := launchConfig{targetProtocol: proto}
-		assert.NoError(t, launchCheckPlanLimits(env, cfg, caps, "acme"))
+		assert.NoError(t, launchCheckPlanLimits(env, cfg, caps, testClient(t)))
 	}
 }
 

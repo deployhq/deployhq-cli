@@ -21,6 +21,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `.../account/payment_details`. A blocked user following the old message
   therefore hit a 404 and still did not know what to fix. The same "free plans
   support 1 site" claim is corrected in the embedded agent skill reference.
+  The links are built from the SDK client's normalised account rather than the
+  raw credential, so users who set `DEPLOYHQ_ACCOUNT` to a full hostname
+  (`acme.deployhq.com`) no longer get `acme.deployhq.com.deployhq.com`.
 
 ## [0.21.0] - 2026-08-06
 

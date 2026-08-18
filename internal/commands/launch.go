@@ -408,7 +408,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// ── Step 8: Plan / limit pre-flight ─────────────────────────────────────
 	// Only apply eligibility gates when we have real capability data.
 	if capsKnown {
-		if err := launchCheckPlanLimits(env, cfg, caps, accountSubdomain); err != nil {
+		if err := launchCheckPlanLimits(env, cfg, caps, client); err != nil {
 			return err
 		}
 	}
@@ -1243,10 +1243,19 @@ func projectNameFromRemote(remote string) string {
 
 // ── Plan / limit pre-flight ───────────────────────────────────────────────────
 
-// accountSubdomain is the account permalink, which is also its DeployHQ
-// subdomain -- account pages live at https://<permalink>.deployhq.com/account/...
-// and NOT under a shared app host.
-func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities, accountSubdomain string) error {
+// Account pages live at https://<account>.deployhq.com/account/... and NOT under
+// a shared app host, so the links have to be built per account.
+//
+// The subdomain is taken from the CLIENT, not from the raw credential. Users may
+// supply DEPLOYHQ_ACCOUNT as a full hostname ("acme.deployhq.com") -- pkg/sdk
+// explicitly tolerates that and trims the suffix -- so interpolating the raw
+// value produced "acme.deployhq.com.deployhq.com", a dead link, which is exactly
+// the defect this guidance was rewritten to fix. Client.Account() derives it
+// from the already-normalised base URL, so a WithBaseURL override is honoured
+// too, and the normalisation lives in one place rather than two that can drift.
+func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities, client *sdk.Client) error {
+	accountSubdomain := client.Account()
+
 	// Both metered resources are refused for the same two reasons, and
 	// AccountCapabilities carries only a boolean per resource -- no reason code --
 	// so the CLI cannot tell which of the two applies and must name both.
