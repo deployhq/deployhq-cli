@@ -299,7 +299,9 @@ type authStatusResult struct {
 // the account's email is verified, and a key may have been revoked.
 func checkAuthStatus(ctx context.Context, client *sdk.Client, creds *auth.Credentials, host string) authStatusResult {
 	res := authStatusResult{Account: creds.Account, Email: creds.Email}
-	_, err := client.GetProfile(ctx)
+	// Same /profile request launch uses; it decodes only a few fields, so it
+	// does not depend on the full profile shape.
+	_, err := client.GetAccountCapabilities(ctx)
 	switch {
 	case err == nil:
 		res.Status = authStatusAuthenticated
