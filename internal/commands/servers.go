@@ -368,7 +368,7 @@ func newServersCreateCmd() *cobra.Command {
 	// SSH / FTP / FTPS / Rsync
 	var hostname, username, password, globalKeyPairID string
 	var port int
-	var useSSHKeys, installKey bool
+	var useSSHKeys, installKey, passwordStdin bool
 	// S3 / S3-Compatible
 	var bucketName, accessKeyID, secretAccessKey, customEndpoint string
 	// DigitalOcean
@@ -395,12 +395,18 @@ func newServersCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new server",
-		Example: `  # SSH server with password
+		Example: `  # SSH server using the project's SSH key (recommended)
   dhq servers create -p my-app --name prod --protocol-type ssh \
-    --hostname prod.example.com --username deploy --password '<pw>' \
+    --hostname prod.example.com --username deploy --use-ssh-keys \
     --path /var/www/app
 
-  # SSH server with global SSH key (recommended)
+  # Same, and install DeployHQ's public key on the server using your own
+  # SSH login if it is not there yet
+  dhq servers create -p my-app --name prod --protocol-type ssh \
+    --hostname prod.example.com --username deploy --use-ssh-keys \
+    --install-key --path /var/www/app
+
+  # SSH server with an account-wide (global) SSH key
   dhq servers create -p my-app --name prod --protocol-type ssh \
     --hostname prod.example.com --username deploy --use-ssh-keys \
     --global-key-pair-id key-abc123 --path /var/www/app
@@ -424,7 +430,16 @@ func newServersCreateCmd() *cobra.Command {
   # Staging Managed VPS deploying the staging branch with atomic releases
   dhq servers create -p my-app --name staging --protocol-type managed_vps \
     --region lon1 --size s-1vcpu-1gb --accept-cost \
-    --branch staging --auto-deploy --atomic --atomic-retention 5`,
+    --branch staging --auto-deploy --atomic --atomic-retention 5
+
+  # Password-only server (FTP/FTPS, or SFTP with a password). Run this in
+  # your own terminal: --password-stdin asks for the password with hidden
+  # input. Avoid --password <value>: a password typed into a command ends
+  # up in shell history, and in the conversation history of any AI agent
+  # running it.
+  dhq servers create -p my-app --name ftp --protocol-type ftp \
+    --hostname ftp.example.com --username deploy --password-stdin \
+    --path /public_html`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if name == "" {
 				return &output.UserError{Message: "Server name is required", Hint: "Use --name flag"}
@@ -458,6 +473,31 @@ func newServersCreateCmd() *cobra.Command {
 				}
 			}
 
+			if passwordStdin && password != "" {
+				return &output.UserError{
+					Message: "--password and --password-stdin are mutually exclusive",
+					Hint:    "Prefer --password-stdin: a password typed into a command ends up in shell history.",
+				}
+			}
+			if installKey {
+				if !serverUsesSSHKeys(protocolType, useSSHKeys) {
+					return &output.UserError{
+						Message: "--install-key requires SSH key authentication",
+						Hint:    "Add --use-ssh-keys (ssh), or use --protocol-type rsync.",
+					}
+				}
+				if hostname == "" || username == "" {
+					return &output.UserError{
+						Message: "--install-key needs --hostname and --username",
+						Hint:    "dhq logs in to the server as that user to add DeployHQ's public key.",
+					}
+				}
+			}
+			resolvedPassword, err := readServerPassword(cmd, cliCtx.Envelope, password, passwordStdin, protocolType, useSSHKeys)
+			if err != nil {
+				return err
+			}
+
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
 				return err
@@ -476,7 +516,7 @@ func newServersCreateCmd() *cobra.Command {
 				// SSH / FTP / FTPS / Rsync
 				Hostname: hostname,
 				Username: username,
-				Password: password,
+				Password: resolvedPassword,
 				// S3
 				BucketName:      bucketName,
 				AccessKeyID:     accessKeyID,
@@ -547,6 +587,14 @@ func newServersCreateCmd() *cobra.Command {
 				}
 			}
 
+			sshPort := 22
+			if cmd.Flags().Changed("port") {
+				sshPort = port
+			}
+			installAttempted := false
+			var publicKey, keyErr string
+			keyResolved := false
+
 			var server *sdk.Server
 			for {
 				var err error
@@ -555,59 +603,53 @@ func newServersCreateCmd() *cobra.Command {
 					break
 				}
 
-				// Only handle SSH auth failures with key-based auth
-				isAuthError := strings.Contains(strings.ToLower(err.Error()), "authentication failed")
-				if !isAuthError || !useSSHKeys {
+				// Only handle login failures when DeployHQ connects with its own
+				// SSH key — that is the case where the key may simply not be on
+				// the server yet.
+				if !isSSHAuthFailure(err) || !serverUsesSSHKeys(protocolType, useSSHKeys) {
 					return err
 				}
 
-				// Resolve the public key for display / installation
-				var publicKey string
-				if globalKeyPairID != "" {
-					keys, kerr := client.ListSSHKeys(cliCtx.Background(), nil)
-					if kerr == nil {
-						for _, k := range keys {
-							if k.Identifier == globalKeyPairID {
-								publicKey = k.PublicKey
-								break
-							}
+				// Resolve the public key DeployHQ connects with: the global key
+				// when one is named, otherwise the project's own key.
+				if !keyResolved {
+					keyResolved = true
+					pk, kerr := resolveDeployPublicKey(cliCtx.Background(), client, projectID, globalKeyPairID)
+					if kerr != nil {
+						keyErr = kerr.Error()
+					}
+					publicKey = pk
+				}
+
+				// --install-key: install the key on the server using the
+				// person's own SSH access, then retry once.
+				if installKey && !installAttempted {
+					installAttempted = true
+					if publicKey == "" {
+						env.Warn("--install-key: could not install DeployHQ's public key because it could not be fetched (%s).", keyErr)
+					} else {
+						env.Warn("SSH authentication failed — installing DeployHQ's public key on %s@%s...", username, hostname)
+						ierr := installSSHKeyFn(env, hostname, sshPort, username, publicKey)
+						if ierr == nil {
+							env.Status("Key installed. Retrying server creation...")
+							continue // retry CreateServer
 						}
+						env.Warn("--install-key: could not install the key automatically: %v", ierr)
 					}
 				}
 
-				// --install-key: attempt to install the key on the server automatically
-				if installKey && publicKey != "" && hostname != "" && username != "" {
-					sshPort := 22
-					if cmd.Flags().Changed("port") {
-						sshPort = port
-					}
-					env.Warn("SSH authentication failed — attempting to install the deploy key on the server...")
-					if ierr := installSSHKey(env, hostname, sshPort, username, publicKey); ierr == nil {
-						env.Status("Key installed successfully. Retrying server creation...")
-						continue // retry CreateServer
-					}
-					env.Warn("Could not install the key automatically.")
+				hint := sshKeyMissingHint(hostname, sshPort, username, publicKey, keyErr)
+
+				// Non-interactive: return the error with the key and the command
+				// to install it.
+				if !env.IsTTY || env.JSONMode || env.NonInteractive {
+					return &output.UserError{Message: err.Error(), Hint: hint}
 				}
 
-				// Non-interactive: return error with actionable hint
-				if !env.IsTTY || env.JSONMode {
-					if publicKey != "" {
-						return &output.UserError{
-							Message: err.Error(),
-							Hint:    fmt.Sprintf("Add this key to %s@%s:~/.ssh/authorized_keys:\n  %s", username, hostname, publicKey),
-						}
-					}
-					return err
-				}
-
-				// Interactive fallback: show key and offer manual retry
+				// Interactive fallback: show the key and offer a manual retry
 				env.Warn("SSH authentication failed.")
-				if publicKey != "" {
-					env.Status("")
-					env.Status("Make sure this key is in your server's ~/.ssh/authorized_keys:")
-					env.Status("")
-					env.Status("  %s", publicKey)
-				}
+				env.Status("")
+				env.Status("%s", hint)
 				env.Status("")
 				fmt.Fprint(env.Stderr, "Retry? (Y/n): ") //nolint:errcheck
 				reader := bufio.NewReader(os.Stdin)
@@ -641,11 +683,12 @@ func newServersCreateCmd() *cobra.Command {
 	// SSH / FTP / FTPS / Rsync
 	cmd.Flags().StringVar(&hostname, "hostname", "", "Server hostname or IP address (ssh, ftp, ftps, rsync)")
 	cmd.Flags().StringVar(&username, "username", "", "Server username (ssh, ftp, ftps, rsync, digitalocean, hetzner_cloud)")
-	cmd.Flags().StringVar(&password, "password", "", "Server password (ssh, ftp, ftps)")
+	cmd.Flags().StringVar(&password, "password", "", "Server password (ssh, ftp, ftps). Prefer --password-stdin: a password in a command ends up in shell history")
+	cmd.Flags().BoolVar(&passwordStdin, "password-stdin", false, "Read the server password from stdin, or ask for it with hidden input in a terminal (ssh, ftp, ftps)")
 	cmd.Flags().IntVar(&port, "port", 0, "Server port (ssh, ftp, ftps, rsync)")
 	cmd.Flags().BoolVar(&useSSHKeys, "use-ssh-keys", false, "Use SSH key authentication (ssh, rsync)")
 	cmd.Flags().StringVar(&globalKeyPairID, "global-key-pair-id", "", "Global SSH key pair identifier (ssh, rsync)")
-	cmd.Flags().BoolVar(&installKey, "install-key", false, "Attempt to install the SSH key on the server via ssh-copy-id")
+	cmd.Flags().BoolVar(&installKey, "install-key", false, "If DeployHQ cannot log in, install its public key (the project's key, or the --global-key-pair-id key) on the server using your own SSH access, then retry")
 
 	// S3
 	cmd.Flags().StringVar(&bucketName, "bucket-name", "", "S3 bucket name (s3, s3_compatible)")

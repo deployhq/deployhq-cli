@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 )
@@ -66,13 +65,7 @@ func runSSHCopyID(sshCopyIDPath, host, port, user, publicKey string) error {
 
 // runSSHAppend uses a raw ssh command to append the key to authorized_keys.
 func runSSHAppend(host, port, user, publicKey string) error {
-	// Escape single quotes in the public key for the shell command
-	escapedKey := strings.ReplaceAll(publicKey, "'", "'\\''")
-
-	script := fmt.Sprintf(
-		"mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '%s' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys",
-		escapedKey,
-	)
+	script := authorizedKeysAppendScript(publicKey)
 
 	//nolint:gosec // host, port, user are from CLI flags, not untrusted input
 	cmd := exec.Command("ssh",
