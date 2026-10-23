@@ -368,3 +368,29 @@ func TestIntegrationsUpdate_NameOnlyLeavesTargetingUntouched(t *testing.T) {
 
 	assertTargetingUntouched(t, api.payload(t, "integration"))
 }
+
+// ── templates ─────────────────────────────────────────────────────────────────
+
+func TestTemplateCreates_DefaultToAllServers(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		key  string
+		resp string
+	}{
+		{"excluded file", []string{"templates", "excluded-files", "create", "--template", "tpl", "--path", "deploy.sh"}, "excluded_file", excludedFileJSON},
+		{"config file", []string{"templates", "config-files", "create", "--template", "tpl", "--path", ".env", "--body", "A=1"}, "config_file", configFileJSON},
+		{"ssh command", []string{"templates", "ssh-commands", "create", "--template", "tpl", "--command", "x"}, "command", sshCommandJSON},
+		{"integration", []string{"templates", "integrations", "create", "--template", "tpl", "--hook-type", "discord"}, "integration", integrationJSON},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withResolvableContext(t)
+			api := installTargetingAPI(t, tc.resp)
+
+			require.NoError(t, runServersCmd(t, tc.args...))
+
+			assertAllServers(t, api.payload(t, tc.key))
+		})
+	}
+}
