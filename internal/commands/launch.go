@@ -100,10 +100,14 @@ const (
 	reasonAcceptCostRequired = "accept_cost_required"
 	reasonRepoUnreachable    = "repo_unreachable"
 	reasonPlanLimitReached   = "plan_limit_reached"
-	reasonSubdomainTaken     = "subdomain_taken"
-	reasonRateLimited        = "rate_limited"
-	reasonProvisionFailed    = "provision_failed"
-	reasonDeployFailed       = "deploy_failed"
+	// reasonPaymentMethodRequired: provisioning was refused because the account
+	// has no accepted payment method. Distinct from plan_limit_reached because
+	// here the cause is known.
+	reasonPaymentMethodRequired = "payment_method_required"
+	reasonSubdomainTaken        = "subdomain_taken"
+	reasonRateLimited           = "rate_limited"
+	reasonProvisionFailed       = "provision_failed"
+	reasonDeployFailed          = "deploy_failed"
 	// reasonEmailVerificationRequired: the account's email isn't verified yet, so
 	// the backend's deploy gate blocks it. Handled gracefully (wait-and-retry
 	// interactively, structured fail non-interactively) — not a raw 403.
@@ -129,6 +133,34 @@ func (e *launchError) Error() string {
 		msg += "\n\nNext step: " + e.NextStep
 	}
 	return msg
+}
+
+// paymentMethodLaunchError converts a "payment method required" provisioning
+// refusal into a structured launchError linking to the account's payment
+// details page. When this run created the project, it says so and how to reuse
+// or remove it: the project is not deleted automatically, because the
+// repository may already be connected to it and a re-run after adding a card
+// wants it. Returns nil for any other error.
+func paymentMethodLaunchError(err error, client *sdk.Client, projectID string, projectCreated bool) *launchError {
+	var apiErr *sdk.APIError
+	if !errors.As(err, &apiErr) || !apiErr.IsPaymentMethodRequired() {
+		return nil
+	}
+	url := fmt.Sprintf("https://%s.deployhq.com/account/payment_details", client.Account())
+	le := &launchError{
+		Reason:   reasonPaymentMethodRequired,
+		Message:  "A payment method is required before this account can provision Static Hosting or Managed VPS.",
+		NextStep: "Add a card under Payment Details at " + url + ", then re-run: dhq launch",
+		Details:  map[string]string{"payment_url": url},
+	}
+	if projectCreated && projectID != "" {
+		le.Message += fmt.Sprintf(" The project %q was created during this run and has no server yet.", projectID)
+		le.NextStep = fmt.Sprintf("Add a card under Payment Details at %s, then re-run: dhq launch --project %s "+
+			"(or remove the project with: dhq projects delete %s)", url, projectID, projectID)
+		le.Details["project"] = projectID
+		le.Details["project_created"] = "true"
+	}
+	return le
 }
 
 // rateLimitLaunchError converts a 429 provisioning-rate-limit API error into a
@@ -383,8 +415,18 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		}
 	}
 
-	// ── Step 7: Project + repo ───────────────────────────────────────────────
-	projectID, err := launchEnsureProject(ctx, env, cfg, client, gitRemote)
+	// ── Step 7: Plan / limit pre-flight ─────────────────────────────────────
+	// Runs before the project is created or the repository connected, so an
+	// account that cannot provision the target is told so before anything is
+	// left behind. Only apply eligibility gates when we have real capability data.
+	if capsKnown {
+		if err := launchCheckPlanLimits(env, cfg, caps); err != nil {
+			return err
+		}
+	}
+
+	// ── Step 8: Project + repo ───────────────────────────────────────────────
+	projectID, projectCreated, err := launchEnsureProject(ctx, env, cfg, client, gitRemote)
 	if err != nil {
 		return err
 	}
@@ -402,14 +444,6 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		// explicitly prompt otherwise. False detection.SPA leaves cfg.spaMode alone.
 		if detection.SPA && !cfg.spaMode {
 			cfg.spaMode = true
-		}
-	}
-
-	// ── Step 8: Plan / limit pre-flight ─────────────────────────────────────
-	// Only apply eligibility gates when we have real capability data.
-	if capsKnown {
-		if err := launchCheckPlanLimits(env, cfg, caps); err != nil {
-			return err
 		}
 	}
 
@@ -436,6 +470,16 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 			// so --cleanup-on-failure and resource naming apply.
 			if server != nil {
 				launchDeployFailureCleanup(ctx, env, cfg, client, server)
+			}
+			// No payment method on file: say so, link to where a card is
+			// added, and account for a project this run already created.
+			if pm := paymentMethodLaunchError(provErr, client, cfg.projectID, projectCreated); pm != nil {
+				if projectCreated {
+					// Remember the project so a re-run reuses it instead of
+					// creating a duplicate.
+					launchPersistConfig(env, cfg, nil)
+				}
+				return writeLaunchError(env, cfg, reasonPaymentMethodRequired, pm)
 			}
 			return writeLaunchError(env, cfg, reasonProvisionFailed, provErr)
 		}
@@ -951,7 +995,9 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 
 // ── Project + repo ───────────────────────────────────────────────────────────
 
-func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, gitRemote string) (string, error) {
+// launchEnsureProject resolves the project to launch into. The bool reports
+// whether the project was created by this call (as opposed to reused).
+func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, gitRemote string) (string, bool, error) {
 	// Re-use an existing project if specified or already in .deployhq.toml.
 	// First verify it still exists: a stale .deployhq.toml (project deleted in
 	// the dashboard) would otherwise produce a misleading "could not connect
@@ -970,12 +1016,12 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 				cfg.serverID = ""
 			case notFound:
 				// Explicit --project that doesn't exist — a user input error.
-				return "", &output.UserError{
+				return "", false, &output.UserError{
 					Message: fmt.Sprintf("Project %q not found", cfg.projectID),
 					Hint:    "Check the --project value and that you have access, or omit it to pick or create a project.",
 				}
 			default:
-				return "", err // network / auth / other — surface as-is
+				return "", false, err // network / auth / other — surface as-is
 			}
 		}
 	}
@@ -984,31 +1030,31 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 		env.Status("Using project: %s", cfg.projectID)
 		// Ensure a repo is connected — treat hard failures as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, cfg.projectID, gitRemote); err != nil {
-			return "", &launchError{
+			return "", false, &launchError{
 				Reason:   reasonRepoUnreachable,
 				Message:  "Could not connect repository to project: " + err.Error(),
 				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
 			}
 		}
-		return cfg.projectID, nil
+		return cfg.projectID, false, nil
 	}
 
 	// Auto-pick the sole project
 	projects, err := client.ListProjects(ctx, nil)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if len(projects) == 1 {
 		env.Status("Auto-selected project: %s", projects[0].Name)
 		// Treat hard repo-connection failure as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, projects[0].Permalink, gitRemote); err != nil {
-			return "", &launchError{
+			return "", false, &launchError{
 				Reason:   reasonRepoUnreachable,
 				Message:  "Could not connect repository to project: " + err.Error(),
 				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
 			}
 		}
-		return projects[0].Permalink, nil
+		return projects[0].Permalink, false, nil
 	}
 
 	// Interactive: offer to pick or create
@@ -1017,13 +1063,13 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	}
 
 	// Non-interactive, no project configured: fail fast
-	return "", &output.UserError{
+	return "", false, &output.UserError{
 		Message: "No project specified",
 		Hint:    "Pass --project <permalink> or set DEPLOYHQ_PROJECT. Run 'dhq projects list' to see available projects.",
 	}
 }
 
-func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, existing []sdk.Project, gitRemote string) (string, error) {
+func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, existing []sdk.Project, gitRemote string) (string, bool, error) {
 	items := []string{"Create a new project"}
 	for _, p := range existing {
 		items = append(items, fmt.Sprintf("%s (%s)", p.Name, p.Permalink))
@@ -1035,7 +1081,7 @@ func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg 
 	}
 	idx, _, err := prompt.Run()
 	if err != nil {
-		return "", &output.UserError{Message: "Project selection cancelled"}
+		return "", false, &output.UserError{Message: "Project selection cancelled"}
 	}
 
 	if idx > 0 {
@@ -1043,17 +1089,18 @@ func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg 
 		env.Status("Using project: %s", p.Name)
 		// Treat hard repo-connection failure as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, p.Permalink, gitRemote); err != nil {
-			return "", &launchError{
+			return "", false, &launchError{
 				Reason:   reasonRepoUnreachable,
 				Message:  "Could not connect repository to project: " + err.Error(),
 				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
 			}
 		}
-		return p.Permalink, nil
+		return p.Permalink, false, nil
 	}
 
 	// Create a new project
-	return launchCreateProject(ctx, env, cfg, client, gitRemote)
+	permalink, err := launchCreateProject(ctx, env, cfg, client, gitRemote)
+	return permalink, err == nil, err
 }
 
 func launchCreateProject(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, gitRemote string) (string, error) {
