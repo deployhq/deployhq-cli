@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
 
@@ -333,4 +334,22 @@ func TestDeployKeyPausePrompt(t *testing.T) {
 	assert.Contains(t, ssh, "even for a public repository")
 
 	assert.Contains(t, deployKeyPausePrompt("https://github.com/acme/my-app.git"), "or now, if the repo is public")
+}
+
+// In --json mode writeLaunchError writes the only JSON object on stdout and
+// marks the error as reported, so the top-level handler adds nothing.
+func TestWriteLaunchError_JSON_SingleObject(t *testing.T) {
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	err := writeLaunchError(env, launchConfig{}, reasonRepoUnreachable, &launchError{Reason: reasonRepoUnreachable, Message: "rejected"})
+	assert.True(t, output.IsReported(err))
+
+	dec := json.NewDecoder(stdout)
+	var first map[string]interface{}
+	require.NoError(t, dec.Decode(&first))
+	assert.False(t, dec.More(), "stdout must hold exactly one JSON object")
+
+	// Plain mode is untouched: nothing reported, main prints the error.
+	plainEnv, _, _ := testLaunchEnvelope()
+	plainEnv.IsTTY = true // a non-TTY envelope auto-selects JSON
+	assert.False(t, output.IsReported(writeLaunchError(plainEnv, launchConfig{}, reasonRepoUnreachable, &launchError{Message: "x"})))
 }

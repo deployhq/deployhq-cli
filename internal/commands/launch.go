@@ -2025,5 +2025,5 @@ func writeLaunchError(env *output.Envelope, cfg launchConfig, reason string, err
 		},
 	}
 	_ = env.WriteJSON(resp)
-	return err
+	return &output.ReportedError{Err: err}
 }

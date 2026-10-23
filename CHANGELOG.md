@@ -24,6 +24,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   and carrying on to provisioning with a project that has no repository.
 - **`dhq repos create`**: a rejected SSH repository's error now includes the
   project's public deploy key, where to add it, and the command to re-run.
+- **`dhq launch --json`**: a failed launch now writes exactly one JSON object to
+  stdout (the structured error with `reason` / `next_step`). Previously a second,
+  generic error object followed it. Exit codes are unchanged.
 
 ## [0.21.0] - 2026-08-06
 
