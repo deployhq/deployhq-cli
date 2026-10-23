@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -109,7 +110,7 @@ func newReposCreateCmd() *cobra.Command {
 			req := sdk.RepositoryCreateRequest{ScmType: scmType, URL: url, Branch: branch}
 			repo, err := client.CreateRepository(cliCtx.Background(), projectID, req)
 			if err != nil {
-				return err
+				return repoConnectError(cliCtx.Background(), client, projectID, scmType, url, branch, err)
 			}
 
 			// Fetch project to get deploy key
@@ -344,6 +345,28 @@ func newReposLatestRevisionCmd() *cobra.Command {
 			fmt.Fprintln(env.Stdout, rev) //nolint:errcheck
 			return nil
 		},
+	}
+}
+
+// repoConnectError adds deploy-key instructions to a failed repository
+// connection for an SSH URL. DeployHQ checks it can read an SSH repository with
+// the project's deploy key when it is connected, so the usual cause is that the
+// key has not been added to the git host yet. Other errors pass through as-is.
+func repoConnectError(ctx context.Context, client *sdk.Client, projectID, scmType, url, branch string, err error) error {
+	if !isSSHRepoURL(url) {
+		return err
+	}
+	project, projErr := client.GetProject(ctx, projectID)
+	if projErr != nil || project == nil || project.PublicKey == "" {
+		return err
+	}
+	rerun := fmt.Sprintf("dhq repos create -p %s --scm-type %s --url %s", projectID, scmType, url)
+	if branch != "" {
+		rerun += " --branch " + branch
+	}
+	return &output.UserError{
+		Message: err.Error(),
+		Hint:    deployKeyInstructions(url, project.PublicKey, rerun),
 	}
 }
 

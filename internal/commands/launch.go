@@ -386,6 +386,10 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// ── Step 7: Project + repo ───────────────────────────────────────────────
 	projectID, err := launchEnsureProject(ctx, env, cfg, client, gitRemote)
 	if err != nil {
+		var le *launchError
+		if errors.As(err, &le) {
+			return writeLaunchError(env, cfg, le.Reason, err)
+		}
 		return err
 	}
 	cfg.projectID = projectID
@@ -984,11 +988,7 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 		env.Status("Using project: %s", cfg.projectID)
 		// Ensure a repo is connected — treat hard failures as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, cfg.projectID, gitRemote); err != nil {
-			return "", &launchError{
-				Reason:   reasonRepoUnreachable,
-				Message:  "Could not connect repository to project: " + err.Error(),
-				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
-			}
+			return "", launchRepoFailure(err)
 		}
 		return cfg.projectID, nil
 	}
@@ -1002,11 +1002,7 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 		env.Status("Auto-selected project: %s", projects[0].Name)
 		// Treat hard repo-connection failure as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, projects[0].Permalink, gitRemote); err != nil {
-			return "", &launchError{
-				Reason:   reasonRepoUnreachable,
-				Message:  "Could not connect repository to project: " + err.Error(),
-				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
-			}
+			return "", launchRepoFailure(err)
 		}
 		return projects[0].Permalink, nil
 	}
@@ -1043,11 +1039,7 @@ func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg 
 		env.Status("Using project: %s", p.Name)
 		// Treat hard repo-connection failure as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, p.Permalink, gitRemote); err != nil {
-			return "", &launchError{
-				Reason:   reasonRepoUnreachable,
-				Message:  "Could not connect repository to project: " + err.Error(),
-				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
-			}
+			return "", launchRepoFailure(err)
 		}
 		return p.Permalink, nil
 	}
@@ -1098,9 +1090,10 @@ func launchCreateProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	env.Status("Project %q created (%s)", proj.Name, proj.Permalink)
 
 	// Connect the git repository
+	// Stop here if the repository can't be connected: later steps would work on
+	// a project with no code to deploy.
 	if err := launchEnsureRepo(ctx, env, cfg, client, proj.Permalink, gitRemote); err != nil {
-		env.Warn("Could not connect repository automatically: %v", err)
-		env.Warn("You may need to connect it manually in the DeployHQ dashboard.")
+		return "", launchRepoFailure(err)
 	}
 
 	return proj.Permalink, nil
@@ -1117,6 +1110,13 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 		return nil
 	}
 
+	// DeployHQ checks it can read an SSH repository with the project's deploy
+	// key as soon as it is connected, so the key must be on the git host first.
+	sshRepo := isSSHRepoURL(gitRemote)
+	if sshRepo {
+		launchSurfaceDeployKey(ctx, env, client, projectID, gitRemote, proj)
+	}
+
 	env.Status("Connecting repository %s...", gitRemote)
 	branch := cfg.branch
 	if branch == "" {
@@ -1131,20 +1131,63 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 		Branch:  branch,
 	})
 	if err != nil {
+		if sshRepo {
+			return launchRepoKeyError(ctx, client, projectID, proj, gitRemote, err)
+		}
 		return err
 	}
 	env.Status("Repository connected.")
-	// Surface the project's public deploy key so a private repo can be granted
-	// read access before the first clone. proj was fetched above (may be nil if
-	// that lookup failed — the helper re-fetches in that case). For a GitHub repo
-	// with the gh CLI present, the helper installs the key automatically instead.
-	launchSurfaceDeployKey(ctx, env, client, projectID, gitRemote, proj)
+	if !sshRepo {
+		// Surface the project's public deploy key so a private repo can be granted
+		// read access before the first clone. proj was fetched above (may be nil if
+		// that lookup failed — the helper re-fetches in that case). For a GitHub repo
+		// with the gh CLI present, the helper installs the key automatically instead.
+		launchSurfaceDeployKey(ctx, env, client, projectID, gitRemote, proj)
+	}
 	return nil
 }
 
-// launchSurfaceDeployKey prints the project's PUBLIC deploy key after a
-// repository is connected, so the user can grant a private git host read access
-// before the first clone. The key shown is the project's public key (safe to
+// launchRepoFailure turns a repository-connection failure into the terminal
+// launch error, keeping one that launchEnsureRepo already built.
+func launchRepoFailure(err error) error {
+	var le *launchError
+	if errors.As(err, &le) {
+		return le
+	}
+	return &launchError{
+		Reason:   reasonRepoUnreachable,
+		Message:  "Could not connect repository to project: " + err.Error(),
+		NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
+	}
+}
+
+// launchRepoKeyError explains a rejected SSH repository: the project's deploy
+// key is not on the git host yet. It carries the public key, where to add it,
+// and the command that resumes launch with the same project.
+func launchRepoKeyError(ctx context.Context, client *sdk.Client, projectID string, proj *sdk.Project, gitRemote string, err error) error {
+	publicKey := ""
+	if proj != nil {
+		publicKey = proj.PublicKey
+	}
+	if publicKey == "" {
+		if fresh, getErr := client.GetProject(ctx, projectID); getErr == nil && fresh != nil {
+			publicKey = fresh.PublicKey
+		}
+	}
+	if publicKey == "" {
+		return launchRepoFailure(err)
+	}
+	return &launchError{
+		Reason:   reasonRepoUnreachable,
+		Message:  "Could not connect repository to project: " + err.Error(),
+		NextStep: deployKeyInstructions(gitRemote, publicKey, "dhq launch --project "+projectID),
+		Details:  map[string]string{"project": projectID, "public_key": publicKey},
+	}
+}
+
+// launchSurfaceDeployKey prints the project's PUBLIC deploy key so the user can
+// grant the git host read access. For an SSH repository it runs before the
+// repository is connected; otherwise after. The key shown is the project's public key (safe to
 // display); the matching private key never leaves the server. In interactive
 // mode it pauses so the user can install the key first; non-interactively it
 // prints a warning and continues (a private repo missing the key surfaces as a
@@ -1187,6 +1230,10 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 	env.Status("")
 	env.Status("%s", publicKey)
 	env.Status("")
+	if settings := githubDeployKeySettingsURL(gitRemote); settings != "" {
+		env.Status("Add it at: %s", settings)
+		env.Status("")
+	}
 	env.Status("Add this public key as a deploy key on your repository host so DeployHQ can")
 	env.Status("clone the repo (required for private repositories; read access is enough).")
 	env.Status("DeployHQ does not add it automatically for repositories connected by URL.")
