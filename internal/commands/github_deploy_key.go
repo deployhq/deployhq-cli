@@ -1,10 +1,14 @@
 package commands
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
 
 // ghAvailable reports whether the GitHub CLI (`gh`) is installed on PATH.
@@ -88,4 +92,42 @@ func deployKeyInstructions(repoURL, publicKey, rerun string) string {
 		fmt.Fprintf(&b, "\nThen run: %s", rerun)
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// launchRepoFailure turns a repository-connection failure into the terminal
+// launch error, keeping one that launchEnsureRepo already built.
+func launchRepoFailure(err error) error {
+	var le *launchError
+	if errors.As(err, &le) {
+		return le
+	}
+	return &launchError{
+		Reason:   reasonRepoUnreachable,
+		Message:  "Could not connect repository to project: " + err.Error(),
+		NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
+	}
+}
+
+// launchRepoKeyError explains a rejected SSH repository: the project's deploy
+// key is not on the git host yet. It carries the public key, where to add it,
+// and the command that resumes launch with the same project.
+func launchRepoKeyError(ctx context.Context, client *sdk.Client, projectID string, proj *sdk.Project, gitRemote string, err error) error {
+	publicKey := ""
+	if proj != nil {
+		publicKey = proj.PublicKey
+	}
+	if publicKey == "" {
+		if fresh, getErr := client.GetProject(ctx, projectID); getErr == nil && fresh != nil {
+			publicKey = fresh.PublicKey
+		}
+	}
+	if publicKey == "" {
+		return launchRepoFailure(err)
+	}
+	return &launchError{
+		Reason:   reasonRepoUnreachable,
+		Message:  "Could not connect repository to project: " + err.Error(),
+		NextStep: deployKeyInstructions(gitRemote, publicKey, fmt.Sprintf("the same dhq launch command with --project %s added", projectID)),
+		Details:  map[string]string{"project": projectID, "public_key": publicKey},
+	}
 }

@@ -140,7 +140,7 @@ func TestLaunchEnsureRepo_GitHubSSH_NoGH_StopsWithInstructions(t *testing.T) {
 	assert.Equal(t, reasonRepoUnreachable, le.Reason)
 	assert.Contains(t, le.NextStep, testDeployPubKey)
 	assert.Contains(t, le.NextStep, "https://github.com/acme/my-app/settings/keys/new")
-	assert.Contains(t, le.NextStep, "dhq launch --project my-app")
+	assert.Contains(t, le.NextStep, "--project my-app")
 }
 
 // A newly created project whose repository is rejected must stop launch
@@ -159,7 +159,7 @@ func TestLaunchCreateProject_RepoRejected_Stops(t *testing.T) {
 	require.True(t, isLaunchErr(err, &le))
 	assert.Equal(t, reasonRepoUnreachable, le.Reason)
 	assert.Contains(t, le.NextStep, testDeployPubKey)
-	assert.Contains(t, le.NextStep, "dhq launch --project my-app")
+	assert.Contains(t, le.NextStep, "--project my-app")
 	assert.NotContains(t, le.NextStep, "github.com/", "no GitHub URL for a non-GitHub host")
 }
 
@@ -296,4 +296,31 @@ func TestInitWizard_HTTPSRepo_ConnectsDirectly(t *testing.T) {
 	}
 	_, cmd := m.submitTextStep()
 	assert.NotNil(t, cmd, "an HTTPS repository is connected straight away")
+}
+
+// In --json mode the rejected-repository error carries the key in next_step.
+func TestLaunchRepoKeyError_JSONShape(t *testing.T) {
+	srv := repoServer(t, rejectRepo)
+	client := newTestClient(t, srv)
+	_, createErr := client.CreateRepository(t.Context(), "my-app", repoCreateReq("git@github.com:acme/my-app.git"))
+	require.Error(t, createErr)
+
+	keyErr := launchRepoKeyError(t.Context(), client, "my-app", nil, "git@github.com:acme/my-app.git", createErr)
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	_ = writeLaunchError(env, launchConfig{}, reasonRepoUnreachable, keyErr)
+
+	var resp struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Reason   string            `json:"reason"`
+			NextStep string            `json:"next_step"`
+			Details  map[string]string `json:"details"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp))
+	assert.False(t, resp.OK)
+	assert.Equal(t, reasonRepoUnreachable, resp.Data.Reason)
+	assert.Contains(t, resp.Data.NextStep, testDeployPubKey)
+	assert.Contains(t, resp.Data.NextStep, "https://github.com/acme/my-app/settings/keys/new")
+	assert.Equal(t, testDeployPubKey, resp.Data.Details["public_key"])
 }
