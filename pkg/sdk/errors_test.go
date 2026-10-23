@@ -114,3 +114,25 @@ func TestParseAPIError_EmailVerificationUnchanged(t *testing.T) {
 	assert.True(t, apiErr.IsEmailVerificationRequired())
 	assert.Equal(t, "deployhq api: 403 email_verification_required", apiErr.Error())
 }
+
+// `dhq api` goes through Client.Do. It must ask for JSON, otherwise a
+// suspended account is answered with a redirect to the plans page instead of
+// the 402 body the account-error mapping relies on.
+func TestDo_SendsAcceptJSONAndSurfacesSuspension(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") != "application/json" {
+			http.Redirect(w, r, "/account/packages", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusPaymentRequired)
+		_, _ = w.Write([]byte(`{"status":"suspended","suspension_type":"lapsed"}`))
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	var out any
+	err := c.Do(context.Background(), http.MethodGet, "/profile", nil, &out)
+	var apiErr *APIError
+	require.True(t, errors.As(err, &apiErr), "got %v", err)
+	assert.True(t, apiErr.IsPaymentSuspension())
+}
