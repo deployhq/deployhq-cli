@@ -1077,6 +1077,10 @@ func launchCreateProject(ctx context.Context, env *output.Envelope, cfg launchCo
 		projectName = "my-app"
 	}
 
+	if err := confirmNoDuplicateProject(ctx, env, client, projectName, false); err != nil {
+		return "", err
+	}
+
 	env.Status("Creating project %q...", projectName)
 	proj, err := client.CreateProject(ctx, sdk.ProjectCreateRequest{Name: projectName})
 	if err != nil {
@@ -1096,6 +1100,9 @@ func launchCreateProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	}
 
 	env.Status("Project %q created (%s)", proj.Name, proj.Permalink)
+	// Record it now, not only after a successful deploy: if a later step fails,
+	// a re-run in this folder reuses the project instead of creating another.
+	linkProjectToDirectory(env, proj.Permalink)
 
 	// Connect the git repository
 	if err := launchEnsureRepo(ctx, env, cfg, client, proj.Permalink, gitRemote); err != nil {
@@ -1778,42 +1785,10 @@ func pollProvisioningState(ctx context.Context, env *output.Envelope, client *sd
 // (Onboarding::ProjectCreator), which creates project build commands via
 // POST /projects/:id/build_commands — no separate build environment is needed.
 func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, detection detect.Result) {
-	if len(detection.BuildCommands) == 0 {
-		return
-	}
-	// Don't clobber or duplicate: if the project already has build commands
-	// (an idempotent re-run, or a reused --project), leave them as-is.
-	if existing, err := client.ListBuildCommands(ctx, cfg.projectID, nil); err == nil && len(existing) > 0 {
-		return
-	}
-
-	// Create each step as its own command (e.g. "Install dependencies", then
-	// "Build") so the project's build pipeline matches the web wizard rather
-	// than a single collapsed shell line.
-	for _, step := range detection.BuildCommands {
-		if step.Command == "" {
-			continue
-		}
-		desc := step.Description
-		if desc == "" {
-			desc = step.Command
-		}
-		if r := []rune(desc); len(r) > 100 {
-			desc = string(r[:100])
-		}
-		env.Status("Setting build command from detection: %s", step.Command)
-		if _, err := client.CreateBuildCommand(ctx, cfg.projectID, sdk.BuildCommandCreateRequest{
-			Command:      step.Command,
-			Description:  desc,
-			TemplateName: step.TemplateName,
-			HaltOnError:  step.HaltOnError,
-		}); err != nil {
-			// Non-fatal: the site still provisions, but without a build step the
-			// first deploy may publish unbuilt sources — make the fix discoverable.
-			env.Warn("Could not set the detected build command (%q): %v", step.Command, err)
-			env.Warn("Add it manually: dhq build-commands create -p %s --command %q", cfg.projectID, step.Command)
-		}
-	}
+	// Shared with 'dhq projects apply-suggestions': skips when the project
+	// already has build commands, so re-runs and reused projects don't duplicate.
+	items := planSuggestedBuildCommands(ctx, client, cfg.projectID, detection.BuildCommands)
+	applySuggestedBuildCommands(ctx, env, client, cfg.projectID, items)
 }
 
 // launchApplyStaticExtras applies the detected excluded-file and build-cache
@@ -1822,39 +1797,10 @@ func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg laun
 // idempotent: it skips patterns that already exist, and any failure is
 // non-fatal (the deploy still works, just without the optimisation).
 func launchApplyStaticExtras(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, detection detect.Result) {
-	if len(detection.ExcludedFiles) > 0 {
-		existing := map[string]bool{}
-		if list, err := client.ListExcludedFiles(ctx, cfg.projectID, nil); err == nil {
-			for _, e := range list {
-				existing[e.Path] = true
-			}
-		}
-		for _, path := range detection.ExcludedFiles {
-			if path == "" || existing[path] {
-				continue
-			}
-			if _, err := client.CreateExcludedFile(ctx, cfg.projectID, sdk.ExcludedFileCreateRequest{Path: path}); err != nil {
-				env.Logger.Write("could not add excluded file %q: %v", path, err)
-			}
-		}
-	}
-
-	if len(detection.BuildCacheFiles) > 0 {
-		existing := map[string]bool{}
-		if list, err := client.ListBuildCacheFiles(ctx, cfg.projectID); err == nil {
-			for _, b := range list {
-				existing[b.Path] = true
-			}
-		}
-		for _, path := range detection.BuildCacheFiles {
-			if path == "" || existing[path] {
-				continue
-			}
-			if _, err := client.CreateBuildCacheFile(ctx, cfg.projectID, sdk.BuildCacheFileCreateRequest{Path: path}); err != nil {
-				env.Logger.Write("could not add build cache file %q: %v", path, err)
-			}
-		}
-	}
+	applySuggestedExcludedFiles(ctx, env, client, cfg.projectID,
+		planSuggestedExcludedFiles(ctx, client, cfg.projectID, detection.ExcludedFiles))
+	applySuggestedBuildCacheFiles(ctx, env, client, cfg.projectID,
+		planSuggestedBuildCacheFiles(ctx, client, cfg.projectID, detection.BuildCacheFiles))
 }
 
 // ── Deploy ────────────────────────────────────────────────────────────────────

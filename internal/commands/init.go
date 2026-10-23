@@ -82,6 +82,9 @@ type initModel struct {
 
 	// Created resources
 	project *sdk.Project
+	// duplicateOK is a project name the user chose to create although a
+	// project with that name exists (confirmed by submitting it twice).
+	duplicateOK string
 	server  *sdk.Server
 	repoOK  bool
 
@@ -307,6 +310,8 @@ type createResultMsg struct {
 	repoOK  bool
 	err     error
 	step    int
+	// duplicateOf is set when creation stopped because the name is taken.
+	duplicateOf string
 }
 
 type sshKeysResultMsg struct {
@@ -332,6 +337,7 @@ func (m *initModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case createResultMsg:
 		m.creating = false
+		m.duplicateOK = msg.duplicateOf
 		if msg.err != nil {
 			m.err = msg.err.Error()
 			return m, nil
@@ -798,6 +804,11 @@ func (m *initModel) submitTextStep() (tea.Model, tea.Cmd) {
 
 func (m *initModel) createProject() tea.Msg {
 	ctx := context.Background()
+	if m.duplicateOK != m.projectName {
+		if err := initDuplicateProjectCheck(ctx, m.env, m.client, m.projectName); err != nil {
+			return createResultMsg{err: err, step: stepProjectName, duplicateOf: m.projectName}
+		}
+	}
 	project, err := m.client.CreateProject(ctx, sdk.ProjectCreateRequest{Name: m.projectName})
 	return createResultMsg{project: project, err: err, step: stepProjectName}
 }

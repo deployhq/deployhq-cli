@@ -55,8 +55,17 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"project"},
 	},
 	"dhq projects create": {
+		// Refuses (non-interactive) when a project with the same name already
+		// exists unless --allow-duplicate is passed; saves the new project to
+		// .deployhq.toml in the current directory unless --no-save.
 		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"project"},
+	},
+	"dhq projects apply-suggestions": {
+		// Adds only the suggested settings the project is missing (build commands
+		// only when it has none), so re-runs are no-ops. --dry-run previews.
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"build_command", "excluded_file", "build_cache_file"},
 	},
 	"dhq projects update": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,

@@ -200,6 +200,18 @@ func Set(path, key, value string) error {
 	return v.WriteConfigAs(path)
 }
 
+// Get returns the string value of key in the specified config file, or "" when
+// the file or key does not exist.
+func Get(path, key string) string {
+	v := viper.New()
+	v.SetConfigFile(path)
+	v.SetConfigType("toml")
+	if err := v.ReadInConfig(); err != nil {
+		return ""
+	}
+	return v.GetString(key)
+}
+
 // Unset removes a key from the specified config file.
 func Unset(path, key string) error {
 	v := viper.New()

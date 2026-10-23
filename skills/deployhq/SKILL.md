@@ -93,10 +93,11 @@ See [launch.md](references/launch.md). After `launch` writes `.deployhq.toml`, u
 3. `dhq deployments abort <id> -p <project>` — abort if running
 
 ### "Set up a new project"
-1. `dhq projects create --name "My App" --json` — create project
+1. `dhq projects create --name "My App" --json` — create project (refuses if one with that name exists; saves it to `.deployhq.toml` here)
 2. `dhq repos create -p <project> --scm-type git --url <repo-url> --json` — connect repo
-3. `dhq servers create -p <project> --name Production --protocol-type ssh --hostname <host> --username <user> --json` — add server
-4. `dhq deploy -p <project> --json` — first deployment
+3. `dhq projects apply-suggestions -p <project> --json` — add DeployHQ's suggested build commands and exclusions
+4. `dhq servers create -p <project> --name Production --protocol-type ssh --hostname <host> --username <user> --json` — add server
+5. `dhq deploy -p <project> --json` — first deployment
 
 ### "Configure deployment"
 1. `dhq env-vars create -p <project> --name KEY --value val` — add env var
