@@ -78,7 +78,8 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"server"},
 	},
 	"dhq servers create": {
-		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		Interactive: true, // prompts (hidden) for a required password if none is given
+		Idempotent:  false, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"server"},
 	},
 	"dhq servers delete": {
