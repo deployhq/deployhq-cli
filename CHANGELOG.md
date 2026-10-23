@@ -28,6 +28,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq launch`**: saves a newly created project to `.deployhq.toml` right
   away, so a re-run after a later failure reuses it instead of creating
   another, and asks before creating a project whose name already exists.
+- **`dhq init`**: if a project with the entered name already exists, the
+  wizard lists it and creates another only when the same name is submitted
+  again.
 
 ### Fixed
 

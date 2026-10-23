@@ -126,3 +126,62 @@ func TestLinkProjectToDirectory_FillsEmptyEntry(t *testing.T) {
 	assert.Equal(t, "my-app", config.Get(config.ProjectConfigPath(), "project"))
 	assert.Equal(t, "acme", config.Get(config.ProjectConfigPath(), "account"))
 }
+
+// The init wizard reports a taken name on the name step without creating
+// anything; submitting the same name again creates it.
+func TestInitWizard_DuplicateNameNeedsSecondSubmit(t *testing.T) {
+	posts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/projects":
+			_, _ = w.Write([]byte(twoProjectsJSON))
+		case r.Method == http.MethodPost && r.URL.Path == "/projects":
+			posts++
+			_, _ = w.Write([]byte(`{"name":"My App","permalink":"my-app-1","identifier":"p-3"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	env, _, stderr := testLaunchEnvelope()
+	env.NonInteractive = false
+	m := &initModel{step: stepProjectName, client: newTestClient(t, srv), env: env, projectName: "My App", input: "My App"}
+
+	msg := m.createProject().(createResultMsg)
+	require.Error(t, msg.err)
+	assert.Contains(t, msg.err.Error(), "My App (my-app)")
+	assert.Contains(t, msg.err.Error(), "Press Enter again")
+	assert.Zero(t, posts, "must not create on the first submit")
+	assert.Empty(t, stderr.String(), "must not write over the wizard")
+
+	m.Update(msg)
+	assert.Equal(t, stepProjectName, m.step)
+	assert.Equal(t, "My App", m.input, "the name stays in the input for a resubmit")
+
+	msg = m.createProject().(createResultMsg)
+	require.NoError(t, msg.err)
+	assert.Equal(t, 1, posts)
+	m.Update(msg)
+	assert.Equal(t, "my-app-1", m.project.Permalink)
+}
+
+// A free name is created on the first submit.
+func TestInitWizard_FreeNameCreatesImmediately(t *testing.T) {
+	posts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts++
+			_, _ = w.Write([]byte(`{"name":"New","permalink":"new","identifier":"p-4"}`))
+			return
+		}
+		_, _ = w.Write([]byte(twoProjectsJSON))
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	m := &initModel{step: stepProjectName, client: newTestClient(t, srv), env: env, projectName: "New"}
+	msg := m.createProject().(createResultMsg)
+	require.NoError(t, msg.err)
+	assert.Equal(t, 1, posts)
+}

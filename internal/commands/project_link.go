@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -85,6 +86,21 @@ func confirmNoDuplicateProject(ctx context.Context, env *output.Envelope, client
 		return duplicateProjectError(name, matches)
 	}
 	return nil
+}
+
+// initDuplicateProjectCheck is the 'dhq init' wizard's duplicate-name check.
+// The wizard can't show a separate prompt, so a taken name is reported as an
+// error on the name step and the user confirms by submitting the same name
+// again (the caller then skips this check) or edits it.
+func initDuplicateProjectCheck(ctx context.Context, env *output.Envelope, client *sdk.Client, name string) error {
+	quiet := *env
+	quiet.NonInteractive = true // report, don't prompt: the wizard owns the terminal
+	err := confirmNoDuplicateProject(ctx, &quiet, client, name, false)
+	var userErr *output.UserError
+	if errors.As(err, &userErr) {
+		return fmt.Errorf("%s. Press Enter again to create another one anyway, or change the name", userErr.Message)
+	}
+	return err
 }
 
 // linkProjectToDirectory records permalink as the project in the current
