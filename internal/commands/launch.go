@@ -147,6 +147,9 @@ func paymentMethodLaunchError(err error, client *sdk.Client, projectID string, p
 		return nil
 	}
 	url := fmt.Sprintf("https://%s.deployhq.com/account/payment_details", client.Account())
+	if apiErr.AccountURL != "" {
+		url = apiErr.AccountURL + "/account/payment_details"
+	}
 	le := &launchError{
 		Reason:   reasonPaymentMethodRequired,
 		Message:  "A payment method is required before this account can provision Static Hosting or Managed VPS.",
