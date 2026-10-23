@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Changed
+
+- **Agent skill guide**: first-time setup is now a series of small steps the
+  person approves one at a time. The guide asks whether the person already has a
+  DeployHQ account, has them sign in or sign up in their own terminal, asks where
+  to deploy (their own server or DeployHQ hosting) and waits for the answer, asks
+  before changing anything on their server, and asks before the first deploy,
+  reporting success only once the deployment status is `completed`. `dhq launch`
+  is described as an option for DeployHQ hosting rather than the default path,
+  with the actions it bundles listed up front. The guide no longer suggests
+  putting API keys or passwords on a command line run by an agent.
+
+### Fixed
+
+- **Agent skill guide**: the configuration reference documented
+  `dhq configure init|show|set|unset`, which run the interactive wizard and refuse
+  inside an agent; it now documents the working `dhq config` subcommands. It also
+  notes that `dhq hello`, `dhq init` and `dhq configure` refuse to run in
+  non-interactive mode.
+
 ## [0.21.0] - 2026-08-06
 
 ### Added
