@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Added
+
+- **`dhq build-configs create` / `update`**: `--server` (name or identifier,
+  repeatable or comma-separated) chooses which servers a build configuration
+  override applies to. Previously there was no way to target an override from
+  the CLI, and an override with no servers never applies to a deployment.
+  `create --server` creates the override and then targets it; `create` without
+  `--server` now warns that the override will not apply and prints the
+  `update --server` command to fix it. `update --server` replaces the
+  override's servers and warns if DeployHQ kept fewer servers than were given.
+
+### Changed
+
+- **`dhq build-configs create` / `update`**: `--packages` is now rejected with a
+  hint to use `dhq build-languages set --build-config`. DeployHQ never applied
+  language versions sent this way, so the flag silently did nothing.
+  `update` with no flags now fails locally instead of sending an empty request.
+
 ## [0.21.0] - 2026-08-06
 
 ### Added
