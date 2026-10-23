@@ -585,33 +585,15 @@ func newDeployCmd() *cobra.Command {
 				return translateParentMustExistError(err, req.StartRevision)
 			}
 
+			if wait {
+				return waitForDeployment(cliCtx.Background(), client, env, projectID, dep.Identifier, timeout)
+			}
+
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(dep,
 					fmt.Sprintf("Deployment %s queued", dep.Identifier),
-					output.Breadcrumb{Action: "watch", Cmd: fmt.Sprintf("dhq deployments watch %s -p %s", dep.Identifier, projectID), Resource: "deployment", ID: dep.Identifier},
-					output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID), Resource: "deployment", ID: dep.Identifier},
-					output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", dep.Identifier, projectID), Resource: "deployment", ID: dep.Identifier},
-					output.Breadcrumb{Action: "abort", Cmd: fmt.Sprintf("dhq deployments abort %s -p %s", dep.Identifier, projectID), Resource: "deployment", ID: dep.Identifier},
+					deploymentBreadcrumbs(dep.Identifier, projectID, true)...,
 				))
-			}
-
-			if wait {
-				env.Status("🚀 Deployment %s queued", dep.Identifier)
-				env.Status("")
-				ctx := cliCtx.Background()
-				if timeout > 0 {
-					var cancel context.CancelFunc
-					ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-					defer cancel()
-				}
-				err := watchDeployment(ctx, client, env, projectID, dep.Identifier)
-				if ctx.Err() == context.DeadlineExceeded {
-					return &output.UserError{
-						Message: fmt.Sprintf("Timed out after %ds waiting for deployment to complete", timeout),
-						Hint:    fmt.Sprintf("dhq deployments show %s -p %s", dep.Identifier, projectID),
-					}
-				}
-				return err
 			}
 
 			env.Status("Deployment %s queued (status: %s)", dep.Identifier, output.ColorStatus(dep.Status))
@@ -632,6 +614,77 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete (cannot combine with --dry-run)")
 	cmd.Flags().IntVar(&timeout, "timeout", 0, "Timeout in seconds when using --wait (0 = no timeout)")
 	return cmd
+}
+
+// deploymentBreadcrumbs lists the follow-up commands for a deployment. The
+// watch/abort entries only make sense while it can still be running.
+func deploymentBreadcrumbs(depID, projectID string, inProgress bool) []output.Breadcrumb {
+	var crumbs []output.Breadcrumb
+	if inProgress {
+		crumbs = append(crumbs, output.Breadcrumb{Action: "watch", Cmd: fmt.Sprintf("dhq deployments watch %s -p %s", depID, projectID), Resource: "deployment", ID: depID})
+	}
+	crumbs = append(crumbs,
+		output.Breadcrumb{Action: "status", Cmd: fmt.Sprintf("dhq deployments show %s -p %s", depID, projectID), Resource: "deployment", ID: depID},
+		output.Breadcrumb{Action: "logs", Cmd: fmt.Sprintf("dhq deployments logs %s -p %s", depID, projectID), Resource: "deployment", ID: depID},
+	)
+	if inProgress {
+		crumbs = append(crumbs, output.Breadcrumb{Action: "abort", Cmd: fmt.Sprintf("dhq deployments abort %s -p %s", depID, projectID), Resource: "deployment", ID: depID})
+	}
+	return crumbs
+}
+
+// waitForDeployment blocks until the deployment reaches a terminal status (or
+// the timeout, in seconds, elapses; 0 = no timeout).
+//
+// In an interactive terminal it shows the live TUI. Otherwise (pipes, CI,
+// agents, --json) it prints plain progress lines to stderr and, in JSON mode,
+// writes the FINAL deployment to stdout once it has finished, so "status"
+// is "completed" on success. Any outcome other than "completed" — failed,
+// cancelled, or timed out — returns an error, so the exit code is non-zero.
+func waitForDeployment(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, depID string, timeout int) error {
+	env.Status("Deployment %s queued, waiting for it to finish...", depID)
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		defer cancel()
+	}
+
+	timedOut := func(last *sdk.Deployment) error {
+		status := "unknown"
+		if last != nil && last.Status != "" {
+			status = last.Status
+		}
+		return &output.UserError{
+			Message: fmt.Sprintf("Timed out after %ds waiting for deployment %s to finish (last status: %s). The deployment may still be running.", timeout, depID, status),
+			Hint:    fmt.Sprintf("dhq deployments show %s -p %s --json=status", depID, projectID),
+		}
+	}
+
+	if !env.WantsJSON() {
+		err := watchDeployment(ctx, client, env, projectID, depID)
+		if ctx.Err() == context.DeadlineExceeded {
+			return timedOut(nil)
+		}
+		return err
+	}
+
+	dep, err := followDeploymentPlain(ctx, client, env, projectID, depID)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return timedOut(dep)
+		}
+		return err
+	}
+	if dep.Status != "completed" {
+		return &output.UserError{
+			Message: deploymentNotCompletedMessage(dep),
+			Hint:    fmt.Sprintf("dhq deployments logs %s -p %s", depID, projectID),
+		}
+	}
+	return env.WriteJSON(output.NewResponse(dep,
+		fmt.Sprintf("Deployment %s completed", depID),
+		deploymentBreadcrumbs(depID, projectID, false)...,
+	))
 }
 
 func deployExecuteCmd(projectID, server, branch string) string {

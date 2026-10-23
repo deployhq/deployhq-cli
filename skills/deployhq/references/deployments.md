@@ -22,8 +22,8 @@ Shortcut for creating a deployment with smart defaults.
 | `--revision` | `-r` | End revision SHA (auto-fetches latest if omitted) |
 | `--start-revision` | | Start revision SHA (default: server's last deployed commit) |
 | `--full` | | Deploy entire branch from the first commit (overrides incremental default) |
-| `--wait` | `-w` | Block until the deployment completes. **Interactive terminals only** — see the warning below. |
-| `--timeout` | | Timeout in seconds for `--wait` (0 = no timeout) |
+| `--wait` | `-w` | Block until the deployment reaches a final status. Exits non-zero unless it ends `completed`. |
+| `--timeout` | | Timeout in seconds for `--wait` (0 = no timeout). On timeout it exits non-zero; the deployment may still be running. |
 
 ```bash
 # Basic deploy (incremental — only changes since the server's last deploy)
@@ -32,13 +32,11 @@ dhq deploy -p my-app --json
 # Deploy specific branch to specific server
 dhq deploy -p my-app -b staging -s "Staging Server" --json
 
-# Deploy and wait for completion — INTERACTIVE TERMINAL ONLY.
-# In a pipe, CI job or agent, --wait does nothing (see the warning below);
-# use the create -> watch -> show composition instead.
-dhq deploy -p my-app -s Production --wait
+# Deploy and wait for the final status (works in terminals, pipes, CI and agents)
+dhq deploy -p my-app -s Production --wait --json
 
-# Deploy with timeout (also interactive-only)
-dhq deploy -p my-app --wait --timeout 300
+# Deploy with a timeout
+dhq deploy -p my-app --wait --timeout 600 --json
 
 # Deploy a specific commit range (e.g. a hotfix)
 dhq deploy -p my-app --start-revision a1b2c3d --revision e4f5g6h --json
@@ -54,32 +52,31 @@ dhq deploy -p my-app --full --json
 - **Start revision resolution (incremental by default):** `--full` forces an empty start (full-branch deploy). Otherwise `--start-revision` is used if set. Otherwise the resolved server's `last_revision` (last successful deploy) is used — this is what makes deploys incremental. Servers with no prior deploy and server-group identifiers fall through to a full deploy because there's no single baseline to start from.
 - An unknown `--branch` errors out instead of silently deploying the wrong branch.
 - `--full` and `--start-revision` are mutually exclusive.
-- `--wait` shows TUI progress in a TTY. It has **no effect** outside one — see the warning below.
+- `--wait` shows TUI progress in a terminal. Elsewhere (pipes, CI, agents, `--json`) it prints plain progress lines to stderr and, once the deployment has finished, writes the **final** deployment JSON to stdout.
 
-> **Warning — `--wait` does not wait unless stdout is a terminal.**
-> Output auto-switches to JSON whenever stdout is not a TTY (`WantsJSON()` is
-> `JSONMode || !IsTTY`), and the JSON path returns as soon as the deployment is
-> **queued**, before the wait begins. So in any pipe, CI job, agent invocation,
-> or redirect, `dhq deploy --wait` prints the queued-deployment JSON and exits
-> **0 immediately** — the deployment may still be running, and may still fail.
-> Passing `--json` explicitly does the same thing; the trigger is the missing
-> TTY, not the flag.
->
-> **Never treat a zero exit from `dhq deploy` as "the deployment succeeded".**
-> Use the composition below, which is safe everywhere.
+**Confirm the final status before reporting success.** A deployment is only
+done when its status is `completed`. Without `--wait`, `dhq deploy` returns as
+soon as the deployment is **queued** (`"status": "pending"`, summary
+`Deployment <id> queued`) — that is not success. With `--wait`:
 
-**Deploy and verify (the safe composition — use this in automation):**
+| Outcome | stdout (JSON mode) | Exit code |
+|---------|--------------------|-----------|
+| `completed` | `{"ok":true,"data":{..."status":"completed"...},"summary":"Deployment <id> completed"}` | 0 |
+| `failed` (including an aborted deployment) | `{"ok":false,"data":{"error":"Deployment <id> finished with status \"failed\" (not completed)",...}}` | 1 |
+| `--timeout` reached | `{"ok":false,"data":{"error":"Timed out after <n>s ... (last status: running) ...",...}}` | 1 |
 
 ```bash
-# 1. create, and capture the identifier
-id=$(dhq deploy -p my-app -s Production --json | jq -r '.data.identifier')
+# Deploy, wait, and check the result
+out=$(dhq deploy -p my-app -s Production --wait --timeout 900 --json)
+[ "$(echo "$out" | jq -r '.data.status')" = "completed" ] || { echo "$out"; exit 1; }
+```
 
-# 2. follow it to a terminal state (this genuinely blocks)
-dhq deployments watch "$id" -p my-app
+Only say a deployment succeeded after you have seen `"status": "completed"`.
+If you deployed without `--wait`, or `--wait` timed out, check it explicitly:
 
-# 3. assert the final status — this is the step that actually decides success
-status=$(dhq deployments show "$id" -p my-app --json=status | jq -r '.status')
-[ "$status" = "completed" ] || { echo "deployment $id ended as: $status"; exit 1; }
+```bash
+# NB: --json=<fields> unwraps the envelope, so read .status, not .data.status
+dhq deployments show "$id" -p my-app --json=status | jq -r '.status'
 ```
 
 > **Note — field selection changes the JSON shape.** With `--json` alone the
@@ -94,14 +91,6 @@ Verify the deployed revision and server too when it matters:
 ```bash
 dhq deployments show "$id" -p my-app --json=status,end_revision,servers
 ```
-
-> **Warning — a cancelled deployment exits 0.**
-> `dhq deployments watch` returns success for a cancelled deployment
-> (`watch.go` treats `cancelled` as a clean terminal state), and `dhq rollback`
-> shares the same watcher. Only `failed` produces a non-zero exit. A cancelled
-> deployment has **not** deployed your code, so the explicit
-> `status == "completed"` assertion in step 3 is required — for rollbacks as
-> well as deploys. Do not rely on exit codes alone.
 
 ### `dhq deployments list`
 List recent deployments with pagination.
@@ -178,9 +167,10 @@ dhq deployments watch abc123 -p my-app
 ```
 
 **Behaviors:**
-- TTY: Full TUI with step-by-step progress and emoji status
-- Non-TTY: Append-only output for CI/log capture
+- TTY: Full TUI with step-by-step progress and emoji status (pressing `q` offers to abort the deployment)
+- Non-TTY: Append-only progress lines on stderr for CI/log capture; exits 0 only if the deployment ends `completed`
 - Auto-shows logs for failed steps
+- To deploy and wait in one step, prefer `dhq deploy --wait`
 
 ## Shortcuts
 

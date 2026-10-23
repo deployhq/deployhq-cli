@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Fixed
+
+- **`dhq deploy --wait`** now waits in every output mode. Previously, whenever
+  output was JSON (pipes, CI jobs, AI agents, or `--json`), it returned the
+  queued deployment and exited 0 before the deployment had run. It now polls
+  until the deployment finishes, prints plain progress lines to stderr, and
+  writes the **final** deployment to stdout, so `data.status` is `completed`
+  and the summary reads `Deployment <id> completed`. A failed deployment, or
+  reaching `--timeout`, exits non-zero with the final (or last known) status in
+  the error message.
+- **`dhq deployments watch`** outside a terminal exits non-zero for any final
+  status other than `completed` (previously a `cancelled` status exited 0).
+- Agent skill: deploy with `--wait` and confirm the final status is
+  `completed` before reporting success.
+
 ## [0.21.0] - 2026-08-06
 
 ### Added
