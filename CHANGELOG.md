@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Added
+
+- **`dhq projects apply-suggestions [path]`**: adds DeployHQ's suggested build
+  settings (build commands, excluded files, build cache files) to any project,
+  not only DeployHQ hosting set up by `dhq launch`. Shows what it will add,
+  `--dry-run` previews, and re-runs only add what is missing. Build commands are
+  added only when the project has none.
+
+### Changed
+
+- **`dhq projects create`**: checks for a project with the same name first. In
+  non-interactive mode it lists the existing project and fails unless
+  `--allow-duplicate` is passed; interactively it asks. The new project is saved
+  to `.deployhq.toml` in the current directory (never replacing a different
+  project already there), so later runs in the folder reuse it; `--no-save`
+  opts out.
+- **`dhq launch`**: saves a newly created project to `.deployhq.toml` right
+  away, so a re-run after a later failure reuses it instead of creating
+  another, and asks before creating a project whose name already exists.
+
+### Fixed
+
+- **`dhq config init`**: now writes the `--project`, `--account` and `--email`
+  values it is given instead of an empty project entry. `--api-key` is never
+  written to a config file.
+
 ## [0.21.0] - 2026-08-06
 
 ### Added
