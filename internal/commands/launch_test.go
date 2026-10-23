@@ -1514,11 +1514,33 @@ func TestPaymentMethodLaunchError_LinksToPaymentDetails(t *testing.T) {
 	require.NotNil(t, le)
 	assert.Equal(t, reasonPaymentMethodRequired, le.Reason)
 	assert.False(t, le.Retryable)
-	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/payment_details")
-	assert.Equal(t, "https://acme.deployhq.com/account/payment_details", le.Details["payment_url"])
+	// The link is on the host the request went to (staging, local), not always deployhq.com.
+	want := accountURLOf(t, err) + "/account/payment_details"
+	assert.Contains(t, le.NextStep, want)
+	assert.Equal(t, want, le.Details["payment_url"])
 	// An existing project is not described as left behind.
 	assert.NotContains(t, le.Message, "created during this run")
 	assert.Empty(t, le.Details["project"])
+}
+
+// accountURLOf returns the account URL the SDK recorded on an API error.
+func accountURLOf(t *testing.T, err error) string {
+	t.Helper()
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr)
+	require.NotEmpty(t, apiErr.AccountURL)
+	return apiErr.AccountURL
+}
+
+func TestPaymentMethodLaunchError_FallsBackToDeployHQHost(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr)
+	apiErr.AccountURL = ""
+
+	le := paymentMethodLaunchError(apiErr, testClient(t), "my-app", false)
+	require.NotNil(t, le)
+	assert.Equal(t, "https://acme.deployhq.com/account/payment_details", le.Details["payment_url"])
 }
 
 func TestPaymentMethodLaunchError_NamesProjectCreatedThisRun(t *testing.T) {
@@ -1552,6 +1574,6 @@ func TestPaymentMethodLaunchError_JSONCarriesReason(t *testing.T) {
 	assert.Equal(t, reasonPaymentMethodRequired, data["reason"])
 	assert.Equal(t, false, data["retryable"])
 	details := data["details"].(map[string]any)
-	assert.Equal(t, "https://acme.deployhq.com/account/payment_details", details["payment_url"])
+	assert.Equal(t, accountURLOf(t, err)+"/account/payment_details", details["payment_url"])
 	assert.Equal(t, "my-app", details["project"])
 }
