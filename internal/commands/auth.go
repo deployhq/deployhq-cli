@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
+	"github.com/deployhq/deployhq-cli/internal/cli"
 	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -88,17 +89,7 @@ DEPLOYHQ_API_KEY as secret environment variables instead of logging in.`,
 // host is the configured DeployHQ host (defaults to "deployhq.com") so the
 // same logic works for staging/self-hosted setups.
 func normalizeAccount(input, host string) string {
-	s := strings.TrimSpace(input)
-	s = strings.TrimPrefix(s, "https://")
-	s = strings.TrimPrefix(s, "http://")
-	if i := strings.IndexAny(s, "/?#"); i >= 0 {
-		s = s[:i]
-	}
-	if host == "" {
-		host = "deployhq.com"
-	}
-	s = strings.TrimSuffix(s, "."+host)
-	return s
+	return cli.NormalizeAccount(input, host)
 }
 
 func runAuthLogin(opts *AuthLoginOptions) error {
@@ -287,18 +278,67 @@ const (
 
 // authStatusResult is the --json shape of 'dhq auth status'.
 type authStatusResult struct {
-	Account  string `json:"account"`
-	Email    string `json:"email"`
-	Status   string `json:"status"`
-	Message  string `json:"message,omitempty"`
-	NextStep string `json:"next_step,omitempty"`
+	Account string `json:"account"`
+	Email   string `json:"email"`
+	// Source says where the credentials came from: "env", "flag", "file",
+	// "stored" (a login saved by 'dhq auth login'), or "mixed".
+	Source string `json:"source"`
+	// Sources gives the source of each of account, email and api_key.
+	Sources  map[string]string `json:"sources,omitempty"`
+	Status   string            `json:"status"`
+	Message  string            `json:"message,omitempty"`
+	NextStep string            `json:"next_step,omitempty"`
 }
 
-// checkAuthStatus asks the API whether the stored credentials actually work.
-// Having credentials stored is not enough: the API refuses every request until
+// credentialSource summarises per-field sources into one value: the shared
+// source when all fields agree, otherwise "mixed".
+func credentialSource(sources map[string]string) string {
+	src := ""
+	for _, key := range []string{"account", "email", "api_key"} {
+		v := sources[key]
+		if v == "" {
+			v = "config"
+		}
+		if src == "" {
+			src = v
+		} else if src != v {
+			return "mixed"
+		}
+	}
+	return src
+}
+
+// describeCredentialSource is the human form of credentialSource.
+func describeCredentialSource(sources map[string]string) string {
+	names := map[string]string{
+		"env":                      "environment variables (DEPLOYHQ_*)",
+		"flag":                     "command-line flags",
+		"file":                     "config file",
+		cli.CredentialSourceStored: "stored login ('dhq auth login')",
+		"config":                   "configuration",
+	}
+	if src := credentialSource(sources); src != "mixed" {
+		return names[src]
+	}
+	parts := make([]string, 0, 3)
+	for _, key := range []string{"account", "email", "api_key"} {
+		v := sources[key]
+		if v == "" {
+			v = "config"
+		}
+		parts = append(parts, fmt.Sprintf("%s from %s", key, names[v]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// checkAuthStatus asks the API whether the credentials dhq would use actually
+// work. Having credentials is not enough: the API refuses every request until
 // the account's email is verified, and a key may have been revoked.
-func checkAuthStatus(ctx context.Context, client *sdk.Client, creds *auth.Credentials, host string) authStatusResult {
-	res := authStatusResult{Account: creds.Account, Email: creds.Email}
+func checkAuthStatus(ctx context.Context, client *sdk.Client, creds *cli.ResolvedCredentials, host string) authStatusResult {
+	res := authStatusResult{
+		Account: creds.Account, Email: creds.Email,
+		Source: credentialSource(creds.Sources), Sources: creds.Sources,
+	}
 	// Same /profile request launch uses; it decodes only a few fields, so it
 	// does not depend on the full profile shape.
 	_, err := client.GetAccountCapabilities(ctx)
@@ -327,7 +367,9 @@ func newAuthStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show authentication status",
 		Long: `Show which account dhq is signed in to, and check with DeployHQ that the
-stored credentials work.
+credentials work. Credentials are resolved exactly as for API commands: flags,
+DEPLOYHQ_* environment variables and config files win, and the stored login
+fills any gaps. The output says where they came from.
 
 The status is one of:
   authenticated                 credentials work
@@ -338,23 +380,15 @@ The status is one of:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
-			// Try configured account first, fall back to any stored credentials
-			account := cliCtx.Config.Account
-			creds, err := auth.LoadByAccount(account)
-			if err != nil && account != "" {
-				// Configured account not found — try default profile
-				creds, err = auth.LoadByAccount("")
-			}
+			// Resolve credentials exactly as API commands do, so status checks
+			// and reports the account those commands would use.
+			creds, err := cliCtx.ResolveCredentials()
 			if err != nil {
 				env.Status("Not logged in")
 				return nil
 			}
 
-			sdkOpts := []sdk.Option{sdk.WithUserAgent(cliUserAgent())}
-			if baseURL := cliCtx.Config.BaseURL(creds.Account); baseURL != "" {
-				sdkOpts = append(sdkOpts, sdk.WithBaseURL(baseURL))
-			}
-			client, err := sdk.New(creds.Account, creds.Email, creds.APIKey, sdkOpts...)
+			client, err := cliCtx.NewClient(creds.Account, creds.Email, creds.APIKey)
 			if err != nil {
 				return &output.UserError{Message: err.Error()}
 			}
@@ -370,6 +404,7 @@ The status is one of:
 			}
 			env.Status("Account: %s.%s", creds.Account, host)
 			env.Status("Email:   %s", creds.Email)
+			env.Status("Source:  %s", describeCredentialSource(creds.Sources))
 			env.Status("Status:  %s", res.Status)
 			if res.Message != "" {
 				env.Status("")

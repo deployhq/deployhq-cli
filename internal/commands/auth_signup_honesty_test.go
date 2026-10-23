@@ -74,7 +74,10 @@ func TestSignInHint_UsesAccountURL(t *testing.T) {
 // ── auth status ──────────────────────────────────────────────────────────────
 
 func TestCheckAuthStatus(t *testing.T) {
-	creds := &auth.Credentials{Account: "acme", Email: "me@example.com", APIKey: "k"}
+	creds := &cli.ResolvedCredentials{
+		Account: "acme", Email: "me@example.com", APIKey: "k",
+		Sources: map[string]string{"account": "env", "email": "env", "api_key": "env"},
+	}
 
 	tests := []struct {
 		name       string
@@ -121,6 +124,7 @@ func TestCheckAuthStatus(t *testing.T) {
 			res := checkAuthStatus(t.Context(), newTestClient(t, srv), creds, "")
 			assert.Equal(t, tt.wantStatus, res.Status)
 			assert.Equal(t, "acme", res.Account)
+			assert.Equal(t, "env", res.Source)
 			if tt.wantNext != "" {
 				assert.Contains(t, res.NextStep, tt.wantNext)
 			}
@@ -254,4 +258,15 @@ func TestRootHelp_PointsAgentsToSetupInstructions(t *testing.T) {
 	cmd.SetArgs([]string{"--help"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, stdout.String(), "https://www.deployhq.com/agents.md")
+}
+
+func TestDescribeCredentialSource(t *testing.T) {
+	env := map[string]string{"account": "env", "email": "env", "api_key": "env"}
+	assert.Equal(t, "env", credentialSource(env))
+	assert.Contains(t, describeCredentialSource(env), "environment variables")
+
+	mixed := map[string]string{"account": "env", "email": "stored", "api_key": "stored"}
+	assert.Equal(t, "mixed", credentialSource(mixed))
+	assert.Contains(t, describeCredentialSource(mixed), "account from environment variables")
+	assert.Contains(t, describeCredentialSource(mixed), "api_key from stored login")
 }
