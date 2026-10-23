@@ -1206,7 +1206,7 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 	}
 
 	env.Status("")
-	fmt.Fprint(env.Stderr, "Press Enter once the key is added (or now, if the repo is public)... ") //nolint:errcheck
+	fmt.Fprint(env.Stderr, deployKeyPausePrompt(gitRemote)) //nolint:errcheck
 	reader := bufio.NewReader(os.Stdin)
 	_, _ = reader.ReadString('\n')
 }

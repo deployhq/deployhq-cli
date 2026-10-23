@@ -324,3 +324,13 @@ func TestLaunchRepoKeyError_JSONShape(t *testing.T) {
 	assert.Contains(t, resp.Data.NextStep, "https://github.com/acme/my-app/settings/keys/new")
 	assert.Equal(t, testDeployPubKey, resp.Data.Details["public_key"])
 }
+
+// Over SSH a public repository still needs the key, so the prompt must not
+// suggest skipping it; over HTTPS a public repository can.
+func TestDeployKeyPausePrompt(t *testing.T) {
+	ssh := deployKeyPausePrompt("git@github.com:acme/my-app.git")
+	assert.NotContains(t, ssh, "or now")
+	assert.Contains(t, ssh, "even for a public repository")
+
+	assert.Contains(t, deployKeyPausePrompt("https://github.com/acme/my-app.git"), "or now, if the repo is public")
+}

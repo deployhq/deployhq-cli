@@ -131,3 +131,14 @@ func launchRepoKeyError(ctx context.Context, client *sdk.Client, projectID strin
 		Details:  map[string]string{"project": projectID, "public_key": publicKey},
 	}
 }
+
+// deployKeyPausePrompt is the interactive prompt shown while waiting for the
+// user to add the deploy key. Over SSH the key is needed even for a public
+// repository (the git host refuses unknown keys), so only HTTP(S) repositories
+// may skip it.
+func deployKeyPausePrompt(repoURL string) string {
+	if isSSHRepoURL(repoURL) {
+		return "Press Enter once the key is added (needed over SSH even for a public repository)... "
+	}
+	return "Press Enter once the key is added (or now, if the repo is public)... "
+}
