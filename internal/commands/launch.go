@@ -1077,6 +1077,10 @@ func launchCreateProject(ctx context.Context, env *output.Envelope, cfg launchCo
 		projectName = "my-app"
 	}
 
+	if err := confirmNoDuplicateProject(ctx, env, client, projectName, false); err != nil {
+		return "", err
+	}
+
 	env.Status("Creating project %q...", projectName)
 	proj, err := client.CreateProject(ctx, sdk.ProjectCreateRequest{Name: projectName})
 	if err != nil {
@@ -1096,6 +1100,9 @@ func launchCreateProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	}
 
 	env.Status("Project %q created (%s)", proj.Name, proj.Permalink)
+	// Record it now, not only after a successful deploy: if a later step fails,
+	// a re-run in this folder reuses the project instead of creating another.
+	linkProjectToDirectory(env, proj.Permalink)
 
 	// Connect the git repository
 	if err := launchEnsureRepo(ctx, env, cfg, client, proj.Permalink, gitRemote); err != nil {
