@@ -9,7 +9,33 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ## [Unreleased]
 
+### Added
+
+- **SDK**: `APIError` now carries the structured fields some error responses
+  include (`ErrorCode`, `Detail`, `UpgradeURL`, `SuspensionType`,
+  `SuspensionReason`) and the `AccountURL` the request was sent to, with
+  `IsAPIAccessRestricted`, `IsAccountSuspended`, `IsPaymentSuspension` and
+  `IsPaymentMethodRequired` helpers. `Message` keeps its existing meaning.
+
 ### Fixed
+
+- **Plan and billing refusals are explained**: when the account's plan has no
+  API access, its trial has ended, it is suspended, or it has no payment method
+  for hosting, every command now says which of these it is and links to the
+  page that resolves it (plans, payment details, or support), instead of a
+  technical error such as `403 api_access_restricted` or a raw JSON body. In
+  `--json` output the error carries a distinct `code` (`api_access_restricted`,
+  `account_suspended`, `payment_method_required`), `doc_url`, and a `recovery`
+  step with a `url`; a plan restriction no longer suggests `dhq auth login`.
+  Exit codes are unchanged. Recovery breadcrumbs gain an optional `url` field,
+  and `cmd` is omitted when a step happens in the browser.
+- **`dhq launch`**: the plan-eligibility check now runs before a project is
+  created or a repository connected, so an ineligible account is stopped before
+  anything is left behind. A provisioning refusal for a missing payment method
+  now fails with reason `payment_method_required`, a link to the account's
+  Payment Details page, and — when this run created the project — its name,
+  the re-run command (`--project`), and how to delete it. The project is saved
+  to `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
 
 - **`dhq launch`**: the `plan_limit_reached` guidance was wrong in two ways and
   is corrected. It claimed "Free plans support 1 site", which is no longer true —

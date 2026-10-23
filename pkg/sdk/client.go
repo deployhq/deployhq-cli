@@ -211,17 +211,41 @@ func parseAPIError(resp *http.Response) error {
 		}
 	}
 
+	if resp.Request != nil && resp.Request.URL != nil {
+		apiErr.AccountURL = resp.Request.URL.Scheme + "://" + resp.Request.URL.Host
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil || len(body) == 0 {
 		return apiErr
 	}
 
-	// Try {"error": "..."} shape first
+	// Try {"error": "..."} shape first. Some responses also carry a
+	// machine-readable error_code, a human-readable message and an upgrade_url.
 	var singleErr struct {
-		Error string `json:"error"`
+		Error      string `json:"error"`
+		ErrorCode  string `json:"error_code"`
+		Message    string `json:"message"`
+		UpgradeURL string `json:"upgrade_url"`
 	}
 	if json.Unmarshal(body, &singleErr) == nil && singleErr.Error != "" {
 		apiErr.Message = singleErr.Error
+		apiErr.ErrorCode = singleErr.ErrorCode
+		apiErr.Detail = singleErr.Message
+		apiErr.UpgradeURL = singleErr.UpgradeURL
+		return apiErr
+	}
+
+	// Account suspended (402): {"status": "suspended", "suspension_type": ...}
+	var suspended struct {
+		Status           string `json:"status"`
+		SuspensionType   string `json:"suspension_type"`
+		SuspensionReason string `json:"suspension_reason"`
+	}
+	if json.Unmarshal(body, &suspended) == nil && suspended.Status == "suspended" {
+		apiErr.Message = suspendedMessage
+		apiErr.SuspensionType = suspended.SuspensionType
+		apiErr.SuspensionReason = suspended.SuspensionReason
 		return apiErr
 	}
 

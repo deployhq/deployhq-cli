@@ -52,6 +52,7 @@ dhq launch --vps --dry-run --json
 - **`--dry-run`** emits `{would, requires, warning}` and makes no changes — use it to preview cost and confirm before provisioning a Managed VPS.
 - **Success (`--json`)** emits one object: `{status, target, url, project, server, deployment}`. In plain mode the final stdout line is the live URL.
 - **Idempotent:** re-running reads `.deployhq.toml` and resolves the existing project/server instead of double-provisioning.
+- **Eligibility is checked before anything is created:** the `plan_limit_reached` check runs before a project is created or a repository connected. Whether the account has a payment method on file cannot be checked in advance, so that refusal only arrives at provisioning time, as `payment_method_required`.
 
 ### Structured error reasons
 
@@ -64,6 +65,7 @@ On failure the error carries a stable `reason`, a `retryable` boolean, and a `ne
 | `accept_cost_required` | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
 | `repo_unreachable` | No git remote DeployHQ can deploy from — push a remote / connect a provider first |
 | `plan_limit_reached` | The account cannot provision this managed resource — Managed VPS and Static Hosting both require a paid plan and an accepted payment method. Upgrade the plan, fix the billing details, or remove an existing resource if a per-plan cap was hit |
+| `payment_method_required` | Provisioning was refused because the account has no accepted payment method. A person must add a card at `details.payment_url` (the account's Payment Details page); an agent cannot do this. If `details.project_created` is `true`, the project named in `details.project` was created by this run and has no server: re-run with `--project <permalink>` after the card is added (the project is also saved to `.deployhq.toml`), or remove it with `dhq projects delete <permalink>`. `launch` never deletes it automatically |
 | `subdomain_taken` | Static Hosting subdomain already in use — choose another `--subdomain` |
 | `rate_limited` | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
 | `provision_failed` | The server failed to provision — check the named resource; retry |
