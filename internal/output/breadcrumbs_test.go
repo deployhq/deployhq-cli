@@ -107,7 +107,38 @@ func TestErrorResponseFromErr_AuthError(t *testing.T) {
 	assert.Equal(t, "auth_error", data.Code)
 	assert.Equal(t, ExitAuthError, data.ExitCode)
 	assert.NotEmpty(t, data.Recovery)
-	assert.Equal(t, "login", data.Recovery[0].Action)
+	assert.Equal(t, "ask_user_to_login_in_separate_terminal", data.Recovery[0].Action)
+	assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
+}
+
+func TestErrorResponseFromErr_EmailVerificationRequired(t *testing.T) {
+	// The exact shape the API returns for an account whose email is unverified.
+	apiErr := &sdk.APIError{StatusCode: 403, Message: "email_verification_required"}
+
+	for name, err := range map[string]error{
+		"raw":     apiErr,
+		"wrapped": &InternalError{Message: "validate credentials", Cause: apiErr},
+	} {
+		t.Run(name, func(t *testing.T) {
+			data := ErrorResponseFromErr(err).Data.(ErrorData)
+			assert.Equal(t, "auth_error", data.Code)
+			assert.Equal(t, ExitAuthError, data.ExitCode)
+			assert.Equal(t, EmailNotVerifiedMessage, data.Error)
+			assert.Contains(t, data.Suggestion, "verification link")
+			assert.True(t, data.Retryable, "retrying works once the email is verified")
+			require.Len(t, data.Recovery, 1)
+			assert.Equal(t, "dhq auth status", data.Recovery[0].Cmd)
+			for _, r := range data.Recovery {
+				assert.NotEqual(t, "dhq auth login", r.Cmd, "logging in again does not fix an unverified email")
+			}
+		})
+	}
+}
+
+func TestErrorResponseFromErr_GenericForbiddenUnchanged(t *testing.T) {
+	data := ErrorResponseFromErr(&sdk.APIError{StatusCode: 403, Message: "AccessDenied"}).Data.(ErrorData)
+	assert.Equal(t, "auth_error", data.Code)
+	assert.NotEqual(t, EmailNotVerifiedMessage, data.Error)
 }
 
 func TestErrorResponseFromErr_Retryable(t *testing.T) {

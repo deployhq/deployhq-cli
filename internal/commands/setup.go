@@ -447,12 +447,13 @@ DeployHQ is a deployment automation platform. The ` + "`dhq`" + ` CLI manages pr
 
 ## Authentication
 ` + "```" + `
-# Environment variables (CI/agents — no login needed)
+# Environment variables (CI — no login needed)
 export DEPLOYHQ_API_KEY=your-api-key
 export DEPLOYHQ_ACCOUNT=your-account
 export DEPLOYHQ_EMAIL=your-email
 
-# Or interactive login
+# Or interactive login, run by the person in their own terminal
+# (agents: never ask for the API key or paste it into the chat)
 dhq auth login
 ` + "```" + `
 

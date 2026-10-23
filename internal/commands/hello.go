@@ -28,7 +28,7 @@ func newHelloCmd() *cobra.Command {
 			if env.NonInteractive {
 				return &output.UserError{
 					Message: "'dhq hello' is interactive-only and cannot run in non-interactive mode",
-					Hint:    "Use the non-interactive equivalents:\n  dhq auth login --account <acct> --email <email> --api-key <key>\n  dhq config set project <permalink>",
+					Hint:    "Ask the person to run 'dhq hello' (or 'dhq auth login') themselves in a separate terminal window, not through the AI agent; never paste an API key into an AI chat. Then set a default project with: dhq config set project <permalink>",
 				}
 			}
 			if !env.IsTTY {
@@ -75,7 +75,12 @@ func newHelloCmd() *cobra.Command {
 
 			projects, err := client.ListProjects(cliCtx.Background(), nil)
 			if err != nil {
-				env.Warn("Could not fetch projects: %v", err)
+				if output.IsEmailVerificationRequired(err) {
+					env.Warn("%s.", output.EmailNotVerifiedMessage)
+					env.Status("%s", output.EmailNotVerifiedHint)
+				} else {
+					env.Warn("Could not fetch projects: %v", err)
+				}
 				env.Status("")
 				env.Status("Get started:")
 				env.Status("  dhq init              Create a project with repo and server")
@@ -216,8 +221,10 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 		return nil, &output.UserError{Message: err.Error()}
 	}
 
-	if _, err := client.ListProjects(cliCtx.Background(), nil); err != nil {
-		if userErr := classifyHelloValidateErr(err); userErr != nil {
+	_, err = client.ListProjects(cliCtx.Background(), nil)
+	emailUnverified := output.IsEmailVerificationRequired(err)
+	if err != nil && !emailUnverified {
+		if userErr := classifyHelloValidateErr(err, account); userErr != nil {
 			return nil, userErr
 		}
 		return nil, err
@@ -237,7 +244,20 @@ func helloLogin(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials, 
 	}
 	env.Status("")
 	output.ColorGreen.Fprintf(env.Stderr, "Logged in as %s on %s.%s\n", email, account, host) //nolint:errcheck
+	if emailUnverified {
+		env.Warn("%s.", output.EmailNotVerifiedMessage)
+		env.Status("%s", output.EmailNotVerifiedHint)
+	}
 	return creds, nil
+}
+
+// configuredHost returns the configured DeployHQ host ("" means the default),
+// tolerating an uninitialised CLI context.
+func configuredHost() string {
+	if cliCtx == nil || cliCtx.Config == nil {
+		return ""
+	}
+	return cliCtx.Config.Host
 }
 
 // validateHelloLoginInputs catches empty fields before sdk.New would, so
@@ -261,7 +281,7 @@ func validateHelloLoginInputs(account, email, apiKey string) error {
 	if apiKey == "" {
 		return &output.UserError{
 			Message: "API key is required",
-			Hint:    "Find your API key in DeployHQ → Profile → API Key, then re-run 'dhq hello'.",
+			Hint:    "Find your API key under " + auth.APIKeyLocation(account, configuredHost()) + ", then re-run 'dhq hello'.",
 		}
 	}
 	return nil
@@ -272,7 +292,7 @@ func validateHelloLoginInputs(account, email, apiKey string) error {
 // when the cause is recognizable. Returns nil when the caller should pass the
 // error through unchanged (which lets output.ClassifyError handle status-code
 // fallback for any remaining *sdk.APIError).
-func classifyHelloValidateErr(err error) error {
+func classifyHelloValidateErr(err error, account string) error {
 	if output.IsNetworkErr(err) {
 		return &output.NetworkError{Message: "validate credentials", Cause: err}
 	}
@@ -282,7 +302,7 @@ func classifyHelloValidateErr(err error) error {
 		case http.StatusUnauthorized:
 			return &output.AuthError{
 				Message: "Invalid credentials",
-				Hint:    "Check your email and API key at Profile > API Key in DeployHQ",
+				Hint:    "Check your email and API key. The API key is under " + auth.APIKeyLocation(account, configuredHost()) + ".",
 			}
 		case http.StatusForbidden:
 			return &output.AuthError{
@@ -324,14 +344,19 @@ func helloSignup(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials,
 	accountName, _ := reader.ReadString('\n')
 	accountName = strings.TrimSpace(accountName)
 
+	if err := confirmSignupTerms(env, reader, false); err != nil {
+		return nil, err
+	}
+
 	env.Status("Creating account...")
 
 	ua := cliUserAgent()
 	result, err := sdk.Signup(sdk.SignupRequest{
-		Email:       email,
-		Password:    password,
-		AccountName: accountName,
-		Client:      ua,
+		Email:         email,
+		Password:      password,
+		AccountName:   accountName,
+		Client:        ua,
+		TermsAccepted: true, // confirmed above
 	}, ua, cliCtx.Config.SignupURL())
 	if err != nil {
 		return nil, err
@@ -355,5 +380,6 @@ func helloSignup(env *output.Envelope, reader *bufio.Reader) (*auth.Credentials,
 	}
 	env.Status("")
 	output.ColorGreen.Fprintf(env.Stderr, "Account created: %s.%s\n", result.Account.Subdomain, host) //nolint:errcheck
+	reportSignupOutcome(env, accountName, result, email, host)
 	return creds, nil
 }

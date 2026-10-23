@@ -4,6 +4,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
 	"github.com/deployhq/deployhq-cli/internal/config"
@@ -34,46 +35,106 @@ func NewContext(cfg *config.Config, env *output.Envelope, logger *output.Logger)
 	}
 }
 
-// Credentials returns the resolved (account, email, apiKey) triplet,
-// merging values from config (flags/env/files) with the auth store. It
-// returns the same AuthError/UserError shapes that Client() would.
+// loadStoredCredentials reads a stored login. A variable so tests can stub the
+// OS keychain.
+var loadStoredCredentials = auth.LoadByAccount
+
+// Credential sources reported by ResolveCredentials, in addition to the config
+// layers ("flag", "env", "file").
+const CredentialSourceStored = "stored"
+
+// ResolvedCredentials are the credentials API commands use, and where each
+// value came from ("flag", "env", "file" or "stored").
+type ResolvedCredentials struct {
+	Account string
+	Email   string
+	APIKey  string
+	Sources map[string]string // "account", "email", "api_key" -> source
+}
+
+// NormalizeAccount accepts an account given as a bare subdomain, a hostname or
+// a URL ("mycompany", "mycompany.deployhq.com", "https://mycompany.deployhq.com/")
+// and returns just the subdomain. host is the configured DeployHQ host; empty
+// means deployhq.com.
+func NormalizeAccount(input, host string) string {
+	s := strings.TrimSpace(input)
+	s = strings.TrimPrefix(s, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	if i := strings.IndexAny(s, "/?#"); i >= 0 {
+		s = s[:i]
+	}
+	if host == "" {
+		host = "deployhq.com"
+	}
+	return strings.TrimSuffix(s, "."+host)
+}
+
+// ResolveCredentials merges credentials from config (flags, env vars, config
+// files) with the stored login: config values win, the stored login for the
+// same account fills any gaps. It returns the same AuthError/UserError shapes
+// that Client() would.
+func (c *Context) ResolveCredentials() (*ResolvedCredentials, error) {
+	r := &ResolvedCredentials{
+		Account: NormalizeAccount(c.Config.Account, c.Config.Host),
+		Email:   c.Config.Email,
+		APIKey:  c.Config.APIKey,
+		Sources: map[string]string{},
+	}
+	for key, val := range map[string]string{"account": r.Account, "email": r.Email, "api_key": r.APIKey} {
+		if val != "" {
+			r.Sources[key] = c.Config.Sources[key]
+		}
+	}
+
+	if r.Account == "" || r.Email == "" || r.APIKey == "" {
+		creds, loadErr := loadStoredCredentials(r.Account)
+		if loadErr != nil {
+			return nil, &output.AuthError{
+				Message: "Not logged in",
+				Hint:    auth.SignInHint(r.Account, c.Config.Host),
+			}
+		}
+		if r.Account == "" {
+			r.Account = creds.Account
+			r.Sources["account"] = CredentialSourceStored
+		}
+		if r.Email == "" {
+			r.Email = creds.Email
+			r.Sources["email"] = CredentialSourceStored
+		}
+		if r.APIKey == "" {
+			r.APIKey = creds.APIKey
+			r.Sources["api_key"] = CredentialSourceStored
+		}
+	}
+
+	if r.Account == "" {
+		return nil, &output.UserError{
+			Message: "Account not configured",
+			Hint:    "Set via --account flag, DEPLOYHQ_ACCOUNT env var, or 'dhq config set account <name>'",
+		}
+	}
+	return r, nil
+}
+
+// Credentials returns the resolved (account, email, apiKey) triplet; see
+// ResolveCredentials.
 //
 // This is useful for code paths that need credentials but don't need
 // the full SDK client — e.g. shelling out to a child process that
 // reads them from environment variables.
 func (c *Context) Credentials() (account, email, apiKey string, err error) {
-	account = c.Config.Account
-	email = c.Config.Email
-	apiKey = c.Config.APIKey
-
-	if account == "" || email == "" || apiKey == "" {
-		creds, loadErr := auth.LoadByAccount(account)
-		if loadErr != nil {
-			return "", "", "", &output.AuthError{
-				Message: "Not logged in",
-				Hint: "Authenticate first:\n" +
-					"  dhq auth login                                                    (interactive)\n" +
-					"  export DEPLOYHQ_ACCOUNT=… DEPLOYHQ_EMAIL=… DEPLOYHQ_API_KEY=…    (CI / agents)",
-			}
-		}
-		if account == "" {
-			account = creds.Account
-		}
-		if email == "" {
-			email = creds.Email
-		}
-		if apiKey == "" {
-			apiKey = creds.APIKey
-		}
+	r, err := c.ResolveCredentials()
+	if err != nil {
+		return "", "", "", err
 	}
+	return r.Account, r.Email, r.APIKey, nil
+}
 
-	if account == "" {
-		return "", "", "", &output.UserError{
-			Message: "Account not configured",
-			Hint:    "Set via --account flag, DEPLOYHQ_ACCOUNT env var, or 'dhq config set account <name>'",
-		}
-	}
-	return account, email, apiKey, nil
+// NewClient returns an SDK client for the given credentials, with the same
+// options (user agent, base URL) as Client(). It is not cached.
+func (c *Context) NewClient(account, email, apiKey string) (*sdk.Client, error) {
+	return sdk.New(account, email, apiKey, c.clientOpts(account)...)
 }
 
 // Client returns the SDK client, creating it on first use.

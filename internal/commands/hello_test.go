@@ -31,7 +31,7 @@ func TestClassifyHelloValidateErr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classifyHelloValidateErr(tt.in)
+			got := classifyHelloValidateErr(tt.in, "acct")
 			if tt.wantNil {
 				if got != nil {
 					t.Fatalf("expected nil, got %T %v", got, got)
@@ -89,7 +89,7 @@ func TestValidateHelloLoginInputs(t *testing.T) {
 			name:    "empty api key",
 			account: "acct", email: "u@e.com", apiKey: "",
 			wantErr: true, wantHeadline: "API key is required",
-			wantHintSubstr: "Profile → API Key",
+			wantHintSubstr: "Settings → Security → API Credentials",
 		},
 		{
 			// First failure wins so users fix one thing at a time.

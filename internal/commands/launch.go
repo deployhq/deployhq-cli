@@ -316,14 +316,9 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// but beta enrollment, project creation, and provisioning must NOT happen.
 	if cfg.dryRun {
 		// Fetch caps for the dry-run cost/warning display (read-only).
-		caps, capsErr := client.GetAccountCapabilities(ctx)
+		caps, capsErr := launchDryRunCaps(ctx, client)
 		if capsErr != nil {
-			var apiErr *sdk.APIError
-			if errors.As(capsErr, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-				caps = &sdk.AccountCapabilities{}
-			} else {
-				caps = &sdk.AccountCapabilities{}
-			}
+			return writeLaunchError(env, cfg, reasonEmailVerificationRequired, capsErr)
 		}
 		return launchDryRun(ctx, env, cfg, client, caps)
 	}
@@ -652,9 +647,7 @@ func launchEnsureAuth(ctx context.Context, env *output.Envelope, cfg launchConfi
 	if env.NonInteractive {
 		return nil, "", &output.AuthError{
 			Message: "Not authenticated",
-			Hint: "Set credentials via environment variables:\n" +
-				"  export DEPLOYHQ_ACCOUNT=<subdomain> DEPLOYHQ_EMAIL=<email> DEPLOYHQ_API_KEY=<key>\n" +
-				"Or log in interactively: dhq auth login",
+			Hint:    auth.SignInHint(cliCtx.Config.Account, cliCtx.Config.Host),
 		}
 	}
 
@@ -698,14 +691,8 @@ func launchSignup(ctx context.Context, env *output.Envelope, reader *bufio.Reade
 		return nil, "", &output.UserError{Message: "Password is required"}
 	}
 
-	fmt.Fprint(env.Stderr, "Accept terms of service? [Y/n]: ") //nolint:errcheck
-	terms, _ := reader.ReadString('\n')
-	terms = strings.TrimSpace(strings.ToLower(terms))
-	if terms != "" && terms != "y" && terms != "yes" {
-		return nil, "", &output.UserError{
-			Message: "Terms of service must be accepted to create an account",
-			Hint:    "Visit https://www.deployhq.com/terms to review.",
-		}
+	if err := confirmSignupTerms(env, reader, false); err != nil {
+		return nil, "", err
 	}
 
 	env.Status("Creating account...")
@@ -863,6 +850,21 @@ func launchPromptTarget(env *output.Envelope) (string, error) {
 }
 
 // ── Dry-run ───────────────────────────────────────────────────────────────────
+
+// launchDryRunCaps fetches account capabilities for the dry-run preview.
+// Missing capability data only degrades the preview, but an unverified email
+// blocks every real step, so it is returned as an error: the preview must name
+// the blocker instead of reporting that the launch would go ahead.
+func launchDryRunCaps(ctx context.Context, client *sdk.Client) (*sdk.AccountCapabilities, error) {
+	caps, err := client.GetAccountCapabilities(ctx)
+	if isEmailVerificationRequired(err) {
+		return nil, emailVerificationLaunchError()
+	}
+	if err != nil {
+		return &sdk.AccountCapabilities{}, nil
+	}
+	return caps, nil
+}
 
 func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, caps *sdk.AccountCapabilities) error {
 
