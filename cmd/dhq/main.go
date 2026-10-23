@@ -17,6 +17,10 @@ func main() {
 	err := cmd.Execute()
 	commands.SendTelemetry(err)
 	if err != nil {
+		// Name plan/billing refusals (no API access on the plan, account
+		// suspended or trial ended, no payment method) and link to the page
+		// that resolves them, instead of printing the raw API response.
+		err = output.ExplainAccountError(err)
 		exitCode := output.ClassifyError(err)
 		if exitCode == 0 {
 			exitCode = 1
