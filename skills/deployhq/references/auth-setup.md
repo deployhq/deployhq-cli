@@ -38,17 +38,22 @@ dhq auth logout
 ```
 
 ### `dhq auth status`
-Shows the signed-in account and checks with DeployHQ that the credentials work.
+Shows the account dhq would use and checks with DeployHQ that the credentials
+work. Credentials are resolved exactly as for API commands: flags, `DEPLOYHQ_*`
+environment variables and config files win; the stored login for the same
+account fills gaps.
 
 | `status` | Meaning | Next step |
 |----------|---------|-----------|
 | `authenticated` | Credentials work | Continue |
 | `email_verification_required` | Signed in, but DeployHQ refuses every request until the account's email is verified | Ask the person to open the verification link DeployHQ emailed them, then re-run `dhq auth status` |
-| `invalid_credentials` | DeployHQ rejected the stored API key | Ask the person to run `dhq auth login` again in a separate terminal |
-| `unconfirmed` | DeployHQ could not be reached to check | Check connectivity and retry |
+| `invalid_credentials` | DeployHQ rejected the API key (wrong or revoked), or has no such account | Stored login: ask the person to run `dhq auth login` again in a separate terminal. Env/flags/config: fix the values there |
+| `api_access_restricted` | Credentials work, but the account's plan has no API access | Upgrade the plan |
+| `unconfirmed` | Network or server error while checking | Check connectivity and retry |
 
-`--json` returns `account`, `email`, `status`, and `message`/`next_step` when there
-is something to fix. `Not logged in` means no credentials are stored.
+`--json` returns `account`, `email`, `source` (`env`, `flag`, `file`, `stored`
+or `mixed`), `sources` (per field), `status`, and `message`/`next_step` when there
+is something to fix. `Not logged in` means no credentials were found.
 
 ```bash
 dhq auth status

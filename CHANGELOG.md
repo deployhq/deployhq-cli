@@ -35,10 +35,21 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   Credentials (`https://<account>.deployhq.com/security`), where the key
   actually is, instead of "Profile → API Key".
 
-- **`dhq auth status`** checks the stored credentials with DeployHQ instead of
-  only reporting that some are stored. `status` is now `authenticated`,
-  `email_verification_required`, `invalid_credentials` or `unconfirmed` (could
-  not reach DeployHQ), with `message` and `next_step` in `--json` output.
+- **`dhq auth status`** checks the credentials with DeployHQ instead of only
+  reporting that some are stored, and resolves them exactly as API commands do
+  (flags, `DEPLOYHQ_*` environment variables and config files win; the stored
+  login for the same account fills gaps), so it reports the account those
+  commands use. Previously, with credentials in the environment, it could
+  check and report a different, stored account. `status` is now
+  `authenticated`, `email_verification_required`, `invalid_credentials` (wrong
+  or revoked key, or no such account), `api_access_restricted` (plan without
+  API access) or `unconfirmed` (network or server error). `--json` adds
+  `source`/`sources` (`env`, `flag`, `file`, `stored`, or `mixed`) and
+  `message`/`next_step`; text output has a `Source:` line.
+
+- **Account given as a hostname** (e.g. `DEPLOYHQ_ACCOUNT=acme.deployhq.com`) is
+  now normalised to the subdomain when credentials are resolved, so it also
+  matches a stored login for that account.
 
 - **Unverified email**: an API request refused because the account's email
   address isn't verified yet now fails with "Your DeployHQ email address isn't
