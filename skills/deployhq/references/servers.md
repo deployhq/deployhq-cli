@@ -160,10 +160,31 @@ is the ssh/rsync equivalent).
 |------|-------------|
 | `--hostname` | Server hostname |
 | `--username` | Login username |
-| `--password` | Login password |
+| `--use-ssh-keys` | Connect with DeployHQ's SSH key (recommended; rsync always does) |
+| `--install-key` | If DeployHQ cannot log in, install its public key on the server using the person's own SSH access, then retry once |
+| `--global-key-pair-id` | Use an account-wide SSH key instead of the project's key |
 | `--port` | Connection port |
-| `--use-ssh-keys` | Use SSH key auth |
-| `--install-key` | Auto-install deploy key |
+| `--password-stdin` | Read the password from stdin, or ask for it with hidden input in a terminal |
+| `--password` | Login password. Avoid: it ends up in shell and agent history |
+
+**SSH key access (preferred).** With `--use-ssh-keys`, DeployHQ logs in with
+its own key: the project's public key by default, or the `--global-key-pair-id`
+key. DeployHQ checks the connection when the server is created, so creation
+fails until that public key is in `~/.ssh/authorized_keys` on the server. The
+error's `hint` then contains the public key and a one-line `ssh ...` command
+that installs it. That command (or `--install-key`) modifies the person's
+server: ask them first, and only run it with their go-ahead. `--install-key`
+uses the person's own SSH login (their SSH keys, or a password prompt when run
+in their terminal); if it cannot install, dhq says why and shows the same key
+and command.
+
+**Password-only servers (FTP/FTPS, or SFTP with a password).** Never ask the
+person to paste the server password into the chat: it stays in the conversation
+history. In non-interactive mode `dhq servers create` refuses to proceed
+without a password and says so. Tell the person to add the server themselves,
+either by running the command in their own terminal with `--password-stdin`
+(hidden prompt), or in the DeployHQ web app. Then continue with
+`dhq servers list` once it exists.
 
 **S3/S3-Compatible flags:**
 
@@ -192,9 +213,18 @@ is the ssh/rsync equivalent).
 **Examples:**
 
 ```bash
-# SSH server
+# SSH server (key-based)
 dhq servers create -p my-app --name Production --protocol-type ssh \
   --hostname example.com --username deploy --use-ssh-keys --json
+
+# Same, installing DeployHQ's key with the person's own SSH access
+# (ask them first: this modifies their server)
+dhq servers create -p my-app --name Production --protocol-type ssh \
+  --hostname example.com --username deploy --use-ssh-keys --install-key --json
+
+# Password-only FTP server: for the person to run in their own terminal
+dhq servers create -p my-app --name FTP --protocol-type ftp \
+  --hostname ftp.example.com --username deploy --password-stdin
 
 # S3 bucket
 dhq servers create -p my-app --name "Static Assets" --protocol-type s3 \

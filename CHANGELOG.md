@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Added
+
+- **`dhq servers create`**: `--password-stdin` reads the server password from
+  stdin, or asks for it with hidden input in a terminal, so it never has to be
+  typed into the command. When a password is required (FTP/FTPS, or SSH without
+  `--use-ssh-keys`) and none is given, an interactive terminal now prompts for
+  it with hidden input; non-interactive runs fail before any request, with a
+  hint to add password-based servers from your own terminal or the DeployHQ
+  web app rather than handing the password to an AI agent.
+
+### Fixed
+
+- **`dhq servers create --install-key`** now installs the project's own public
+  key (the default) as well as a `--global-key-pair-id` key. Previously it only
+  worked with a global key and otherwise silently did nothing. It now tries
+  once, says why when it cannot install, and is rejected up front without SSH
+  key authentication or without `--hostname`/`--username`.
+- **`dhq servers create`**: when DeployHQ cannot log in to an SSH/rsync server
+  because its key is not there yet, the error hint now shows the public key and
+  a one-line command to install it, for the project's key as well as a global
+  key.
+
+### Changed
+
+- **`dhq servers create`** help leads with the key-based SSH example; the
+  password example moves to the end, uses `--password-stdin`, and warns that a
+  password typed into a command ends up in shell history.
+
 ## [0.21.0] - 2026-08-06
 
 ### Added
