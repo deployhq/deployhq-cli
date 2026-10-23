@@ -17,21 +17,32 @@ type ConfigFile struct {
 }
 
 // ConfigFileCreateRequest is the payload for creating a config file.
+//
+// Server targeting: set AllServers to upload the file to every server in the
+// project (including servers added later), or ServerIdentifiers to target
+// specific servers or server groups. Leaving both unset creates a file that is
+// uploaded to no server — a "build only" file when Build is true. Never set
+// both: AllServers wins server-side.
 type ConfigFileCreateRequest struct {
-	Description string `json:"description,omitempty"`
-	Path        string `json:"path"`
-	Body        string `json:"body"`
-	Build       *bool  `json:"build,omitempty"`
+	Description       string   `json:"description,omitempty"`
+	Path              string   `json:"path"`
+	Body              string   `json:"body"`
+	Build             *bool    `json:"build,omitempty"`
+	AllServers        bool     `json:"all_servers,omitempty"`
+	ServerIdentifiers []string `json:"server_identifiers,omitempty"`
 }
 
 // ConfigFileUpdateRequest is the payload for updating a config file. All fields
 // are pointers so only the flags the caller actually changed are sent; an
 // omitted path/body is left untouched server-side rather than cleared.
+// Leaving AllServers and ServerIdentifiers unset keeps the current targeting.
 type ConfigFileUpdateRequest struct {
-	Description *string `json:"description,omitempty"`
-	Path        *string `json:"path,omitempty"`
-	Body        *string `json:"body,omitempty"`
-	Build       *bool   `json:"build,omitempty"`
+	Description       *string  `json:"description,omitempty"`
+	Path              *string  `json:"path,omitempty"`
+	Body              *string  `json:"body,omitempty"`
+	Build             *bool    `json:"build,omitempty"`
+	AllServers        bool     `json:"all_servers,omitempty"`
+	ServerIdentifiers []string `json:"server_identifiers,omitempty"`
 }
 
 func (c *Client) ListConfigFiles(ctx context.Context, projectID string, opts *ListOptions) ([]ConfigFile, error) {

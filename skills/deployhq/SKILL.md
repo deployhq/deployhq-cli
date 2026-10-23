@@ -101,7 +101,7 @@ See [launch.md](references/launch.md). After `launch` writes `.deployhq.toml`, u
 ### "Configure deployment"
 1. `dhq env-vars create -p <project> --name KEY --value val` — add env var
 2. `dhq config-files create -p <project> --path .env --body "..." --json` — add config file
-3. `dhq excluded-files create -p <project> --pattern "node_modules" --json` — add exclusion
+3. `dhq excluded-files create -p <project> --path "node_modules"` — add exclusion (all servers unless `--server`)
 4. `dhq build-commands create -p <project> --name "Install" --command "npm install" --json` — add build step
 5. `dhq deployment-checks create -p <project> --name "Health" --stage post_deploy --check-type http --http-url https://app.example.com/health --http-expected-status 200 --json` — gate the deploy
 

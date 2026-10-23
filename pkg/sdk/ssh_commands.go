@@ -21,13 +21,21 @@ type SSHCommand struct {
 }
 
 // SSHCommandCreateRequest is the payload for creating/updating an SSH command.
+//
+// Server targeting: set AllServers to run the command on every server in the
+// project (including servers added later), or ServerIdentifiers to target
+// specific servers or server groups. On create, leaving both unset stores a
+// command that runs on no server. On update, leaving both unset keeps the
+// existing targeting. Never set both: AllServers wins server-side.
 type SSHCommandCreateRequest struct {
-	Description string `json:"description,omitempty"`
-	Command     string `json:"command,omitempty"`
-	HaltOnError *bool  `json:"halt_on_error,omitempty"`
-	Timing      string `json:"timing,omitempty"`
-	Timeout     *int   `json:"timeout,omitempty"`
-	Enabled     *bool  `json:"enabled,omitempty"`
+	Description       string   `json:"description,omitempty"`
+	Command           string   `json:"command,omitempty"`
+	HaltOnError       *bool    `json:"halt_on_error,omitempty"`
+	Timing            string   `json:"timing,omitempty"`
+	Timeout           *int     `json:"timeout,omitempty"`
+	Enabled           *bool    `json:"enabled,omitempty"`
+	AllServers        bool     `json:"all_servers,omitempty"`
+	ServerIdentifiers []string `json:"server_identifiers,omitempty"`
 }
 
 func (c *Client) ListSSHCommands(ctx context.Context, projectID string, opts *ListOptions) ([]SSHCommand, error) {
