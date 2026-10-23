@@ -246,3 +246,63 @@ func TestLaunchStaticExtras_ExcludedFilesApplyToAllServers(t *testing.T) {
 	require.True(t, ok)
 	assertAllServers(t, obj)
 }
+
+// ── config files ──────────────────────────────────────────────────────────────
+
+const configFileJSON = `{"identifier":"cf-1","path":".env","body":"A=1"}`
+
+func TestConfigFilesCreate_DefaultsToAllServers(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, configFileJSON)
+
+	require.NoError(t, runServersCmd(t, "config-files", "create", "--path", ".env", "--body", "A=1"))
+
+	assertAllServers(t, api.payload(t, "config_file"))
+}
+
+func TestConfigFilesCreate_ServerNameResolves(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, configFileJSON)
+
+	require.NoError(t, runServersCmd(t, "config-files", "create", "--path", ".env", "--body", "A=1", "--server", "Staging"))
+
+	assertTargets(t, api.payload(t, "config_file"), otherServerUUID)
+}
+
+func TestConfigFilesCreate_BuildOnlySendsNoTargeting(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, configFileJSON)
+
+	require.NoError(t, runServersCmd(t, "config-files", "create", "--path", ".npmrc", "--body", "x", "--build-only"))
+
+	obj := api.payload(t, "config_file")
+	assertTargetingUntouched(t, obj)
+	assert.Equal(t, true, obj["build"])
+}
+
+func TestConfigFilesCreate_BuildOnlyConflictsWithServer(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, configFileJSON)
+
+	require.Error(t, runServersCmd(t, "config-files", "create", "--path", ".npmrc", "--body", "x",
+		"--build-only", "--server", targetServerUUID))
+	assert.Equal(t, 0, api.writeCount())
+}
+
+func TestConfigFilesUpdate_BodyOnlyLeavesTargetingUntouched(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, configFileJSON)
+
+	require.NoError(t, runServersCmd(t, "config-files", "update", "cf-1", "--body", "B=2"))
+
+	assertTargetingUntouched(t, api.payload(t, "config_file"))
+}
+
+func TestConfigFilesUpdate_AllServers(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, configFileJSON)
+
+	require.NoError(t, runServersCmd(t, "config-files", "update", "cf-1", "--all-servers"))
+
+	assertAllServers(t, api.payload(t, "config_file"))
+}
