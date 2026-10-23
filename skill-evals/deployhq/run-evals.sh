@@ -157,41 +157,41 @@ check_eval() {
   local expected_cmd
   expected_cmd=$(echo "$eval_json" | jq -r '.expected.command')
 
-  # Check command is present
-  if ! echo "$response" | grep -qF "$expected_cmd"; then
+  # Check command is present. `-e` keeps a pattern that starts with "-" from
+  # being read as a grep option.
+  if ! printf '%s\n' "$response" | grep -qF -e "$expected_cmd"; then
     echo "MISSING_COMMAND:$expected_cmd"
     return 1
   fi
 
-  # Check required flags
-  local flags
-  flags=$(echo "$eval_json" | jq -r '.expected.flags[]? // empty')
-  for flag in $flags; do
-    if ! echo "$response" | grep -qF "$flag"; then
+  # Required flags, args and forbidden strings are read one JSON array element
+  # per line, so an element containing spaces stays a single pattern.
+  local flag
+  while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if ! printf '%s\n' "$response" | grep -qF -e "$flag"; then
       echo "MISSING_FLAG:$flag"
       return 1
     fi
-  done
+  done < <(echo "$eval_json" | jq -r '.expected.flags[]? // empty')
 
-  # Check args
-  local args
-  args=$(echo "$eval_json" | jq -r '.expected.args[]? // empty')
-  for arg in $args; do
-    if ! echo "$response" | grep -qF "$arg"; then
+  local arg
+  while IFS= read -r arg; do
+    [[ -z "$arg" ]] && continue
+    if ! printf '%s\n' "$response" | grep -qF -e "$arg"; then
       echo "MISSING_ARG:$arg"
       return 1
     fi
-  done
+  done < <(echo "$eval_json" | jq -r '.expected.args[]? // empty')
 
-  # Check must_not_contain
-  local forbidden
-  forbidden=$(echo "$eval_json" | jq -r '.must_not_contain[]? // empty')
-  for banned in $forbidden; do
-    if echo "$response" | grep -qF "$banned"; then
+  local banned
+  while IFS= read -r banned; do
+    [[ -z "$banned" ]] && continue
+    if printf '%s\n' "$response" | grep -qF -e "$banned"; then
       echo "FORBIDDEN:$banned"
       return 1
     fi
-  done
+  done < <(echo "$eval_json" | jq -r '.must_not_contain[]? // empty')
 
   echo "PASS"
   return 0
