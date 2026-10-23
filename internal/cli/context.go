@@ -51,9 +51,7 @@ func (c *Context) Credentials() (account, email, apiKey string, err error) {
 		if loadErr != nil {
 			return "", "", "", &output.AuthError{
 				Message: "Not logged in",
-				Hint: "Authenticate first:\n" +
-					"  dhq auth login                                                    (interactive)\n" +
-					"  export DEPLOYHQ_ACCOUNT=… DEPLOYHQ_EMAIL=… DEPLOYHQ_API_KEY=…    (CI / agents)",
+				Hint:    auth.SignInHint(account, c.Config.Host),
 			}
 		}
 		if account == "" {
