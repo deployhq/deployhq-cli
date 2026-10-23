@@ -337,3 +337,34 @@ func TestSSHCommandsUpdate_LeavesTargetingUntouched(t *testing.T) {
 
 	assertTargetingUntouched(t, api.payload(t, "command"))
 }
+
+// ── integrations ──────────────────────────────────────────────────────────────
+
+const integrationJSON = `{"identifier":"ig-1","hook_type":"discord","name":"Discord"}`
+
+func TestIntegrationsCreate_DefaultsToAllServers(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, integrationJSON)
+
+	require.NoError(t, runServersCmd(t, "integrations", "create", "--type", "discord"))
+
+	assertAllServers(t, api.payload(t, "integration"))
+}
+
+func TestIntegrationsCreate_ServerTargets(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, integrationJSON)
+
+	require.NoError(t, runServersCmd(t, "integrations", "create", "--type", "discord", "--server", targetGroupUUID))
+
+	assertTargets(t, api.payload(t, "integration"), targetGroupUUID)
+}
+
+func TestIntegrationsUpdate_NameOnlyLeavesTargetingUntouched(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, integrationJSON)
+
+	require.NoError(t, runServersCmd(t, "integrations", "update", "ig-1", "--name", "Deploys"))
+
+	assertTargetingUntouched(t, api.payload(t, "integration"))
+}

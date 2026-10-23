@@ -235,8 +235,13 @@ func newIntegrationsCmd() *cobra.Command {
 
 func newIntegrationsCreateCmd() *cobra.Command {
 	var hookType, name string
+	var servers []string
 	cmd := &cobra.Command{
 		Use: "create", Short: "Create an integration",
+		Long: `Create an integration that notifies a service about deployments.
+
+The integration fires for deployments to any server in the project (including
+servers added later) unless --server names specific servers or server groups.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if hookType == "" {
 				return &output.UserError{Message: "--type is required"}
@@ -249,9 +254,17 @@ func newIntegrationsCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ig, err := client.CreateIntegration(cliCtx.Background(), projectID, sdk.IntegrationCreateRequest{
-				HookType: hookType, Name: name,
-			})
+			req := sdk.IntegrationCreateRequest{HookType: hookType, Name: name}
+			if cmd.Flags().Changed("server") {
+				ids, err := resolveServerTargets(cliCtx.Background(), client, projectID, servers)
+				if err != nil {
+					return err
+				}
+				req.ServerIdentifiers = ids
+			} else {
+				req.AllServers = true
+			}
+			ig, err := client.CreateIntegration(cliCtx.Background(), projectID, req)
 			if err != nil {
 				return err
 			}
@@ -265,11 +278,14 @@ func newIntegrationsCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&hookType, "type", "", "Hook type (required)")
 	cmd.Flags().StringVar(&name, "name", "", "Integration name")
+	addServerFlag(cmd, &servers)
 	return cmd
 }
 
 func newIntegrationsUpdateCmd() *cobra.Command {
 	var name string
+	var servers []string
+	var allServers bool
 	cmd := &cobra.Command{
 		Use: "update <id>", Short: "Update an integration", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -281,9 +297,15 @@ func newIntegrationsUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ig, err := client.UpdateIntegration(cliCtx.Background(), projectID, args[0], sdk.IntegrationCreateRequest{
-				Name: name,
-			})
+			req := sdk.IntegrationCreateRequest{Name: name, AllServers: allServers}
+			if cmd.Flags().Changed("server") {
+				ids, err := resolveServerTargets(cliCtx.Background(), client, projectID, servers)
+				if err != nil {
+					return err
+				}
+				req.ServerIdentifiers = ids
+			}
+			ig, err := client.UpdateIntegration(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
 				return err
 			}
@@ -292,5 +314,7 @@ func newIntegrationsUpdateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Integration name")
+	addServerFlag(cmd, &servers)
+	addAllServersFlag(cmd, &allServers)
 	return cmd
 }
