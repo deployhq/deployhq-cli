@@ -43,6 +43,23 @@ func (e *UserError) Error() string {
 	return e.Message
 }
 
+// ReportedError wraps an error whose structured JSON error response has already
+// been written to stdout. The top-level handler must not write a second one, so
+// stdout carries exactly one JSON object. The exit code is that of the wrapped
+// error.
+type ReportedError struct {
+	Err error
+}
+
+func (e *ReportedError) Error() string { return e.Err.Error() }
+func (e *ReportedError) Unwrap() error { return e.Err }
+
+// IsReported reports whether err's JSON error response was already written.
+func IsReported(err error) bool {
+	var reported *ReportedError
+	return errors.As(err, &reported)
+}
+
 // InternalError represents an unexpected failure.
 // These produce a generic message and point to the debug log.
 type InternalError struct {
@@ -132,6 +149,10 @@ func IsNetworkErr(err error) bool {
 func ClassifyError(err error) int {
 	if err == nil {
 		return ExitOK
+	}
+	var reported *ReportedError
+	if errors.As(err, &reported) {
+		return ClassifyError(reported.Err)
 	}
 	switch err.(type) {
 	case *UserError:

@@ -116,7 +116,9 @@ func TestLaunchAuthRequired_JSONReason(t *testing.T) {
 	authErr := &output.AuthError{Message: "Not authenticated"}
 
 	result := writeLaunchError(env, launchConfig{}, reasonAuthRequired, authErr)
-	assert.Equal(t, authErr, result, "must return the original error for exit-code purposes")
+	assert.ErrorIs(t, result, authErr, "must wrap the original error for exit-code purposes")
+	assert.Equal(t, output.ClassifyError(authErr), output.ClassifyError(result), "exit code unchanged")
+	assert.True(t, output.IsReported(result), "JSON already written: main must not write a second object")
 
 	var resp map[string]interface{}
 	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
@@ -641,6 +643,7 @@ func TestLaunchVPS_AcceptCostPresent_ProvisionsCalled(t *testing.T) {
 func TestLaunchError_RepoUnreachable(t *testing.T) {
 	// writeLaunchError with reason=repo_unreachable must surface the reason.
 	env, _, stderr := testLaunchEnvelope()
+	env.IsTTY = true // plain (table) mode; a non-TTY envelope auto-selects JSON
 	err := &output.UserError{
 		Message: "No git remote found in this directory",
 		Hint:    "Run: git remote add origin <url>",
@@ -946,6 +949,7 @@ func TestPollProvisioningState_AlreadyActive_NoRequests(t *testing.T) {
 
 func TestWriteLaunchError_PlainMode_PassesThroughError(t *testing.T) {
 	env, _, _ := testLaunchEnvelope() // NonInteractive, NOT json
+	env.IsTTY = true                  // a non-TTY envelope auto-selects JSON
 	orig := &output.UserError{Message: "something bad"}
 	result := writeLaunchError(env, launchConfig{}, reasonRepoUnreachable, orig)
 	assert.Equal(t, orig, result, "plain mode must return the original error unchanged")
@@ -960,7 +964,8 @@ func TestWriteLaunchError_JSONMode_EmitsStructuredPayload(t *testing.T) {
 		Details:  map[string]string{"server": "srv-123"},
 	}
 	result := writeLaunchError(env, launchConfig{}, reasonDeployFailed, le)
-	assert.Equal(t, le, result, "JSON mode must still return the original error for exit-code purposes")
+	assert.ErrorIs(t, result, le, "JSON mode must still carry the original error for exit-code purposes")
+	assert.True(t, output.IsReported(result))
 
 	var resp map[string]interface{}
 	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))

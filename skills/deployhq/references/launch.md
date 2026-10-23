@@ -62,7 +62,7 @@ On failure the error carries a stable `reason`, a `retryable` boolean, and a `ne
 | `auth_required` | No credentials in non-interactive mode — set `DEPLOYHQ_*` env vars (signup is interactive-only) |
 | `beta_enroll_required` | Managed-resources beta not enabled and the user isn't an admin — `details.admin_required=true`; an admin enables it (or use your own server via `dhq init`) |
 | `accept_cost_required` | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
-| `repo_unreachable` | No git remote DeployHQ can deploy from — push a remote / connect a provider first |
+| `repo_unreachable` | No git remote DeployHQ can deploy from, or DeployHQ rejected the repository (for SSH URLs usually a missing deploy key; `next_step` has the key and how to resume) |
 | `plan_limit_reached` | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
 | `subdomain_taken` | Static Hosting subdomain already in use — choose another `--subdomain` |
 | `rate_limited` | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
@@ -72,6 +72,7 @@ On failure the error carries a stable `reason`, a `retryable` boolean, and a `ne
 ## Notes
 
 - Static Hosting deploys are git-based (a connected repo + DeployHQ's build pipeline). `launch` connects the repo for you; it does not yet upload a local build directory.
+- **SSH repositories (`git@...`): deploy key first.** DeployHQ checks access with the project's deploy key as soon as the repo is connected, so `launch` adds the key before connecting: through the `gh` CLI for GitHub when it is installed and signed in, otherwise by showing the key (and, for GitHub, `https://github.com/<owner>/<repo>/settings/keys/new`) and waiting in interactive mode. If the repository is still rejected, `launch` stops with `repo_unreachable`; `next_step` holds the public key, where to add it, and how to resume (re-run the same `dhq launch` command with `--project <permalink>` added), and nothing is provisioned for a project with no repository.
 - **Rollback:** both targets roll back the same way — `dhq rollback <deployment>` redeploys the previous revision through the same pipeline (`dhq deployments list` shows history). There's no separate static-vs-VPS rollback command.
 - Managed VPS and Static Hosting require the **managed-resources beta**. `launch` enrolls the account automatically when an admin runs it (the enrollment endpoint is idempotent and admin-gated); non-admins get `beta_enroll_required`.
 - **Pricing during beta:** Managed VPS and Static Hosting are free for early customers while in beta; the listed monthly rate applies once the beta ends. The CLI's runtime copy is gated by a single switch (`meteredResourcesInBeta` in `internal/commands/metered.go`) — flip it when the resources go GA, and update this beta wording in the same change.
