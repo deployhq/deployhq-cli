@@ -306,3 +306,34 @@ func TestConfigFilesUpdate_AllServers(t *testing.T) {
 
 	assertAllServers(t, api.payload(t, "config_file"))
 }
+
+// ── SSH commands ──────────────────────────────────────────────────────────────
+
+const sshCommandJSON = `{"identifier":"cmd-1","description":"Restart","command":"touch tmp/restart.txt"}`
+
+func TestSSHCommandsCreate_DefaultsToAllServers(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, sshCommandJSON)
+
+	require.NoError(t, runServersCmd(t, "ssh-commands", "create", "--command", "touch tmp/restart.txt"))
+
+	assertAllServers(t, api.payload(t, "command"))
+}
+
+func TestSSHCommandsCreate_ServerTargets(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, sshCommandJSON)
+
+	require.NoError(t, runServersCmd(t, "ssh-commands", "create", "--command", "x", "--server", "production,"+otherServerUUID))
+
+	assertTargets(t, api.payload(t, "command"), targetServerUUID, otherServerUUID)
+}
+
+func TestSSHCommandsUpdate_LeavesTargetingUntouched(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, sshCommandJSON)
+
+	require.NoError(t, runServersCmd(t, "ssh-commands", "update", "cmd-1", "--description", "Restart app"))
+
+	assertTargetingUntouched(t, api.payload(t, "command"))
+}
