@@ -1277,7 +1277,7 @@ func TestLaunchEnsureProject_RepoConnectFailure_IsTerminal(t *testing.T) {
 		branch:         "main",
 	}
 
-	_, err := launchEnsureProject(t.Context(), env, cfg, client, "git@github.com:acme/my-app.git")
+	_, _, err := launchEnsureProject(t.Context(), env, cfg, client, "git@github.com:acme/my-app.git")
 	require.Error(t, err)
 
 	var le *launchError
@@ -1373,7 +1373,7 @@ func TestLaunchEnsureProject_StaleConfigProjectFallsThrough(t *testing.T) {
 	env, _, stderr := testLaunchEnvelope() // NonInteractive
 
 	cfg := launchConfig{projectID: "gone", projectFromConfig: true, targetProtocol: "static_hosting"}
-	_, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
+	_, _, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
 
 	require.Error(t, err)
 	assert.Contains(t, stderr.String(), "no longer exists", "must warn about the stale saved project")
@@ -1398,7 +1398,7 @@ func TestLaunchEnsureProject_StaleFlagProjectErrorsClearly(t *testing.T) {
 	env, _, _ := testLaunchEnvelope()
 
 	cfg := launchConfig{projectID: "typo", projectFromConfig: false} // came from --project
-	_, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
+	_, _, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
@@ -1486,3 +1486,72 @@ func TestLaunchGetCaps_GenericForbidden_Propagates(t *testing.T) {
 // real log file. We define a Logger inline since output.Logger has exported
 // fields but the constructor creates a file.
 var _ io.Writer = (*bytes.Buffer)(nil) // compile-time check
+
+// ── Payment method required on provisioning ───────────────────────────────────
+
+const paymentRequiredMsg = "A payment method is required before you can provision a hosted resource. " +
+	"Add a card in your account's Billing settings, under Payment Details, then try again."
+
+// createServerErr returns the error CreateServer yields for a 422 with body.
+func createServerErr(t *testing.T, body string) error {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	_, err := newTestClient(t, srv).CreateServer(t.Context(), "my-app",
+		sdk.ServerCreateRequest{Name: "site", ProtocolType: "static_hosting"})
+	require.Error(t, err)
+	return err
+}
+
+func TestPaymentMethodLaunchError_LinksToPaymentDetails(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	le := paymentMethodLaunchError(err, testClient(t), "my-app", false)
+	require.NotNil(t, le)
+	assert.Equal(t, reasonPaymentMethodRequired, le.Reason)
+	assert.False(t, le.Retryable)
+	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/payment_details")
+	assert.Equal(t, "https://acme.deployhq.com/account/payment_details", le.Details["payment_url"])
+	// An existing project is not described as left behind.
+	assert.NotContains(t, le.Message, "created during this run")
+	assert.Empty(t, le.Details["project"])
+}
+
+func TestPaymentMethodLaunchError_NamesProjectCreatedThisRun(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	le := paymentMethodLaunchError(err, testClient(t), "my-app", true)
+	require.NotNil(t, le)
+	assert.Contains(t, le.Message, `"my-app" was created during this run`)
+	assert.Contains(t, le.NextStep, "dhq launch --project my-app")
+	assert.Contains(t, le.NextStep, "dhq projects delete my-app")
+	assert.Equal(t, "my-app", le.Details["project"])
+	assert.Equal(t, "true", le.Details["project_created"])
+}
+
+func TestPaymentMethodLaunchError_IgnoresOtherErrors(t *testing.T) {
+	err := createServerErr(t, `{"base":["Subdomain has already been taken"]}`)
+	assert.Nil(t, paymentMethodLaunchError(err, testClient(t), "my-app", true))
+	assert.Nil(t, paymentMethodLaunchError(errors.New("boom"), testClient(t), "my-app", true))
+}
+
+func TestPaymentMethodLaunchError_JSONCarriesReason(t *testing.T) {
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	err := createServerErr(t, `{"error":"`+paymentRequiredMsg+`"}`)
+	le := paymentMethodLaunchError(err, testClient(t), "my-app", true)
+	require.NotNil(t, le)
+
+	_ = writeLaunchError(env, launchConfig{}, reasonPaymentMethodRequired, le)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	assert.Equal(t, reasonPaymentMethodRequired, data["reason"])
+	assert.Equal(t, false, data["retryable"])
+	details := data["details"].(map[string]any)
+	assert.Equal(t, "https://acme.deployhq.com/account/payment_details", details["payment_url"])
+	assert.Equal(t, "my-app", details["project"])
+}
