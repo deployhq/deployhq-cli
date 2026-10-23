@@ -48,10 +48,10 @@ func (e *APIError) IsForbidden() bool {
 	return e.StatusCode == http.StatusForbidden
 }
 
-// IsEmailVerificationRequired is the one 403 the launch flow handles gracefully:
-// the account's email is not yet verified, so the backend's deploy gate blocks
-// it. It is deliberately distinct from a generic 403 (AccessDenied) — which must
-// still surface as a real error.
+// IsEmailVerificationRequired reports the 403 the API returns for every request
+// made with an API key while the account's email is not yet verified. It is
+// deliberately distinct from a generic 403 (AccessDenied) — which must still
+// surface as a real error.
 func (e *APIError) IsEmailVerificationRequired() bool {
 	return e.StatusCode == http.StatusForbidden && e.Message == "email_verification_required"
 }

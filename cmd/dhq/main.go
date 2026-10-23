@@ -17,6 +17,9 @@ func main() {
 	err := cmd.Execute()
 	commands.SendTelemetry(err)
 	if err != nil {
+		// Give API refusals with a known cause (e.g. unverified email) a
+		// specific, actionable message instead of the raw status line.
+		err = output.RefineError(err)
 		exitCode := output.ClassifyError(err)
 		if exitCode == 0 {
 			exitCode = 1
