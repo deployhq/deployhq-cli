@@ -9,7 +9,9 @@ import (
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
 
-const pollInterval = 3 * time.Second
+// pollInterval is how often the watchers re-fetch the deployment. A variable
+// so tests can shorten it.
+var pollInterval = 3 * time.Second
 
 // watchDeployment uses the TUI in interactive terminals, falls back to append-only otherwise.
 func watchDeployment(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) error {
@@ -20,7 +22,35 @@ func watchDeployment(ctx context.Context, client *sdk.Client, env *output.Envelo
 }
 
 // watchDeploymentPlain is the append-only fallback for non-TTY/JSON mode.
+// It returns nil only when the deployment completed; any other terminal
+// status (failed, cancelled) is an error so the exit code is non-zero.
 func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) error {
+	dep, err := followDeploymentPlain(ctx, client, env, projectID, deploymentID)
+	if err != nil {
+		return err
+	}
+	return deploymentOutcomeError(dep)
+}
+
+// deploymentOutcomeError maps a deployment in a terminal state to the command
+// result: nil for "completed", a UserError naming the final status otherwise.
+func deploymentOutcomeError(dep *sdk.Deployment) error {
+	if dep.Status == "completed" {
+		return nil
+	}
+	return &output.UserError{Message: deploymentNotCompletedMessage(dep)}
+}
+
+func deploymentNotCompletedMessage(dep *sdk.Deployment) string {
+	return fmt.Sprintf("Deployment %s finished with status %q (not completed)", dep.Identifier, dep.Status)
+}
+
+// followDeploymentPlain polls a deployment, printing append-only progress to
+// stderr, until it reaches a terminal status. It returns the final deployment.
+// If ctx ends first it returns the last deployment fetched (possibly nil)
+// together with ctx.Err().
+func followDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) (*sdk.Deployment, error) {
+	var last *sdk.Deployment
 	printed := make(map[string]bool) // step identifier → printed as terminal
 	stageShown := make(map[string]bool)
 	shownRunning := "" // identifier of step currently shown as "running"
@@ -28,8 +58,12 @@ func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.E
 	for {
 		dep, err := client.GetDeployment(ctx, projectID, deploymentID)
 		if err != nil {
-			return err
+			if ctx.Err() != nil {
+				return last, ctx.Err()
+			}
+			return last, err
 		}
+		last = dep
 
 		for _, s := range dep.Steps {
 			isTerminal := s.Status == "completed" || s.Status == "failed" || s.Status == "skipped"
@@ -69,7 +103,7 @@ func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.E
 			}
 			env.Status("")
 			env.Status("✅ Deployment completed%s", duration)
-			return nil
+			return dep, nil
 		case "failed":
 			env.Status("")
 			env.Status("❌ Deployment failed")
@@ -104,16 +138,16 @@ func watchDeploymentPlain(ctx context.Context, client *sdk.Client, env *output.E
 			env.Status("Next commands:")
 			env.Status("  dhq deployments logs %s -p %s", deploymentID, projectID)
 			env.Status("  dhq rollback %s -p %s", deploymentID, projectID)
-			return &output.UserError{Message: "Deployment failed"}
+			return dep, nil
 		case "cancelled":
 			env.Status("")
 			env.Status("⚠️  Deployment cancelled")
-			return nil
+			return dep, nil
 		}
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return last, ctx.Err()
 		case <-time.After(pollInterval):
 		}
 	}
