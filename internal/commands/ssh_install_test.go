@@ -71,3 +71,13 @@ func TestSSHInstallArgs_BatchMode(t *testing.T) {
 	b := sshAppendArgs("h", "22", "u", "k", true)
 	assert.Equal(t, "u@h", b[len(b)-2])
 }
+
+func TestSSHCopyIDArgs_ForceModeForPublicKeyOnly(t *testing.T) {
+	assert.Equal(t,
+		[]string{"-f", "-i", "/tmp/k.pub", "-p", "22", "-o", "StrictHostKeyChecking=accept-new", "u@h"},
+		sshCopyIDArgs("/tmp/k.pub", "h", "22", "u", false))
+	assert.Equal(t,
+		[]string{"-f", "-i", "/tmp/k.pub", "-p", "22", "-o", "StrictHostKeyChecking=accept-new",
+			"-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "u@h"},
+		sshCopyIDArgs("/tmp/k.pub", "h", "22", "u", true))
+}

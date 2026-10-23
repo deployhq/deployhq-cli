@@ -84,9 +84,11 @@ func runSSHCopyID(sshCopyIDPath, host, port, user, publicKey string, batch bool)
 }
 
 // sshCopyIDArgs builds the ssh-copy-id arguments; -o options are passed
-// through to ssh.
+// through to ssh. -f (force mode) is required because only the public key
+// exists: without it ssh-copy-id refuses to run unless the matching private
+// key sits next to the .pub file.
 func sshCopyIDArgs(keyFile, host, port, user string, batch bool) []string {
-	args := []string{"-i", keyFile, "-p", port}
+	args := []string{"-f", "-i", keyFile, "-p", port}
 	args = append(args, sshInstallOptions(batch)...)
 	return append(args, fmt.Sprintf("%s@%s", user, host))
 }
