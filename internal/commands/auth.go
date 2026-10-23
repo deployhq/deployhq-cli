@@ -3,7 +3,9 @@ package commands
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -273,6 +275,7 @@ const (
 	authStatusAuthenticated     = "authenticated"
 	authStatusEmailUnverified   = "email_verification_required"
 	authStatusInvalidCredential = "invalid_credentials"
+	authStatusAPIRestricted     = "api_access_restricted"
 	authStatusUnconfirmed       = "unconfirmed"
 )
 
@@ -342,6 +345,8 @@ func checkAuthStatus(ctx context.Context, client *sdk.Client, creds *cli.Resolve
 	// Same /profile request launch uses; it decodes only a few fields, so it
 	// does not depend on the full profile shape.
 	_, err := client.GetAccountCapabilities(ctx)
+	var apiErr *sdk.APIError
+	isAPIErr := errors.As(err, &apiErr)
 	switch {
 	case err == nil:
 		res.Status = authStatusAuthenticated
@@ -349,17 +354,51 @@ func checkAuthStatus(ctx context.Context, client *sdk.Client, creds *cli.Resolve
 		res.Status = authStatusEmailUnverified
 		res.Message = output.EmailNotVerifiedMessage
 		res.NextStep = output.EmailNotVerifiedHint
-	case sdk.IsUnauthorized(err):
+	case isAPIErr && apiErr.StatusCode == http.StatusForbidden && apiErr.Message == "api_access_restricted":
+		// The key is valid, but the account's plan does not include API access.
+		res.Status = authStatusAPIRestricted
+		res.Message = "DeployHQ accepted the credentials, but this account's plan does not include API access"
+		h := host
+		if h == "" {
+			h = "deployhq.com"
+		}
+		res.NextStep = fmt.Sprintf("Upgrade the account's plan (https://%s.%s/account/packages), then re-run 'dhq auth status'.", creds.Account, h)
+	case isAPIErr && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden):
+		// A wrong or revoked API key gets a 403 AccessDenied (401 on some paths).
 		res.Status = authStatusInvalidCredential
-		res.Message = "DeployHQ rejected the stored credentials (the API key may have been revoked)"
-		res.NextStep = "Ask the person to sign in again by running 'dhq auth login' in a separate terminal window. " +
-			"The API key is under " + auth.APIKeyLocation(creds.Account, host) + "."
+		res.Message = fmt.Sprintf("DeployHQ rejected the API key for account %q (wrong, or revoked)", creds.Account)
+		res.NextStep = invalidCredentialsNextStep(creds, host)
+	case isAPIErr && apiErr.StatusCode == http.StatusNotFound:
+		// An unknown account subdomain answers 404.
+		res.Status = authStatusInvalidCredential
+		res.Message = fmt.Sprintf("DeployHQ has no account %q", creds.Account)
+		res.NextStep = invalidCredentialsNextStep(creds, host)
+	case output.IsNetworkErr(err) || (isAPIErr && apiErr.StatusCode >= 500):
+		res.Status = authStatusUnconfirmed
+		res.Message = fmt.Sprintf("The credentials could not be checked with DeployHQ: %v", err)
+		res.NextStep = "Check your connection and re-run 'dhq auth status'."
 	default:
 		res.Status = authStatusUnconfirmed
-		res.Message = fmt.Sprintf("Credentials are stored, but they could not be checked with DeployHQ: %v", err)
-		res.NextStep = "Check your connection and re-run 'dhq auth status'."
+		res.Message = fmt.Sprintf("The credentials could not be checked with DeployHQ: %v", err)
+		res.NextStep = "Re-run 'dhq auth status'."
 	}
 	return res
+}
+
+// invalidCredentialsNextStep says how to fix rejected credentials, which
+// depends on where they came from: a stored login is replaced by signing in
+// again; configured values have to be corrected where they are set.
+func invalidCredentialsNextStep(creds *cli.ResolvedCredentials, host string) string {
+	keyAt := "The API key is under " + auth.APIKeyLocation(creds.Account, host) + "."
+	switch creds.Sources["api_key"] {
+	case "env":
+		return "Check DEPLOYHQ_ACCOUNT and DEPLOYHQ_API_KEY in the environment. " + keyAt
+	case "flag":
+		return "Check the --account and --api-key values. " + keyAt
+	case "file":
+		return "Check the account and api_key in the dhq config file ('dhq configure show'). " + keyAt
+	}
+	return "Ask the person to sign in again by running 'dhq auth login' in a separate terminal window. " + keyAt
 }
 
 func newAuthStatusCmd() *cobra.Command {
@@ -375,7 +414,8 @@ The status is one of:
   authenticated                 credentials work
   email_verification_required   signed in, but DeployHQ refuses requests until the
                                 account's email address is verified
-  invalid_credentials           DeployHQ rejected the stored API key
+  invalid_credentials           DeployHQ rejected the API key, or has no such account
+  api_access_restricted         the credentials work, but the plan has no API access
   unconfirmed                   DeployHQ could not be reached to check`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope

@@ -105,15 +105,45 @@ func TestCheckAuthStatus(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error":"Unauthorized"}`))
 			},
 			wantStatus: authStatusInvalidCredential,
-			wantNext:   "separate terminal window",
+			wantNext:   "DEPLOYHQ_API_KEY",
 		},
 		{
-			name: "generic forbidden is not reported as authenticated",
+			// What the API returns for a wrong or revoked API key.
+			name: "wrong key: 403 AccessDenied",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/plain")
 				w.WriteHeader(http.StatusForbidden)
 				_, _ = w.Write([]byte(`{"error":"AccessDenied"}`))
 			},
+			wantStatus: authStatusInvalidCredential,
+			wantNext:   "DEPLOYHQ_API_KEY", // credentials came from the environment
+		},
+		{
+			// What the API returns for an account subdomain that doesn't exist.
+			name: "unknown account: 404 Not found",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/plain")
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`Not found`))
+			},
+			wantStatus: authStatusInvalidCredential,
+		},
+		{
+			name: "plan without API access",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error":"api_access_restricted","message":"Upgrade your plan to gain access to the API"}`))
+			},
+			wantStatus: authStatusAPIRestricted,
+			wantNext:   "/account/packages",
+		},
+		{
+			name: "server error is unconfirmed",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadGateway)
+			},
 			wantStatus: authStatusUnconfirmed,
+			wantNext:   "connection",
 		},
 	}
 	for _, tt := range tests {
@@ -269,4 +299,24 @@ func TestDescribeCredentialSource(t *testing.T) {
 	assert.Equal(t, "mixed", credentialSource(mixed))
 	assert.Contains(t, describeCredentialSource(mixed), "account from environment variables")
 	assert.Contains(t, describeCredentialSource(mixed), "api_key from stored login")
+}
+
+func TestInvalidCredentialsNextStep_BySource(t *testing.T) {
+	stored := &cli.ResolvedCredentials{Account: "acme", Sources: map[string]string{"api_key": cli.CredentialSourceStored}}
+	assert.Contains(t, invalidCredentialsNextStep(stored, ""), "separate terminal window")
+	assert.Contains(t, invalidCredentialsNextStep(stored, ""), "https://acme.deployhq.com/security")
+
+	env := &cli.ResolvedCredentials{Account: "acme", Sources: map[string]string{"api_key": "env"}}
+	assert.Contains(t, invalidCredentialsNextStep(env, ""), "DEPLOYHQ_API_KEY")
+	assert.NotContains(t, invalidCredentialsNextStep(env, ""), "connection")
+}
+
+func TestCheckAuthStatus_NetworkFailureIsUnconfirmed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	client := newTestClient(t, srv)
+	srv.Close() // connection refused from here on
+
+	res := checkAuthStatus(t.Context(), client, &cli.ResolvedCredentials{Account: "acme"}, "")
+	assert.Equal(t, authStatusUnconfirmed, res.Status)
+	assert.Contains(t, res.NextStep, "connection")
 }
