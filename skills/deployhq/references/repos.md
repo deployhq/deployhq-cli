@@ -25,7 +25,21 @@ dhq repos create -p my-app --scm-type git --url git@github.com:org/repo.git --js
 dhq repos create -p my-app --scm-type git --url git@github.com:org/repo.git --branch main --json
 ```
 
-**Note:** After creation, the response includes a deploy key that must be added to your Git provider.
+**Add the deploy key first for SSH URLs.** For an SSH URL (`git@...` or `ssh://...`)
+DeployHQ checks it can read the repository with the project's deploy key the moment
+the repository is connected. GitHub refuses SSH access with an unknown key even for
+a public repository, so add the key to the repository *before* `repos create`:
+
+```bash
+dhq projects show my-app --json=public_key       # the project's PUBLIC deploy key
+gh repo deploy-key add key.pub -R org/repo --title DeployHQ   # or paste it at
+# https://github.com/org/repo/settings/keys/new (read-only is enough)
+dhq repos create -p my-app --scm-type git --url git@github.com:org/repo.git --json
+```
+
+If the key is missing, `repos create` fails and its error includes the public key,
+where to add it, and the command to re-run. HTTPS URLs are not checked when they are
+connected, so they do not need a deploy key first.
 
 ### `dhq repos update`
 Update repository configuration.

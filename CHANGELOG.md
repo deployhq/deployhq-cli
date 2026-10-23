@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Fixed
+
+- **`dhq launch` / `dhq init`**: connecting a private GitHub repository over SSH no
+  longer fails on a first run. DeployHQ checks access with the project's deploy key
+  as soon as the repository is connected, so the key is now added to the
+  repository first (via the `gh` CLI when available) and the repository connected
+  after. If the key can't be added automatically, the commands show the public key
+  and the GitHub page to paste it into (`/settings/keys/new`), and connect once it
+  is there.
+- **`dhq launch`**: a repository that can't be connected now stops launch with a
+  `repo_unreachable` error that includes the public deploy key, where to add it,
+  and the re-run command (`dhq launch --project <permalink>`), instead of warning
+  and carrying on to provisioning with a project that has no repository.
+- **`dhq repos create`**: a rejected SSH repository's error now includes the
+  project's public deploy key, where to add it, and the command to re-run.
+
 ## [0.21.0] - 2026-08-06
 
 ### Added
