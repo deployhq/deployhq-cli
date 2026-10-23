@@ -638,7 +638,7 @@ func newServersCreateCmd() *cobra.Command {
 					}
 				}
 
-				hint := sshKeyMissingHint(hostname, sshPort, username, publicKey, keyErr)
+				hint := sshKeyMissingHint(hostname, sshPort, username, publicKey, keyErr, installAttempted)
 
 				// Non-interactive: return the error with the key and the command
 				// to install it.

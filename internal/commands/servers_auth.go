@@ -165,7 +165,11 @@ func sshKeyInstallCommand(host string, port int, user, publicKey string) string 
 // sshKeyMissingHint explains an SSH authentication failure during server
 // creation: DeployHQ's key is not on the server yet. It includes the key and
 // the command to install it when the key is known.
-func sshKeyMissingHint(host string, port int, user, publicKey, keyErr string) string {
+func sshKeyMissingHint(host string, port int, user, publicKey, keyErr string, installTried bool) string {
+	installOffer := "Or re-run with --install-key to have dhq do this. "
+	if installTried {
+		installOffer = ""
+	}
 	if publicKey == "" {
 		h := "DeployHQ connects with its own SSH key, which must be in ~/.ssh/authorized_keys on the server."
 		if keyErr != "" {
@@ -177,8 +181,8 @@ func sshKeyMissingHint(host string, port int, user, publicKey, keyErr string) st
 		"DeployHQ connects with its own SSH key, which is not on the server yet. "+
 			"Add this public key to ~/.ssh/authorized_keys for %s on %s:\n  %s\n\n"+
 			"To install it with your own SSH access, run:\n  %s\n\n"+
-			"Or re-run with --install-key to have dhq do this. "+
+			"%s"+
 			"If you are an AI agent, ask the person before modifying their server.",
-		user, host, publicKey, sshKeyInstallCommand(host, port, user, publicKey),
+		user, host, publicKey, sshKeyInstallCommand(host, port, user, publicKey), installOffer,
 	)
 }

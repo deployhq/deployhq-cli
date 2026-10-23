@@ -149,6 +149,9 @@ func TestServersCreate_InstallKeyRetriesOnlyOnce(t *testing.T) {
 	require.Error(t, err)
 	assert.Len(t, *calls, 1)
 	assert.Equal(t, 2, api.createCalls)
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr))
+	assert.NotContains(t, uerr.Hint, "re-run with --install-key", "do not suggest what was just tried")
 }
 
 func TestServersCreate_AuthFailureShowsKeyAndInstallCommand(t *testing.T) {
@@ -167,6 +170,7 @@ func TestServersCreate_AuthFailureShowsKeyAndInstallCommand(t *testing.T) {
 	assert.Contains(t, uerr.Hint, projectPublicKey)
 	assert.Contains(t, uerr.Hint, `ssh deploy@prod.example.com "mkdir -p ~/.ssh`)
 	assert.Contains(t, uerr.Hint, "ask the person before modifying their server")
+	assert.Contains(t, uerr.Hint, "re-run with --install-key")
 }
 
 func TestServersCreate_InstallKeyRequiresKeyAuth_NoHTTP(t *testing.T) {
