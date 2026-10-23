@@ -20,7 +20,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   is there.
 - **`dhq launch`**: a repository that can't be connected now stops launch with a
   `repo_unreachable` error that includes the public deploy key, where to add it,
-  and the re-run command (`dhq launch --project <permalink>`), instead of warning
+  and how to resume (the same command with `--project <permalink>`), instead of warning
   and carrying on to provisioning with a project that has no repository.
 - **`dhq repos create`**: a rejected SSH repository's error now includes the
   project's public deploy key, where to add it, and the command to re-run.

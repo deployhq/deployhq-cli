@@ -32,8 +32,8 @@ a public repository, so add the key to the repository *before* `repos create`:
 
 ```bash
 dhq projects show my-app --json=public_key       # the project's PUBLIC deploy key
-gh repo deploy-key add key.pub -R org/repo --title DeployHQ   # or paste it at
-# https://github.com/org/repo/settings/keys/new (read-only is enough)
+echo '<public_key>' | gh repo deploy-key add -R org/repo --title DeployHQ -
+# or paste it at https://github.com/org/repo/settings/keys/new (read-only is enough)
 dhq repos create -p my-app --scm-type git --url git@github.com:org/repo.git --json
 ```
 
