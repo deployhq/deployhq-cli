@@ -80,7 +80,7 @@ like). .git and node_modules are skipped. Defaults to the current directory.`,
 			if resp.AIAssisted {
 				env.Status("\n(AI-assisted detection)")
 			}
-			env.Status("\nTip: dhq launch to deploy this project, or dhq detect --json for the full result")
+			env.Status("\nTip: dhq projects apply-suggestions -p <project> adds these settings to an existing project; dhq launch deploys to DeployHQ hosting; dhq detect --json for the full result")
 			return nil
 		},
 	}

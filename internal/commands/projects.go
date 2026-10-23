@@ -24,6 +24,7 @@ Use these commands to create, list, configure, and delete projects. Once a proje
 		newProjectsListCmd(),
 		newProjectsShowCmd(),
 		newProjectsCreateCmd(),
+		newProjectsApplySuggestionsCmd(),
 		newProjectsUpdateCmd(),
 		newProjectsDeleteCmd(),
 		newProjectsStarCmd(),
