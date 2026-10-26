@@ -114,13 +114,19 @@ func planSuggestedBuildCommands(ctx context.Context, client *sdk.Client, project
 }
 
 // planSuggestedPaths diffs suggested path patterns against the ones the project
-// already has (as returned by list). A failed lookup plans every path.
-func planSuggestedPaths(paths []string, list func() ([]string, error)) []suggestedItem {
+// already has (as returned by list). A failed lookup is returned as an error,
+// wrapped with what (e.g. "excluded files"), alongside every path planned as an
+// addition: without the lookup there is no knowing which already exist, so the
+// caller decides whether to stop or add them anyway.
+func planSuggestedPaths(paths []string, what string, list func() ([]string, error)) ([]suggestedItem, error) {
 	if len(paths) == 0 {
-		return nil
+		return nil, nil
 	}
 	existing := map[string]bool{}
-	if have, err := list(); err == nil {
+	have, listErr := list()
+	if listErr != nil {
+		listErr = fmt.Errorf("could not list the project's %s: %w", what, listErr)
+	} else {
 		for _, p := range have {
 			existing[p] = true
 		}
@@ -138,11 +144,11 @@ func planSuggestedPaths(paths []string, list func() ([]string, error)) []suggest
 		}
 		items = append(items, suggestedItem{Path: p, Status: status})
 	}
-	return items
+	return items, listErr
 }
 
-func planSuggestedExcludedFiles(ctx context.Context, client *sdk.Client, projectID string, paths []string) []suggestedItem {
-	return planSuggestedPaths(paths, func() ([]string, error) {
+func planSuggestedExcludedFiles(ctx context.Context, client *sdk.Client, projectID string, paths []string) ([]suggestedItem, error) {
+	return planSuggestedPaths(paths, "excluded files", func() ([]string, error) {
 		list, err := client.ListExcludedFiles(ctx, projectID, nil)
 		out := make([]string, 0, len(list))
 		for _, e := range list {
@@ -152,8 +158,8 @@ func planSuggestedExcludedFiles(ctx context.Context, client *sdk.Client, project
 	})
 }
 
-func planSuggestedBuildCacheFiles(ctx context.Context, client *sdk.Client, projectID string, paths []string) []suggestedItem {
-	return planSuggestedPaths(paths, func() ([]string, error) {
+func planSuggestedBuildCacheFiles(ctx context.Context, client *sdk.Client, projectID string, paths []string) ([]suggestedItem, error) {
+	return planSuggestedPaths(paths, "build cache files", func() ([]string, error) {
 		list, err := client.ListBuildCacheFiles(ctx, projectID)
 		out := make([]string, 0, len(list))
 		for _, b := range list {
@@ -163,9 +169,19 @@ func planSuggestedBuildCacheFiles(ctx context.Context, client *sdk.Client, proje
 	})
 }
 
-// planSuggestedSettings builds the full plan for projectID from a detection result.
+// planSuggestedSettings builds the full plan for projectID from a detection
+// result. It stops on the first settings list that can't be read, since the
+// plan would otherwise add settings the project may already have.
 func planSuggestedSettings(ctx context.Context, client *sdk.Client, projectID string, detection detect.Result) (*suggestedSettingsPlan, error) {
 	buildCommands, err := planSuggestedBuildCommands(ctx, client, projectID, detection.BuildCommands)
+	if err != nil {
+		return nil, err
+	}
+	excludedFiles, err := planSuggestedExcludedFiles(ctx, client, projectID, detection.ExcludedFiles)
+	if err != nil {
+		return nil, err
+	}
+	buildCacheFiles, err := planSuggestedBuildCacheFiles(ctx, client, projectID, detection.BuildCacheFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -173,8 +189,8 @@ func planSuggestedSettings(ctx context.Context, client *sdk.Client, projectID st
 		Project:         projectID,
 		Stack:           string(detection.Framework),
 		BuildCommands:   buildCommands,
-		ExcludedFiles:   planSuggestedExcludedFiles(ctx, client, projectID, detection.ExcludedFiles),
-		BuildCacheFiles: planSuggestedBuildCacheFiles(ctx, client, projectID, detection.BuildCacheFiles),
+		ExcludedFiles:   excludedFiles,
+		BuildCacheFiles: buildCacheFiles,
 	}, nil
 }
 

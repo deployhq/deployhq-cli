@@ -1800,12 +1800,19 @@ func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg laun
 // patterns to the project, mirroring the web onboarding wizard's suggested
 // config so the first static deploy is clean and fast. Best-effort and
 // idempotent: it skips patterns that already exist, and any failure is
-// non-fatal (the deploy still works, just without the optimisation).
+// non-fatal (the deploy still works, just without the optimisation). If the
+// existing patterns can't be listed, it adds them all anyway.
 func launchApplyStaticExtras(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, detection detect.Result) {
-	applySuggestedExcludedFiles(ctx, env, client, cfg.projectID,
-		planSuggestedExcludedFiles(ctx, client, cfg.projectID, detection.ExcludedFiles))
-	applySuggestedBuildCacheFiles(ctx, env, client, cfg.projectID,
-		planSuggestedBuildCacheFiles(ctx, client, cfg.projectID, detection.BuildCacheFiles))
+	excluded, err := planSuggestedExcludedFiles(ctx, client, cfg.projectID, detection.ExcludedFiles)
+	if err != nil {
+		env.Logger.Write("%v; adding the suggested excluded files anyway", err)
+	}
+	applySuggestedExcludedFiles(ctx, env, client, cfg.projectID, excluded)
+	caches, err := planSuggestedBuildCacheFiles(ctx, client, cfg.projectID, detection.BuildCacheFiles)
+	if err != nil {
+		env.Logger.Write("%v; adding the suggested build cache files anyway", err)
+	}
+	applySuggestedBuildCacheFiles(ctx, env, client, cfg.projectID, caches)
 }
 
 // ── Deploy ────────────────────────────────────────────────────────────────────

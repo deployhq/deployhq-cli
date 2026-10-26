@@ -320,3 +320,20 @@ func TestProjectsApplySuggestions_StopsWhenBuildCommandsCannotBeListed(t *testin
 	require.Error(t, err, "an unknown build pipeline must stop the command")
 	assert.Zero(t, api.posts["/build_commands"], "no build command may be added")
 }
+
+// Excluded files and build cache files are only added when missing. If the
+// existing ones can't be listed, every suggestion would be posted again, so
+// the command stops before changing anything.
+func TestProjectsApplySuggestions_StopsWhenExistingPathsCannotBeListed(t *testing.T) {
+	for _, suffix := range []string{"/excluded_files", "/build_cache_files"} {
+		t.Run(strings.TrimPrefix(suffix, "/"), func(t *testing.T) {
+			api := &fakeSuggestionsAPI{status: map[string]int{"GET " + suffix: http.StatusInternalServerError}}
+			api.install(t)
+
+			_, err := runApplySuggestions(t)
+
+			require.Error(t, err, "unknown existing paths must stop the command")
+			assert.Empty(t, api.posts, "nothing may be added")
+		})
+	}
+}
