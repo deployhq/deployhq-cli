@@ -2065,6 +2065,8 @@ func writeLaunchError(env *output.Envelope, cfg launchConfig, reason string, err
 			Recovery:  recovery,
 		},
 	}
-	_ = env.WriteJSON(resp)
+	// Unfiltered: --json=<fields> selects from the success payload, and
+	// filtering this object would drop the reason the caller needs.
+	_ = env.WriteJSONUnfiltered(resp)
 	return &output.ReportedError{Err: err}
 }

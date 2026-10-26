@@ -94,7 +94,7 @@ func deployKeyInstructions(repoURL, publicKey, rerun string) string {
 	fmt.Fprintf(&b, "Public deploy key:\n  %s\n\n", publicKey)
 	if settings := githubDeployKeySettingsURL(repoURL); settings != "" {
 		fmt.Fprintf(&b, "Paste it at: %s\n", settings)
-		fmt.Fprintf(&b, "Or with the GitHub CLI: echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -\n", publicKey, quoteRerunArg(extractGitHubRepo(repoURL)))
+		fmt.Fprintf(&b, "Or with the GitHub CLI: echo %s | gh repo deploy-key add -R %s --title DeployHQ -\n", quoteRerunArg(publicKey), quoteRerunArg(extractGitHubRepo(repoURL)))
 	} else {
 		b.WriteString("Add it in your git host's repository settings, under Deploy keys (Bitbucket: Access keys).\n")
 	}

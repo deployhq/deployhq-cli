@@ -627,3 +627,39 @@ func TestLaunchRepoErrors_QuoteProject(t *testing.T) {
 	require.True(t, isLaunchErr(launchNewProjectRepoFailure(assert.AnError, "a&b"), &le))
 	assert.Contains(t, le.NextStep, "--project 'a&b' added")
 }
+
+// --json=<fields> must not filter launch's error away: it is the only JSON
+// object written for the failure, so reason, exit_code and recovery have to
+// survive a field selection aimed at the success payload.
+func TestWriteLaunchError_JSONFieldsDoNotFilterError(t *testing.T) {
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	env.JSONFields = []string{"url"}
+	err := writeLaunchError(env, launchConfig{}, reasonRepoUnreachable, &launchError{Reason: reasonRepoUnreachable, Message: "rejected"})
+	assert.True(t, output.IsReported(err))
+
+	var got map[string]interface{}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	data, ok := got["data"].(map[string]interface{})
+	require.True(t, ok, "error payload missing: %s", stdout.String())
+	assert.Equal(t, reasonRepoUnreachable, data["reason"])
+	assert.NotZero(t, data["exit_code"])
+	assert.Contains(t, data, "recovery")
+}
+
+// The public key's comment carries the project name, so a ' in it must not
+// break the copy-paste gh command: every place that echoes the key quotes it.
+func TestDeployKeyCommands_QuotePublicKey(t *testing.T) {
+	const key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItestkey DeployHQ.com Key for it's"
+	const want = `echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItestkey DeployHQ.com Key for it'\''s' | gh repo deploy-key add -R acme/my-app --title DeployHQ -`
+	const repoURL = "git@github.com:acme/my-app.git"
+
+	assert.Contains(t, deployKeyInstructions(repoURL, key, ""), want)
+
+	crumbs := deployKeyBreadcrumbs(repoURL, key, "my-app")
+	require.NotEmpty(t, crumbs)
+	assert.Equal(t, want, crumbs[0].Cmd)
+
+	env, _, stderr := testLaunchEnvelope()
+	printDeployKeyHint(env, repoURL, key, "my-app")
+	assert.Contains(t, stderr.String(), want)
+}
