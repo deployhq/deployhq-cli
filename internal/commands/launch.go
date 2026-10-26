@@ -1787,7 +1787,12 @@ func pollProvisioningState(ctx context.Context, env *output.Envelope, client *sd
 func launchApplyBuildCommand(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, detection detect.Result) {
 	// Shared with 'dhq projects apply-suggestions': skips when the project
 	// already has build commands, so re-runs and reused projects don't duplicate.
-	items := planSuggestedBuildCommands(ctx, client, cfg.projectID, detection.BuildCommands)
+	// If they can't be listed, launch still adds them (best-effort): a static
+	// site deployed without its build step is the worse outcome here.
+	items, err := planSuggestedBuildCommands(ctx, client, cfg.projectID, detection.BuildCommands)
+	if err != nil {
+		env.Logger.Write("%v; adding the suggested build commands anyway", err)
+	}
 	applySuggestedBuildCommands(ctx, env, client, cfg.projectID, items)
 }
 

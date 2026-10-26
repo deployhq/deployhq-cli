@@ -77,8 +77,10 @@ func (p *suggestedSettingsPlan) failed() []string {
 // project. Build commands run as an ordered pipeline, so they are all-or-nothing:
 // when the project already has any build command, every suggestion is skipped
 // rather than merged into (or duplicated in) a pipeline someone set up already.
-// A failed lookup does not block — the steps are planned as additions.
-func planSuggestedBuildCommands(ctx context.Context, client *sdk.Client, projectID string, steps []detect.BuildCommandStep) []suggestedItem {
+// A failed lookup is returned as an error alongside the steps planned as
+// additions: without the lookup there is no knowing whether a pipeline exists,
+// so the caller decides whether to stop or add them anyway.
+func planSuggestedBuildCommands(ctx context.Context, client *sdk.Client, projectID string, steps []detect.BuildCommandStep) ([]suggestedItem, error) {
 	var items []suggestedItem
 	for _, step := range steps {
 		if step.Command == "" {
@@ -97,14 +99,18 @@ func planSuggestedBuildCommands(ctx context.Context, client *sdk.Client, project
 		})
 	}
 	if len(items) == 0 {
-		return nil
+		return nil, nil
 	}
-	if existing, err := client.ListBuildCommands(ctx, projectID, nil); err == nil && len(existing) > 0 {
+	existing, err := client.ListBuildCommands(ctx, projectID, nil)
+	if err != nil {
+		return items, fmt.Errorf("could not list the project's build commands: %w", err)
+	}
+	if len(existing) > 0 {
 		for i := range items {
 			items[i].Status = suggestionSkipped
 		}
 	}
-	return items
+	return items, nil
 }
 
 // planSuggestedPaths diffs suggested path patterns against the ones the project
@@ -158,14 +164,18 @@ func planSuggestedBuildCacheFiles(ctx context.Context, client *sdk.Client, proje
 }
 
 // planSuggestedSettings builds the full plan for projectID from a detection result.
-func planSuggestedSettings(ctx context.Context, client *sdk.Client, projectID string, detection detect.Result) *suggestedSettingsPlan {
+func planSuggestedSettings(ctx context.Context, client *sdk.Client, projectID string, detection detect.Result) (*suggestedSettingsPlan, error) {
+	buildCommands, err := planSuggestedBuildCommands(ctx, client, projectID, detection.BuildCommands)
+	if err != nil {
+		return nil, err
+	}
 	return &suggestedSettingsPlan{
 		Project:         projectID,
 		Stack:           string(detection.Framework),
-		BuildCommands:   planSuggestedBuildCommands(ctx, client, projectID, detection.BuildCommands),
+		BuildCommands:   buildCommands,
 		ExcludedFiles:   planSuggestedExcludedFiles(ctx, client, projectID, detection.ExcludedFiles),
 		BuildCacheFiles: planSuggestedBuildCacheFiles(ctx, client, projectID, detection.BuildCacheFiles),
-	}
+	}, nil
 }
 
 // applySuggestedBuildCommands creates every planned build command in order.
@@ -303,7 +313,10 @@ see what would be applied without changing anything.`,
 				return err
 			}
 
-			plan := planSuggestedSettings(ctx, client, projectID, detectionResultFromAPI(resp))
+			plan, err := planSuggestedSettings(ctx, client, projectID, detectionResultFromAPI(resp))
+			if err != nil {
+				return err
+			}
 			plan.DryRun = dryRun
 			pending := plan.pending()
 

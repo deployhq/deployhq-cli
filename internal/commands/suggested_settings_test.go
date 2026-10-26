@@ -106,7 +106,8 @@ func TestPlanSuggestedSettings_DiffsAgainstProject(t *testing.T) {
 	f := &fakeProjectSettings{excluded: []string{".env"}}
 	client := newTestClient(t, f.server(t))
 
-	plan := planSuggestedSettings(t.Context(), client, "my-app", nodeDetection)
+	plan, err := planSuggestedSettings(t.Context(), client, "my-app", nodeDetection)
+	require.NoError(t, err)
 
 	assert.Equal(t, []string{"add", "add"}, statuses(plan.BuildCommands))
 	assert.Equal(t, []string{"add", "exists"}, statuses(plan.ExcludedFiles))
@@ -118,7 +119,8 @@ func TestPlanSuggestedSettings_DiffsAgainstProject(t *testing.T) {
 // An existing build pipeline is never extended or duplicated.
 func TestPlanSuggestedSettings_SkipsBuildCommandsWhenProjectHasSome(t *testing.T) {
 	f := &fakeProjectSettings{buildCommands: []string{"make"}}
-	plan := planSuggestedSettings(t.Context(), newTestClient(t, f.server(t)), "my-app", nodeDetection)
+	plan, err := planSuggestedSettings(t.Context(), newTestClient(t, f.server(t)), "my-app", nodeDetection)
+	require.NoError(t, err)
 	assert.Equal(t, []string{"skipped", "skipped"}, statuses(plan.BuildCommands))
 }
 
@@ -128,7 +130,8 @@ func TestApplySuggestedSettings_IdempotentOnRerun(t *testing.T) {
 	client := newTestClient(t, f.server(t))
 	env, _, _ := testLaunchEnvelope()
 
-	plan := planSuggestedSettings(t.Context(), client, "my-app", nodeDetection)
+	plan, err := planSuggestedSettings(t.Context(), client, "my-app", nodeDetection)
+	require.NoError(t, err)
 	applySuggestedSettings(t.Context(), env, client, plan)
 
 	assert.Equal(t, []string{"added", "added"}, statuses(plan.BuildCommands))
@@ -137,7 +140,8 @@ func TestApplySuggestedSettings_IdempotentOnRerun(t *testing.T) {
 	assert.Equal(t, []string{"npm ci", "npm run build"}, f.buildCommands, "steps are created in order")
 	assert.Equal(t, 4, f.posts)
 
-	again := planSuggestedSettings(t.Context(), client, "my-app", nodeDetection)
+	again, err := planSuggestedSettings(t.Context(), client, "my-app", nodeDetection)
+	require.NoError(t, err)
 	assert.Zero(t, again.pending(), "second run must find nothing to apply")
 	applySuggestedSettings(t.Context(), env, client, again)
 	assert.Equal(t, 4, f.posts, "second run must not create anything")
@@ -150,7 +154,9 @@ func TestApplySuggestedSettings_ExcludedFilesApplyToAllServers(t *testing.T) {
 	client := newTestClient(t, f.server(t))
 	env, _, _ := testLaunchEnvelope()
 
-	applySuggestedSettings(t.Context(), env, client, planSuggestedSettings(t.Context(), client, "my-app", nodeDetection))
+	plan, err := planSuggestedSettings(t.Context(), client, "my-app", nodeDetection)
+	require.NoError(t, err)
+	applySuggestedSettings(t.Context(), env, client, plan)
 
 	require.Len(t, f.excludedPosts, 2)
 	for _, body := range f.excludedPosts {
@@ -161,7 +167,8 @@ func TestApplySuggestedSettings_ExcludedFilesApplyToAllServers(t *testing.T) {
 // The plan summary names every item and its status on stderr.
 func TestPrintSuggestedSettingsPlan(t *testing.T) {
 	f := &fakeProjectSettings{buildCommands: []string{"make"}}
-	plan := planSuggestedSettings(t.Context(), newTestClient(t, f.server(t)), "my-app", nodeDetection)
+	plan, err := planSuggestedSettings(t.Context(), newTestClient(t, f.server(t)), "my-app", nodeDetection)
+	require.NoError(t, err)
 	env, stdout, stderr := testLaunchEnvelope()
 
 	printSuggestedSettingsPlan(env, plan)
@@ -299,4 +306,17 @@ func TestProjectsApplySuggestions_SucceedsWhenEveryItemIsAdded(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]int{"/build_commands": 1, "/excluded_files": 1, "/build_cache_files": 1}, api.posts)
 	assert.Contains(t, written, `"ok":true`)
+}
+
+// Build commands are only added to a project that has none. If the existing
+// ones can't be listed, that can't be known, so the command stops rather than
+// adding a second pipeline on top of one that may exist.
+func TestProjectsApplySuggestions_StopsWhenBuildCommandsCannotBeListed(t *testing.T) {
+	api := &fakeSuggestionsAPI{status: map[string]int{"GET /build_commands": http.StatusInternalServerError}}
+	api.install(t)
+
+	err, _ := runApplySuggestions(t)
+
+	require.Error(t, err, "an unknown build pipeline must stop the command")
+	assert.Zero(t, api.posts["/build_commands"], "no build command may be added")
 }
