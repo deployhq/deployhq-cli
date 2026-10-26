@@ -306,9 +306,11 @@ func TestLaunchApplyBuildCommand_StopsAtFirstFailure(t *testing.T) {
 	defer mu.Unlock()
 	assert.Equal(t, 1, posts, "no build command may be added after one fails")
 	warn := stderr.String()
-	assert.Contains(t, warn, `dhq build-commands create -p my-app --command "npm ci"`)
-	assert.Contains(t, warn, `dhq build-commands create -p my-app --command "npm run build"`)
-	assert.Equal(t, 1, strings.Count(warn, `--command "npm run build"`), "manual commands are printed once")
+	// Values are shell-quoted (single quotes, bare when safe) and launch's
+	// description, which defaults to the command, is carried over.
+	assert.Contains(t, warn, `dhq build-commands create -p my-app --command 'npm ci' --description 'npm ci'`)
+	assert.Contains(t, warn, `dhq build-commands create -p my-app --command 'npm run build' --description 'npm run build'`)
+	assert.Equal(t, 1, strings.Count(warn, `--command 'npm run build'`), "manual commands are printed once")
 }
 
 func TestLaunchApplyBuildCommand_TruncatesLongDescription(t *testing.T) {

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -345,6 +346,20 @@ func newReposLatestRevisionCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// rerunArgSafe matches values that can be pasted into a shell unquoted.
+var rerunArgSafe = regexp.MustCompile(`^[A-Za-z0-9@%+=:,./_-]+$`)
+
+// quoteRerunArg makes a value safe to paste into a suggested shell command:
+// left bare when it has no shell syntax, otherwise single-quoted with any
+// embedded ' written as '\''. A valid git branch such as release&hotfix would
+// otherwise run shell syntax when the command is copied.
+func quoteRerunArg(s string) string {
+	if rerunArgSafe.MatchString(s) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // deployKeyBreadcrumbs returns breadcrumbs with CLI commands for adding a deploy key.

@@ -235,6 +235,9 @@ func applySuggestedBuildCommands(ctx context.Context, env *output.Envelope, clie
 			for _, c := range manualBuildCommands(projectID, items) {
 				env.Warn("  %s", c)
 			}
+			if manualBuildCommandsLoseSettings(items) {
+				env.Warn("Halt-on-error and template settings for these steps can be adjusted in the DeployHQ dashboard.")
+			}
 			return
 		}
 		it.Status = suggestionAdded
@@ -242,15 +245,33 @@ func applySuggestedBuildCommands(ctx context.Context, env *output.Envelope, clie
 }
 
 // manualBuildCommands returns, in order, the 'dhq build-commands create'
-// command for every build command that failed or was not attempted.
+// command for every build command that failed or was not attempted. Values are
+// shell-quoted so $VAR, $(...) and backticks in a command survive being pasted.
 func manualBuildCommands(projectID string, items []suggestedItem) []string {
 	var cmds []string
 	for _, it := range items {
 		if it.Status == suggestionFailed || it.Status == suggestionNotAttempted {
-			cmds = append(cmds, fmt.Sprintf("dhq build-commands create -p %s --command %q", projectID, it.Command))
+			c := fmt.Sprintf("dhq build-commands create -p %s --command %s", quoteRerunArg(projectID), quoteRerunArg(it.Command))
+			if it.Description != "" {
+				c += " --description " + quoteRerunArg(it.Description)
+			}
+			cmds = append(cmds, c)
 		}
 	}
 	return cmds
+}
+
+// manualBuildCommandsLoseSettings reports whether any build command left for the
+// user to add has a template name or halt-on-error setting, which 'dhq
+// build-commands create' has no flags for.
+func manualBuildCommandsLoseSettings(items []suggestedItem) bool {
+	for _, it := range items {
+		if (it.Status == suggestionFailed || it.Status == suggestionNotAttempted) &&
+			(it.templateName != "" || it.haltOnError != nil) {
+			return true
+		}
+	}
+	return false
 }
 
 // applySuggestedPaths creates every planned path with create. Failures are

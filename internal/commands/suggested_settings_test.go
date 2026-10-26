@@ -473,3 +473,69 @@ func TestProjectsApplySuggestions_HintCoversBuildCommandsAndPaths(t *testing.T) 
 	assert.Contains(t, err.Error(), "dhq build-commands create")
 	assert.Contains(t, err.Error(), "Re-run 'dhq projects apply-suggestions -p my-app' to retry the excluded and build cache files")
 }
+
+// The manual recovery commands are pasted into a shell, so each value is
+// shell-quoted: a double-quoted %q form would let the shell expand $VAR, $(...)
+// and backticks in the build command. The description is carried over too.
+func TestManualBuildCommands_ShellQuotesValues(t *testing.T) {
+	items := []suggestedItem{
+		{Command: "npm ci", Status: suggestionAdded},
+		{Command: "echo $HOME && npm run build", Description: "Build the site's assets", Status: suggestionFailed},
+		{Command: "npm test", Status: suggestionNotAttempted},
+	}
+
+	got := manualBuildCommands("my app", items)
+
+	assert.Equal(t, []string{
+		`dhq build-commands create -p 'my app' --command 'echo $HOME && npm run build' --description 'Build the site'\''s assets'`,
+		`dhq build-commands create -p 'my app' --command 'npm test'`,
+	}, got)
+}
+
+// Template and halt-on-error settings can't be given to 'dhq build-commands
+// create', so when a remaining step has them a note says where to set them.
+func TestApplySuggestedBuildCommands_NotesDashboardOnlySettings(t *testing.T) {
+	halt := false
+	cases := map[string]struct {
+		items    []suggestedItem
+		wantNote bool
+	}{
+		"template name": {items: []suggestedItem{{Command: "npm ci", Status: suggestionAdd, templateName: "node"}}, wantNote: true},
+		"halt on error": {items: []suggestedItem{{Command: "npm ci", Status: suggestionAdd}, {Command: "npm run build", Status: suggestionAdd, haltOnError: &halt}}, wantNote: true},
+		"neither":       {items: []suggestedItem{{Command: "npm ci", Status: suggestionAdd, Description: "Install"}}, wantNote: false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"error":"command is invalid"}`))
+			}))
+			defer srv.Close()
+			env, _, stderr := testLaunchEnvelope()
+
+			applySuggestedBuildCommands(t.Context(), env, newTestClient(t, srv), "my-app", tc.items)
+
+			const note = "Halt-on-error and template settings for these steps can be adjusted in the DeployHQ dashboard."
+			if tc.wantNote {
+				assert.Equal(t, 1, strings.Count(stderr.String(), note), stderr.String())
+			} else {
+				assert.NotContains(t, stderr.String(), note)
+			}
+		})
+	}
+}
+
+// quoteRerunArg leaves a build command's shell syntax inert when pasted.
+func TestQuoteRerunArg_BuildCommandSyntax(t *testing.T) {
+	cases := map[string]string{
+		"npm":                "npm",
+		"echo $HOME":         "'echo $HOME'",
+		"echo $(id)":         "'echo $(id)'",
+		"echo `id`":          "'echo `id`'",
+		`printf 'a'`:         `'printf '\''a'\'''`,
+		"npm ci && npm test": "'npm ci && npm test'",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, quoteRerunArg(in), "input %q", in)
+	}
+}
