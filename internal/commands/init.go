@@ -439,6 +439,9 @@ func (m *initModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.creating = true
 			return m, m.createRepo
 		case "backspace", "left":
+			if m.creating {
+				return m, nil // wait for the connection result
+			}
 			m.step = stepBranch
 		}
 		return m, nil

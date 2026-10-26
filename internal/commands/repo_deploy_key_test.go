@@ -380,6 +380,26 @@ func TestInitWizard_DeployKeyManual_EnterWhileConnectingIsIgnored(t *testing.T) 
 	assert.True(t, m.creating)
 }
 
+// Going back while the connection is in flight would let its late result move
+// the wizard on from the wrong step, so Back waits until it finishes.
+func TestInitWizard_DeployKeyManual_BackWhileConnectingIsIgnored(t *testing.T) {
+	m := &initModel{
+		step:    stepDeployKeyManual,
+		repoURL: "git@github.com:acme/my-app.git",
+		scmType: "git",
+		project: &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, stepDeployKeyManual, m.step, "Back is ignored while connecting")
+
+	m.creating = false
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, stepBranch, m.step, "Back works again once the connection finished")
+}
+
 func TestInitWizard_GHKeyAdded_ThenConnects(t *testing.T) {
 	m := &initModel{
 		step:        stepBranch,
