@@ -41,10 +41,15 @@ func runWatchTUI(ctx context.Context, client *sdk.Client, env *output.Envelope, 
 		deploymentID: deploymentID,
 	}
 
-	opts := append([]tea.ProgramOption{tea.WithOutput(env.Stderr)}, watchTUIOptions...)
+	// WithContext stops the program as soon as ctx ends (e.g. --timeout),
+	// instead of at the next poll tick.
+	opts := append([]tea.ProgramOption{tea.WithOutput(env.Stderr), tea.WithContext(ctx)}, watchTUIOptions...)
 	p := tea.NewProgram(m, opts...)
 	finalModel, err := p.Run()
 	if err != nil {
+		if fm, ok := finalModel.(*watchModel); ok && ctx.Err() != nil {
+			return fm.status, err
+		}
 		return "", err
 	}
 

@@ -251,6 +251,23 @@ func TestWaitForDeployment_TerminalTimeoutReportsLastStatus(t *testing.T) {
 	assert.Contains(t, err.Error(), "last status: running")
 }
 
+// The live view must stop at the deadline, not at its next poll: with the
+// normal poll interval, a 1s timeout still returns in about a second.
+func TestWaitForDeployment_TerminalTimeoutIsPrompt(t *testing.T) {
+	seq := &deploymentSequence{statuses: []string{"running"}}
+	srv := httptest.NewServer(seq.handler(t))
+	defer srv.Close()
+	env, _ := ttyEnvelope(t)
+
+	start := time.Now()
+	err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 1)
+	elapsed := time.Since(start)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Timed out after 1s")
+	assert.Contains(t, err.Error(), "last status: running")
+	assert.Less(t, elapsed, 2*time.Second, "timeout should not wait for the next poll")
+}
+
 // --table (or -q) turns JSON off even without a terminal, e.g. in CI. --wait
 // must still wait there, with plain progress, and never open the live view.
 func TestWaitForDeployment_TableWithoutTerminalWaits(t *testing.T) {
