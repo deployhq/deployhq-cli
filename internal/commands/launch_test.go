@@ -899,8 +899,8 @@ func TestLaunchCheckPlanLimits_StaticIneligible(t *testing.T) {
 	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
 	data := resp["data"].(map[string]interface{})
 	assert.Equal(t, reasonPlanLimitReached, data["reason"])
-	assert.Equal(t, float64(output.ClassifyError(result)), data["exit_code"])
-	assert.NotZero(t, data["exit_code"])
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(result), "a plan limit is a user error, not an internal one")
+	assert.Equal(t, float64(output.ExitUserError), data["exit_code"])
 	assert.Contains(t, data, "recovery")
 }
 

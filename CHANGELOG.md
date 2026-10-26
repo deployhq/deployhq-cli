@@ -55,6 +55,12 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `exit_code` and `recovery` fields the generic error object carried).
   Previously a second, generic error object followed it. Exit codes are
   unchanged.
+- **`dhq launch`**: a refusal now exits with the documented code for its kind —
+  1 for something the person must change (`plan_limit_reached`,
+  `accept_cost_required`, `beta_enroll_required`, `repo_unreachable`,
+  `rate_limited`), 3 for auth (`email_verification_required`), 6 when the
+  subdomain is taken — instead of 2 (internal error). The same code appears as
+  `exit_code` in `--json`.
 
 ## [0.21.0] - 2026-08-06
 

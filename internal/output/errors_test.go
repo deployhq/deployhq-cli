@@ -177,3 +177,20 @@ func TestIsNetworkErr_DeadlineExceededViaNetError(t *testing.T) {
 	// And confirm it doesn't depend on the elapsed time
 	_ = time.Second
 }
+
+// fixedExitError reports its own exit code through the ExitCoder contract.
+type fixedExitError struct{ code int }
+
+func (e *fixedExitError) Error() string { return "fixed" }
+func (e *fixedExitError) ExitCode() int { return e.code }
+
+func TestClassifyError_ExitCoder(t *testing.T) {
+	err := &fixedExitError{code: ExitConflictError}
+	assert.Equal(t, ExitConflictError, ClassifyError(err))
+	// Wrapped and already-reported errors keep the code the error chose.
+	assert.Equal(t, ExitConflictError, ClassifyError(fmt.Errorf("context: %w", err)))
+	assert.Equal(t, ExitConflictError, ClassifyError(&ReportedError{Err: err}))
+	// The structured JSON error carries the same code.
+	data := ErrorResponseFromErr(err).Data.(ErrorData)
+	assert.Equal(t, ExitConflictError, data.ExitCode)
+}
