@@ -1483,6 +1483,18 @@ func TestPaymentMethodLaunchError_LinksToPaymentDetails(t *testing.T) {
 	assert.Empty(t, le.Details["project"])
 }
 
+// A missing payment method is an expected refusal, not a CLI fault: it must
+// exit 1 (user error), as the raw 422 did before launch explained it, and the
+// launch-specific message must survive main's account-error explanation.
+func TestPaymentMethodLaunchError_ExitsAsUserError(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	le := paymentMethodLaunchError(err, testClient(t), "my-app", true)
+	require.NotNil(t, le)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(le))
+	assert.Equal(t, error(le), output.ExplainAccountError(le))
+}
+
 // accountURLOf returns the account URL the SDK recorded on an API error.
 func accountURLOf(t *testing.T, err error) string {
 	t.Helper()

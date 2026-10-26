@@ -125,7 +125,12 @@ type launchError struct {
 	// off (e.g. a 429 provisioning rate limit), as opposed to a hard wall like
 	// plan_limit_reached. Surfaced as `retryable` in --json output.
 	Retryable bool
+	// Cause is the error this one explains, if any. It is reachable through
+	// Unwrap so output.ClassifyError picks the exit code from it.
+	Cause error
 }
+
+func (e *launchError) Unwrap() error { return e.Cause }
 
 func (e *launchError) Error() string {
 	msg := e.Message
@@ -155,6 +160,10 @@ func paymentMethodLaunchError(err error, client *sdk.Client, projectID string, p
 		Message:  "A payment method is required before this account can provision a Managed VPS.",
 		NextStep: "Add a card under Payment Details at " + url + ", then re-run: dhq launch",
 		Details:  map[string]string{"payment_url": url},
+		// The account-level explanation, not the raw 422: it still classifies
+		// as a user error (exit 1), and because it is already explained, main's
+		// ExplainAccountError keeps this launch-specific message.
+		Cause: output.ExplainAccountError(apiErr),
 	}
 	if projectCreated && projectID != "" {
 		le.Message += fmt.Sprintf(" The project %q was created during this run and has no server yet.", projectID)
