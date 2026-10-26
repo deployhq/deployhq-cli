@@ -1457,6 +1457,15 @@ func createServerErr(t *testing.T, body string) error {
 	return err
 }
 
+// testClient builds a real sdk.Client for account "acme", so links built from
+// the client's normalised account can be asserted.
+func testClient(t *testing.T) *sdk.Client {
+	t.Helper()
+	c, err := sdk.NewPublic("acme")
+	require.NoError(t, err)
+	return c
+}
+
 func TestPaymentMethodLaunchError_LinksToPaymentDetails(t *testing.T) {
 	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
 
