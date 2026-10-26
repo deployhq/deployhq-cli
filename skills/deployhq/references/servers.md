@@ -322,13 +322,22 @@ dhq server-groups list -p my-app --json
 ```
 
 ### `dhq server-groups create`
+`--transfer-order` is `sequential` (each server's whole deployment runs as one
+unit) or `parallel` (each step finishes on every server before any server starts
+the next step). Omit it to take DeployHQ's default, `sequential`; any other value is
+rejected before a request is made.
+
 ```bash
 dhq server-groups create -p my-app --name "US Servers" --json
+dhq server-groups create -p my-app --name "US Servers" --transfer-order parallel --json
 ```
 
 ### `dhq server-groups update <identifier>`
+Takes the same `--transfer-order` values; omitted, the group's order is left as it is.
+
 ```bash
 dhq server-groups update grp-001 -p my-app --name "EU Servers" --json
+dhq server-groups update grp-001 -p my-app --transfer-order sequential --json
 ```
 
 ### `dhq server-groups delete <identifier>`

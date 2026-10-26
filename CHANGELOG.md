@@ -9,6 +9,32 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ## [Unreleased]
 
+### Added
+
+- **`dhq server-groups create` / `dhq server-groups update`**: `--transfer-order`
+  (`sequential` or `parallel`) sets how a deployment to the group moves through
+  its servers — each server's whole deployment as one unit, or each step
+  finished on every server before any server starts the next. Sent as `transfer_order`
+  only when given; omitted, nothing is sent, so the backend's default applies on
+  create and the group's current order is kept on update. Any other value is
+  rejected locally, before any request. A backend that does not yet default
+  the field (deployhq/deployhq#1256) refuses a create without it with `422
+  transfer_order is not included in the list`; pass the flag there.
+
+- **SDK**: `ServerGroupCreateRequest.TransferOrder` and
+  `ServerGroupUpdateRequest.TransferOrder` (`transfer_order`, `omitempty`).
+  Purely additive.
+
+### Changed
+
+- **`dhq templates server-groups create` / `update`**: `--transfer-order` help
+  now names the two accepted values, matching the project-level command.
+  Behaviour is unchanged.
+
+- **`dhq server-groups` help** no longer claims a deployment reaches every
+  server in a group in parallel; it describes the group's transfer order
+  instead.
+
 ### Fixed
 
 - **`dhq deploy --wait`** now waits in every output mode. Previously, whenever
