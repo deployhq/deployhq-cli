@@ -45,7 +45,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 - **Plan and billing refusals are explained**: when the account's plan has no
   API access, its trial has ended, it is suspended, or it has no payment method
-  for a Managed VPS, every command now says which of these it is and links to the
+  for the hosting requested, every command now says which of these it is and links to the
   page that resolves it (plans, payment details, or support), instead of a
   technical error such as `403 api_access_restricted` or a raw JSON body. In
   `--json` output the error carries a distinct `code` (`api_access_restricted`,

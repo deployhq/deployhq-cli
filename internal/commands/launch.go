@@ -140,13 +140,27 @@ func (e *launchError) Error() string {
 	return msg
 }
 
+// hostingName names the requested hosting for a refusal message, so a Static
+// Hosting launch is never described as a Managed VPS.
+func hostingName(target string) string {
+	switch target {
+	case detect.ProtocolStaticHosting:
+		return "Static Hosting"
+	case detect.ProtocolManagedVPS:
+		return "a Managed VPS"
+	default:
+		return "this hosting"
+	}
+}
+
 // paymentMethodLaunchError converts a "payment method required" provisioning
 // refusal into a structured launchError linking to the account's payment
 // details page. When this run created the project, it says so and how to reuse
 // or remove it: the project is not deleted automatically, because the
 // repository may already be connected to it and a re-run after adding a card
-// wants it. Returns nil for any other error.
-func paymentMethodLaunchError(err error, client *sdk.Client, projectID string, projectCreated bool) *launchError {
+// wants it. target is the requested protocol, named in the message. Returns
+// nil for any other error.
+func paymentMethodLaunchError(err error, client *sdk.Client, target, projectID string, projectCreated bool) *launchError {
 	var apiErr *sdk.APIError
 	if !errors.As(err, &apiErr) || !apiErr.IsPaymentMethodRequired() {
 		return nil
@@ -157,7 +171,7 @@ func paymentMethodLaunchError(err error, client *sdk.Client, projectID string, p
 	}
 	le := &launchError{
 		Reason:   reasonPaymentMethodRequired,
-		Message:  "A payment method is required before this account can provision a Managed VPS.",
+		Message:  "A payment method is required before this account can provision " + hostingName(target) + ".",
 		NextStep: "Add a card under Payment Details at " + url + ", then re-run: dhq launch",
 		Details:  map[string]string{"payment_url": url},
 		// The account-level explanation, not the raw 422: it still classifies
@@ -485,7 +499,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 			}
 			// No payment method on file: say so, link to where a card is
 			// added, and account for a project this run already created.
-			if pm := paymentMethodLaunchError(provErr, client, cfg.projectID, projectCreated); pm != nil {
+			if pm := paymentMethodLaunchError(provErr, client, cfg.targetProtocol, cfg.projectID, projectCreated); pm != nil {
 				if projectCreated {
 					// Remember the project so a re-run reuses it instead of
 					// creating a duplicate.

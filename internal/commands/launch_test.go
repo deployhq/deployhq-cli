@@ -1469,7 +1469,7 @@ func testClient(t *testing.T) *sdk.Client {
 func TestPaymentMethodLaunchError_LinksToPaymentDetails(t *testing.T) {
 	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
 
-	le := paymentMethodLaunchError(err, testClient(t), "my-app", false)
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", false)
 	require.NotNil(t, le)
 	assert.Equal(t, reasonPaymentMethodRequired, le.Reason)
 	assert.Equal(t, "A payment method is required before this account can provision a Managed VPS.", le.Message)
@@ -1483,13 +1483,28 @@ func TestPaymentMethodLaunchError_LinksToPaymentDetails(t *testing.T) {
 	assert.Empty(t, le.Details["project"])
 }
 
+// The refusal names the hosting that was requested: Static Hosting must not be
+// described as a Managed VPS.
+func TestPaymentMethodLaunchError_NamesRequestedHosting(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	static := paymentMethodLaunchError(err, testClient(t), detect.ProtocolStaticHosting, "my-app", false)
+	require.NotNil(t, static)
+	assert.Equal(t, "A payment method is required before this account can provision Static Hosting.", static.Message)
+	assert.NotContains(t, static.Message, "Managed VPS")
+
+	vps := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", false)
+	require.NotNil(t, vps)
+	assert.Equal(t, "A payment method is required before this account can provision a Managed VPS.", vps.Message)
+}
+
 // A missing payment method is an expected refusal, not a CLI fault: it must
 // exit 1 (user error), as the raw 422 did before launch explained it, and the
 // launch-specific message must survive main's account-error explanation.
 func TestPaymentMethodLaunchError_ExitsAsUserError(t *testing.T) {
 	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
 
-	le := paymentMethodLaunchError(err, testClient(t), "my-app", true)
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true)
 	require.NotNil(t, le)
 	assert.Equal(t, output.ExitUserError, output.ClassifyError(le))
 	assert.Equal(t, error(le), output.ExplainAccountError(le))
@@ -1510,7 +1525,7 @@ func TestPaymentMethodLaunchError_FallsBackToDeployHQHost(t *testing.T) {
 	require.ErrorAs(t, err, &apiErr)
 	apiErr.AccountURL = ""
 
-	le := paymentMethodLaunchError(apiErr, testClient(t), "my-app", false)
+	le := paymentMethodLaunchError(apiErr, testClient(t), detect.ProtocolManagedVPS, "my-app", false)
 	require.NotNil(t, le)
 	assert.Equal(t, "https://acme.deployhq.com/account/payment_details", le.Details["payment_url"])
 }
@@ -1518,7 +1533,7 @@ func TestPaymentMethodLaunchError_FallsBackToDeployHQHost(t *testing.T) {
 func TestPaymentMethodLaunchError_NamesProjectCreatedThisRun(t *testing.T) {
 	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
 
-	le := paymentMethodLaunchError(err, testClient(t), "my-app", true)
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true)
 	require.NotNil(t, le)
 	assert.Contains(t, le.Message, `"my-app" was created during this run`)
 	assert.Contains(t, le.NextStep, "dhq launch --project my-app")
@@ -1529,14 +1544,14 @@ func TestPaymentMethodLaunchError_NamesProjectCreatedThisRun(t *testing.T) {
 
 func TestPaymentMethodLaunchError_IgnoresOtherErrors(t *testing.T) {
 	err := createServerErr(t, `{"base":["Subdomain has already been taken"]}`)
-	assert.Nil(t, paymentMethodLaunchError(err, testClient(t), "my-app", true))
-	assert.Nil(t, paymentMethodLaunchError(errors.New("boom"), testClient(t), "my-app", true))
+	assert.Nil(t, paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true))
+	assert.Nil(t, paymentMethodLaunchError(errors.New("boom"), testClient(t), detect.ProtocolManagedVPS, "my-app", true))
 }
 
 func TestPaymentMethodLaunchError_JSONCarriesReason(t *testing.T) {
 	env, stdout, _ := testLaunchEnvelopeJSON()
 	err := createServerErr(t, `{"error":"`+paymentRequiredMsg+`"}`)
-	le := paymentMethodLaunchError(err, testClient(t), "my-app", true)
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true)
 	require.NotNil(t, le)
 
 	_ = writeLaunchError(env, launchConfig{}, reasonPaymentMethodRequired, le)

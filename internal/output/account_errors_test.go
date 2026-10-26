@@ -89,7 +89,9 @@ func TestExplainAccountError_PaymentMethodRequired(t *testing.T) {
 	var acct *AccountError
 	require.True(t, errors.As(err, &acct))
 	assert.Equal(t, CodePaymentMethodRequired, acct.Code)
-	assert.Equal(t, "A payment method is required before this account can provision a Managed VPS.", acct.Message)
+	assert.Equal(t, "A payment method is required before this account can provision this hosting.", acct.Message)
+	// It does not know the target, so it must not name one.
+	assert.NotContains(t, acct.Message, "Managed VPS")
 	assert.Equal(t, "https://acme.deployhq.com/account/payment_details", acct.URL)
 	assert.Contains(t, acct.Error(), "https://acme.deployhq.com/account/payment_details")
 }

@@ -52,8 +52,8 @@ func (e *AccountError) Recovery() []Breadcrumb {
 
 // ExplainAccountError returns an *AccountError when err is an API refusal
 // caused by the account's plan or billing state (no API access on the plan,
-// account suspended or trial ended, no payment method for a Managed VPS), and err
-// unchanged otherwise.
+// account suspended or trial ended, no payment method for the hosting
+// requested), and err unchanged otherwise.
 func ExplainAccountError(err error) error {
 	var already *AccountError
 	if errors.As(err, &already) {
@@ -121,7 +121,7 @@ func ExplainAccountError(err error) error {
 		url := page("/account/payment_details")
 		return &AccountError{
 			Code:    CodePaymentMethodRequired,
-			Message: "A payment method is required before this account can provision a Managed VPS.",
+			Message: "A payment method is required before this account can provision this hosting.",
 			Hint:    at("Add a card under Payment Details", url) + ", then re-run the command.",
 			URL:     url,
 			Action:  "add_payment_method",
