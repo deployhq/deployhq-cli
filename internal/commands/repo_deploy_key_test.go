@@ -305,12 +305,41 @@ func TestInitWizard_SSHRepo_DeployKeyBeforeConnect(t *testing.T) {
 	assert.Contains(t, m.View(), "https://github.com/acme/my-app/settings/keys/new")
 
 	// A rejected connection keeps the user on the key step to retry.
-	m.Update(createResultMsg{err: assert.AnError, step: stepRepoURL})
+	m.client = newTestClient(t, repoServer(t, rejectRepo))
+	m.Update(m.createRepo())
 	assert.Equal(t, stepDeployKeyManual, m.step)
 
 	m.Update(createResultMsg{repoOK: true, step: stepRepoURL})
 	assert.Equal(t, stepProtocol, m.step)
 	assert.True(t, m.repoOK)
+}
+
+// `dhq init`: only DeployHQ refusing access to the repository points at the
+// deploy key. Any other failure connecting the repository (a timeout, a server
+// error, another validation error) goes back to the branch step with the
+// original error, where Enter retries and backspace returns to the URL.
+func TestInitWizard_SSHRepo_OtherFailuresDoNotBlameDeployKey(t *testing.T) {
+	for name, handler := range otherRepoFailures() {
+		t.Run(name, func(t *testing.T) {
+			m := &initModel{
+				step:    stepDeployKeyManual,
+				repoURL: "git@github.com:acme/my-app.git",
+				scmType: "git",
+				branch:  "main",
+				client:  newTestClient(t, repoServer(t, handler)),
+				project: &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+			}
+			msg := m.createRepo()
+			resultErr := msg.(createResultMsg).err
+			require.Error(t, resultErr)
+
+			m.Update(msg)
+			assert.Equal(t, stepBranch, m.step)
+			assert.Equal(t, resultErr.Error(), m.err)
+			assert.Equal(t, "main", m.input, "Enter on the branch step retries with the same branch")
+			assert.NotContains(t, m.View(), testDeployPubKey)
+		})
+	}
 }
 
 func TestInitWizard_GHKeyAdded_ThenConnects(t *testing.T) {

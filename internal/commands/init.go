@@ -334,11 +334,21 @@ func (m *initModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.creating = false
 		if msg.err != nil {
 			m.err = msg.err.Error()
-			// For an SSH repository a failed key install or a rejected
-			// connection lands on the manual deploy-key step, which shows the
-			// key and retries the connection on Enter.
-			if (msg.step == stepDeployKeyAuto || msg.step == stepRepoURL) && m.isPrivateRepo() {
+			// For an SSH repository a failed key install, or DeployHQ refusing
+			// access to the repository, lands on the manual deploy-key step,
+			// which shows the key and retries the connection on Enter.
+			keyProblem := msg.step == stepDeployKeyAuto ||
+				(msg.step == stepRepoURL && isRepoAccessRejected(msg.err))
+			switch {
+			case keyProblem && m.isPrivateRepo():
 				m.step = stepDeployKeyManual
+				m.cursor = 0
+			case msg.step == stepRepoURL:
+				// Any other connection failure has nothing to do with the
+				// key: go back to the branch step, where Enter retries and
+				// backspace returns to the repository URL.
+				m.step = stepBranch
+				m.input = m.branch
 				m.cursor = 0
 			}
 			return m, nil
