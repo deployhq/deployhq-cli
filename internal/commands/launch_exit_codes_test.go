@@ -101,6 +101,21 @@ func (timeoutErr) Temporary() bool { return true }
 
 var _ net.Error = timeoutErr{}
 
+// A provision_failed reported for a network failure from server creation keeps
+// the network code (4), in the process exit and the --json exit_code.
+func TestWriteLaunchError_ProvisionFailedNetworkErrorKeepsItsCode(t *testing.T) {
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	netErr := &url.Error{Op: "Post", URL: "https://example.test", Err: timeoutErr{}}
+	err := writeLaunchError(env, launchConfig{}, reasonProvisionFailed, netErr)
+	assert.Equal(t, output.ExitNetworkError, output.ClassifyError(err))
+
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
+	data := resp["data"].(map[string]interface{})
+	assert.Equal(t, reasonProvisionFailed, data["reason"])
+	assert.Equal(t, float64(output.ExitNetworkError), data["exit_code"])
+}
+
 // repo_unreachable is a user error when the repository was refused, but a
 // network or server failure behind it keeps its own code.
 func TestLaunchRepoFailure_KeepsCauseExitCode(t *testing.T) {

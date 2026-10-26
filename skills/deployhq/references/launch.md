@@ -67,7 +67,7 @@ On failure the error carries a stable `reason`, a `retryable` boolean, a `next_s
 | `plan_limit_reached` | 1 | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
 | `subdomain_taken` | 6 | Static Hosting subdomain already in use — choose another `--subdomain` |
 | `rate_limited` | 1 | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
-| `provision_failed` | 2 | The server failed to provision — check the named resource; retry. When the API refused the request, its code is kept instead (1 for a 422, 3 for 401/403, 5 for 404) |
+| `provision_failed` | 2 | The server failed to provision — check the named resource; retry. 2 is for a server-side or unknown failure; a network failure keeps its own code (4), and a refused API call keeps its own (1 for a 422, 3 for 401/403, 5 for 404) |
 | `deploy_failed` | 2 | Provisioning succeeded but the deploy failed — the managed-resource server is named with its teardown command; `--cleanup-on-failure` removes it automatically. A failure with a known kind (auth, network, not found) keeps its own code |
 
 ## Notes
