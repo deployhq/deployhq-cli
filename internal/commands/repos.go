@@ -396,7 +396,7 @@ func deployKeyBreadcrumbs(repoURL, publicKey, projectID string) []output.Breadcr
 		if repo != "" {
 			crumbs = append(crumbs, output.Breadcrumb{
 				Action: "add deploy key via GitHub CLI",
-				Cmd:    fmt.Sprintf("echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -", publicKey, repo),
+				Cmd:    fmt.Sprintf("echo %s | gh repo deploy-key add -R %s --title DeployHQ -", quoteRerunArg(publicKey), repo),
 			})
 		}
 	} else if isGitLabURL(repoURL) {
@@ -426,7 +426,7 @@ func printDeployKeyHint(env *output.Envelope, repoURL, publicKey, projectID stri
 		if repo != "" {
 			env.Status("")
 			env.Status("Add it with the GitHub CLI:")
-			env.Status("  echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -", publicKey, repo)
+			env.Status("  echo %s | gh repo deploy-key add -R %s --title DeployHQ -", quoteRerunArg(publicKey), repo)
 			return
 		}
 	}

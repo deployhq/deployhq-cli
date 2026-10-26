@@ -645,3 +645,21 @@ func TestWriteLaunchError_JSONFieldsDoNotFilterError(t *testing.T) {
 	assert.NotZero(t, data["exit_code"])
 	assert.Contains(t, data, "recovery")
 }
+
+// The public key's comment carries the project name, so a ' in it must not
+// break the copy-paste gh command: every place that echoes the key quotes it.
+func TestDeployKeyCommands_QuotePublicKey(t *testing.T) {
+	const key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItestkey DeployHQ.com Key for it's"
+	const want = `echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItestkey DeployHQ.com Key for it'\''s' | gh repo deploy-key add -R acme/my-app --title DeployHQ -`
+	const repoURL = "git@github.com:acme/my-app.git"
+
+	assert.Contains(t, deployKeyInstructions(repoURL, key, ""), want)
+
+	crumbs := deployKeyBreadcrumbs(repoURL, key, "my-app")
+	require.NotEmpty(t, crumbs)
+	assert.Equal(t, want, crumbs[0].Cmd)
+
+	env, _, stderr := testLaunchEnvelope()
+	printDeployKeyHint(env, repoURL, key, "my-app")
+	assert.Contains(t, stderr.String(), want)
+}
