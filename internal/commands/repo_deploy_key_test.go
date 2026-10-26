@@ -400,6 +400,51 @@ func TestInitWizard_DeployKeyManual_BackWhileConnectingIsIgnored(t *testing.T) {
 	assert.Equal(t, stepBranch, m.step, "Back works again once the connection finished")
 }
 
+// Once gh has added the key, the repository is connected while the wizard is
+// still on the automatic deploy-key step. Enter must not run gh again or start
+// a second connection, nor switch to the manual step.
+func TestInitWizard_DeployKeyAuto_EnterWhileConnectingIsIgnored(t *testing.T) {
+	for _, cursor := range []int{0, 1} {
+		m := &initModel{
+			step:        stepDeployKeyAuto,
+			repoURL:     "git@github.com:acme/my-app.git",
+			scmType:     "git",
+			ghAvailable: true,
+			project:     &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+		}
+		_, cmd := m.Update(createResultMsg{step: stepDeployKeyAuto})
+		require.NotNil(t, cmd, "the key was added, so the repository is being connected")
+		require.True(t, m.creating)
+
+		m.cursor = cursor
+		_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		assert.Nil(t, cmd, "Enter while connecting must not run gh or connect again (cursor %d)", cursor)
+		assert.Equal(t, stepDeployKeyAuto, m.step, "Enter while connecting must not leave the step (cursor %d)", cursor)
+		assert.True(t, m.creating)
+	}
+}
+
+// Going back while the connection is in flight would let its late result move
+// the wizard on from the wrong step, so Back waits until it finishes.
+func TestInitWizard_DeployKeyAuto_BackWhileConnectingIsIgnored(t *testing.T) {
+	m := &initModel{
+		step:        stepDeployKeyAuto,
+		repoURL:     "git@github.com:acme/my-app.git",
+		scmType:     "git",
+		ghAvailable: true,
+		project:     &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+	}
+	_, cmd := m.Update(createResultMsg{step: stepDeployKeyAuto})
+	require.NotNil(t, cmd)
+
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, stepDeployKeyAuto, m.step, "Back is ignored while connecting")
+
+	m.creating = false
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, stepBranch, m.step, "Back works again once the connection finished")
+}
+
 func TestInitWizard_GHKeyAdded_ThenConnects(t *testing.T) {
 	m := &initModel{
 		step:        stepBranch,

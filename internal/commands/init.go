@@ -420,12 +420,18 @@ func (m *initModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "enter":
+			if m.creating {
+				return m, nil // already connecting
+			}
 			if m.cursor == 0 {
 				m.creating = true
 				return m, m.addDeployKeyViaGH
 			}
 			m.step = stepDeployKeyManual
 		case "backspace", "left":
+			if m.creating {
+				return m, nil // wait for the connection result
+			}
 			m.step = stepBranch
 			m.cursor = 0
 		}
