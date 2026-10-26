@@ -24,7 +24,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 - **`dhq build-configs create` / `update`**: `--packages` is now rejected with a
   hint to use `dhq build-languages set --build-config`. DeployHQ never applied
-  language versions sent this way, so the flag silently did nothing.
+  language versions sent this way, so the flag silently did nothing. The
+  `dhq language-versions list` tip now points at `dhq build-languages set`
+  instead of `--packages`.
   `update` with no flags now fails locally instead of sending an empty request.
 
 ## [0.21.0] - 2026-08-06

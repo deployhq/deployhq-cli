@@ -48,7 +48,8 @@ func newLanguageVersionsCmd() *cobra.Command {
 					rows[i] = []string{lang, strings.Join(versions[lang], ", ")}
 				}
 				env.WriteTable([]string{"Language", "Versions"}, rows)
-				env.Status("Tip: dhq build-configs create -p <project> --packages '{\"node\":\"20\"}'")
+				env.Status("Tip: create an override with 'dhq build-configs create --server <server>', then set a version on it with:")
+				env.Status("  dhq build-languages set <language> --version <version> --build-config <override-id>")
 				return nil
 			},
 		},
