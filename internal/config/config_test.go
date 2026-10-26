@@ -92,7 +92,7 @@ func TestFindProjectConfig(t *testing.T) {
 	defer func() { require.NoError(t, os.Chdir(origDir)) }()
 	require.NoError(t, os.Chdir(subDir))
 
-	found := findProjectConfig()
+	found := FindProjectConfig()
 	assert.Equal(t, configPath, found)
 }
 

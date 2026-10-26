@@ -56,7 +56,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   non-interactive mode it lists the existing project and fails unless
   `--allow-duplicate` is passed; interactively it asks. The new project is saved
   to `.deployhq.toml` in the current directory (never replacing a different
-  project already there, or a file it can't read), so later runs in the folder reuse it; `--no-save`
+  project already there or linked by a parent folder, or a file it can't read), so later runs in the folder reuse it; `--no-save`
   opts out.
 - **`dhq launch`**: saves a newly created project to `.deployhq.toml` right
   away, so a re-run after a later failure reuses it instead of creating

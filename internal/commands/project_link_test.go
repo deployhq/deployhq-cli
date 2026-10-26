@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/deployhq/deployhq-cli/internal/config"
@@ -202,4 +203,44 @@ func TestLinkProjectToDirectory_LeavesUnparseableFileUntouched(t *testing.T) {
 	assert.Contains(t, stderr.String(), ".deployhq.toml")
 	assert.Contains(t, stderr.String(), "dhq config set project my-app")
 	assert.Empty(t, stdout.String(), "the warning goes to stderr only")
+}
+
+// chdirIntoLinkedSubfolder makes parent/sub the working directory, with
+// parent/.deployhq.toml linking project. The config loader walks up from sub,
+// so commands run in sub already use that project.
+func chdirIntoLinkedSubfolder(t *testing.T, project string) (parentConfig string) {
+	t.Helper()
+	parent := t.TempDir()
+	parentConfig = filepath.Join(parent, ".deployhq.toml")
+	require.NoError(t, os.WriteFile(parentConfig, []byte("project = '"+project+"'\n"), 0o644))
+	sub := filepath.Join(parent, "sub")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	t.Chdir(sub)
+	return parentConfig
+}
+
+// A parent folder's link to a different project is not silently shadowed by a
+// new .deployhq.toml in a subfolder.
+func TestLinkProjectToDirectory_KeepsParentFolderLink(t *testing.T) {
+	parentConfig := chdirIntoLinkedSubfolder(t, "other")
+	env, _, stderr := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "new")
+
+	assert.NoFileExists(t, ".deployhq.toml", "the subfolder must not get its own link")
+	assert.Equal(t, "other", config.Get(parentConfig, "project"))
+	assert.Contains(t, stderr.String(), `"other"`)
+	assert.Contains(t, stderr.String(), "dhq config set project new")
+}
+
+// A parent folder already linking the same project needs nothing written.
+func TestLinkProjectToDirectory_ParentFolderLinksSameProject(t *testing.T) {
+	chdirIntoLinkedSubfolder(t, "new")
+	env, stdout, stderr := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "new")
+
+	assert.NoFileExists(t, ".deployhq.toml")
+	assert.Empty(t, stderr.String())
+	assert.Empty(t, stdout.String())
 }

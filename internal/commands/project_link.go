@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/config"
@@ -106,11 +107,28 @@ func initDuplicateProjectCheck(ctx context.Context, env *output.Envelope, client
 // linkProjectToDirectory records permalink as the project in the current
 // directory's .deployhq.toml, so later commands (and new agent sessions) in
 // this folder find and reuse it instead of creating another. It never replaces
-// a different project already recorded there — it warns instead — and never
-// rewrites a file it can't parse. Best-effort: a failure is a warning, not an
-// error.
+// a different project already recorded there, nor shadows one a parent
+// folder's .deployhq.toml links (commands here already use it) — it warns
+// instead — and never rewrites a file it can't parse. Best-effort: a failure
+// is a warning, not an error.
 func linkProjectToDirectory(env *output.Envelope, permalink string) {
 	path := config.ProjectConfigPath()
+	if inherited := parentProjectConfig(path); inherited != "" {
+		linked, err := config.GetStrict(inherited, "project")
+		if err != nil {
+			env.Warn("Could not read %s, so the project was not saved: %v", inherited, err)
+			env.Warn("Fix the file, then link the project: dhq config set project %s", permalink)
+			return
+		}
+		switch {
+		case linked == permalink:
+			return
+		case linked != "":
+			env.Warn("%s already links project %q for this folder; leaving it unchanged.", inherited, linked)
+			env.Warn("To use the new project in this folder only: dhq config set project %s", permalink)
+			return
+		}
+	}
 	current, err := config.GetStrict(path, "project")
 	if err != nil {
 		env.Warn("Could not read %s, so the project was not saved to it: %v", path, err)
@@ -130,4 +148,18 @@ func linkProjectToDirectory(env *output.Envelope, permalink string) {
 		return
 	}
 	env.Status("Saved project %s to %s", permalink, path)
+}
+
+// parentProjectConfig returns the parent folder's .deployhq.toml the config
+// loader would use for the current directory, or "" when it would use path
+// (the current directory's own file) or none.
+func parentProjectConfig(path string) string {
+	active := config.FindProjectConfig()
+	if active == "" {
+		return ""
+	}
+	if own, err := filepath.Abs(path); err == nil && own == active {
+		return ""
+	}
+	return active
 }

@@ -57,7 +57,7 @@ func Load() (*Config, error) {
 	}
 
 	// Layer 3: Project config (.deployhq.toml)
-	if projectPath := findProjectConfig(); projectPath != "" {
+	if projectPath := FindProjectConfig(); projectPath != "" {
 		pv := viper.New()
 		pv.SetConfigFile(projectPath)
 		pv.SetConfigType("toml")
@@ -163,8 +163,10 @@ func ProjectConfigPath() string {
 	return ".deployhq.toml"
 }
 
-// findProjectConfig walks up from cwd to find .deployhq.toml.
-func findProjectConfig() string {
+// FindProjectConfig walks up from cwd to find the .deployhq.toml the loader
+// uses: the nearest one, in cwd or a parent directory. It returns "" when
+// there is none.
+func FindProjectConfig() string {
 	dir, err := os.Getwd()
 	if err != nil {
 		return ""
