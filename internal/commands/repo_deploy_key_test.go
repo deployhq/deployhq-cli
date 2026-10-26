@@ -469,6 +469,60 @@ func TestInitWizard_DeployKeyAuto_BackWhileConnectingIsIgnored(t *testing.T) {
 	assert.Equal(t, stepBranch, m.step, "Back works again once the connection finished")
 }
 
+// gh added the key but connecting the repository then failed for another
+// reason (say a 5xx), so the wizard went back to the branch step. Submitting
+// the branch again returns to the automatic step, where Enter must retry the
+// repository request rather than run gh again, which would fail on the
+// duplicate key and send the person to the manual step.
+func TestInitWizard_DeployKeyAuto_KeyAlreadyAdded_EnterRetriesRepository(t *testing.T) {
+	for _, cursor := range []int{0, 1} {
+		m := &initModel{
+			step:        stepDeployKeyAuto,
+			repoURL:     "git@github.com:acme/my-app.git",
+			scmType:     "git",
+			branch:      "main",
+			ghAvailable: true,
+			project:     &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+		}
+		_, cmd := m.Update(createResultMsg{step: stepDeployKeyAuto})
+		require.NotNil(t, cmd)
+		require.True(t, m.deployKeyAdded)
+
+		m.Update(createResultMsg{err: assert.AnError, step: stepRepoURL})
+		require.Equal(t, stepBranch, m.step)
+		require.False(t, m.creating)
+
+		_, cmd = m.submitTextStep()
+		require.Nil(t, cmd)
+		require.Equal(t, stepDeployKeyAuto, m.step)
+		assert.Contains(t, m.View(), "retry connecting the repository")
+
+		ghLog := fakeGH(t, 1)
+		creates := 0
+		m.client = newTestClient(t, repoServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			creates++
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+		}))
+
+		m.cursor = cursor
+		_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		require.NotNil(t, cmd, "Enter retries the repository (cursor %d)", cursor)
+		assert.True(t, m.creating)
+		assert.Equal(t, stepDeployKeyAuto, m.step)
+
+		msg := cmd()
+		res, ok := msg.(createResultMsg)
+		require.True(t, ok)
+		assert.Equal(t, stepRepoURL, res.step, "Enter must connect the repository, not run gh (cursor %d)", cursor)
+		assert.Equal(t, 1, creates, "the repository request is sent once (cursor %d)", cursor)
+		assert.False(t, ghWasCalled(ghLog), "gh must not run again (cursor %d)", cursor)
+
+		m.Update(msg)
+		assert.Equal(t, stepProtocol, m.step)
+	}
+}
+
 func TestInitWizard_GHKeyAdded_ThenConnects(t *testing.T) {
 	m := &initModel{
 		step:        stepBranch,
@@ -662,4 +716,28 @@ func TestDeployKeyCommands_QuotePublicKey(t *testing.T) {
 	env, _, stderr := testLaunchEnvelope()
 	printDeployKeyHint(env, repoURL, key, "my-app")
 	assert.Contains(t, stderr.String(), want)
+}
+
+// A deploy key added for one repository says nothing about another: entering a
+// different repository URL must offer to add the key again.
+func TestInitWizard_ChangedRepoURL_ForgetsAddedDeployKey(t *testing.T) {
+	m := &initModel{
+		step:           stepRepoURL,
+		repoURL:        "git@github.com:acme/my-app.git",
+		deployKeyAdded: true,
+		project:        &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+	}
+	m.input = "git@github.com:acme/other-app.git"
+	m.submitTextStep()
+	assert.False(t, m.deployKeyAdded, "a new repository URL needs its own deploy key")
+
+	same := &initModel{
+		step:           stepRepoURL,
+		repoURL:        "git@github.com:acme/my-app.git",
+		deployKeyAdded: true,
+		project:        &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+	}
+	same.input = "git@github.com:acme/my-app.git"
+	same.submitTextStep()
+	assert.True(t, same.deployKeyAdded, "re-entering the same URL keeps the added key")
 }
