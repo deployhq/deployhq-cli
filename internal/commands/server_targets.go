@@ -39,10 +39,11 @@ func addAllServersFlag(cmd *cobra.Command, all *bool) {
 // fails with the available choices so agents can retry.
 func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID string, inputs []string) ([]string, error) {
 	var (
-		ids     []string
-		servers []sdk.Server
-		groups  []sdk.ServerGroup
-		loaded  bool
+		ids       []string
+		servers   []sdk.Server
+		groups    []sdk.ServerGroup
+		groupsErr error
+		loaded    bool
 	)
 	for _, raw := range inputs {
 		in := strings.TrimSpace(raw)
@@ -59,8 +60,9 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 			if err != nil {
 				return nil, err
 			}
-			// Groups are optional context; a failure here only narrows matching.
-			groups, _ = client.ListServerGroups(ctx, projectID, nil)
+			// A failed group listing must not block names that match a server,
+			// so it is only reported once a name matches no server.
+			groups, groupsErr = client.ListServerGroups(ctx, projectID, nil)
 			loaded = true
 		}
 		if id, candidates := resolveServerName(in, servers); id != "" {
@@ -75,6 +77,8 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 			}
 			ids = append(ids, groupID)
 			continue
+		} else if groupsErr != nil {
+			return nil, fmt.Errorf("--server %q matches no server, and listing server groups failed: %w", in, groupsErr)
 		} else {
 			return nil, unresolvedServerError(in, candidates, groups)
 		}

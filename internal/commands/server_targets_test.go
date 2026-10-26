@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/deployhq/deployhq-cli/internal/detect"
 	"github.com/deployhq/deployhq-cli/internal/output"
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -459,4 +461,30 @@ func TestResolveServerTargets_DuplicateGroupNameIsAmbiguous(t *testing.T) {
 	assert.Contains(t, userErr.Message, "more than one server group")
 	assert.Contains(t, userErr.Hint, targetGroupUUID)
 	assert.Contains(t, userErr.Hint, dupGroupUUID)
+}
+
+func TestResolveServerTargets_FailedGroupListIsReportedForNonServerName(t *testing.T) {
+	srv := targetsServer(t, http.StatusOK, `[
+		{"identifier":"`+targetServerUUID+`","name":"Production","protocol_type":"ssh"}]`,
+		http.StatusInternalServerError, `{"error":"boom"}`)
+
+	_, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"Web Cluster"})
+	require.Error(t, err)
+
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr, "the group-list failure must surface, not an unknown-name error")
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	var userErr *output.UserError
+	assert.False(t, errors.As(err, &userErr), "must not be reported as an unknown server")
+	assert.Contains(t, err.Error(), `"Web Cluster"`)
+}
+
+func TestResolveServerTargets_FailedGroupListStillResolvesServerName(t *testing.T) {
+	srv := targetsServer(t, http.StatusOK, `[
+		{"identifier":"`+targetServerUUID+`","name":"Production","protocol_type":"ssh"}]`,
+		http.StatusInternalServerError, `{"error":"boom"}`)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"Production"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{targetServerUUID}, ids)
 }
