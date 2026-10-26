@@ -482,6 +482,12 @@ func TestWriteLaunchError_JSON_SingleObject(t *testing.T) {
 	require.NoError(t, dec.Decode(&first))
 	assert.False(t, dec.More(), "stdout must hold exactly one JSON object")
 
+	// That one object must still carry what the standard error object did.
+	data := first["data"].(map[string]interface{})
+	assert.Equal(t, float64(output.ClassifyError(err)), data["exit_code"], "exit_code must match the process exit code")
+	assert.NotZero(t, data["exit_code"])
+	assert.Contains(t, data, "recovery")
+
 	// Plain mode is untouched: nothing reported, main prints the error.
 	plainEnv, _, _ := testLaunchEnvelope()
 	plainEnv.IsTTY = true // a non-TTY envelope auto-selects JSON

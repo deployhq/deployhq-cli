@@ -126,6 +126,8 @@ func TestLaunchAuthRequired_JSONReason(t *testing.T) {
 	data := resp["data"].(map[string]interface{})
 	assert.Equal(t, reasonAuthRequired, data["reason"])
 	assert.Contains(t, data["error"].(string), "Not authenticated")
+	assert.Equal(t, float64(output.ExitAuthError), data["exit_code"])
+	assert.Contains(t, fmt.Sprint(data["recovery"]), "dhq auth login")
 }
 
 // ── Build command application (static) ───────────────────────────────────────
@@ -889,6 +891,17 @@ func TestLaunchCheckPlanLimits_StaticIneligible(t *testing.T) {
 	var le *launchError
 	require.True(t, isLaunchErr(err, &le))
 	assert.Equal(t, reasonPlanLimitReached, le.Reason)
+
+	// --json: the single error object keeps exit_code and recovery.
+	jsonEnv, stdout, _ := testLaunchEnvelopeJSON()
+	result := writeLaunchError(jsonEnv, cfg, le.Reason, err)
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
+	data := resp["data"].(map[string]interface{})
+	assert.Equal(t, reasonPlanLimitReached, data["reason"])
+	assert.Equal(t, float64(output.ClassifyError(result)), data["exit_code"])
+	assert.NotZero(t, data["exit_code"])
+	assert.Contains(t, data, "recovery")
 }
 
 func TestLaunchCheckPlanLimits_VPSIneligible(t *testing.T) {

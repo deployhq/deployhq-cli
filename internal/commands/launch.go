@@ -2006,12 +2006,26 @@ func writeLaunchError(env *output.Envelope, cfg launchConfig, reason string, err
 		}
 	}
 
+	// This is the only JSON object written for the failure (main skips its
+	// standard one), so carry over the standard object's exit_code and
+	// recovery fields.
+	exitCode := 0
+	recovery := []output.Breadcrumb{}
+	if std, ok := output.ErrorResponseFromErr(err).Data.(output.ErrorData); ok {
+		exitCode = std.ExitCode
+		if std.Recovery != nil {
+			recovery = std.Recovery
+		}
+	}
+
 	type structuredErr struct {
-		Error     string            `json:"error"`
-		Reason    string            `json:"reason"`
-		Retryable bool              `json:"retryable"`
-		NextStep  string            `json:"next_step,omitempty"`
-		Details   map[string]string `json:"details,omitempty"`
+		Error     string              `json:"error"`
+		Reason    string              `json:"reason"`
+		ExitCode  int                 `json:"exit_code"`
+		Retryable bool                `json:"retryable"`
+		NextStep  string              `json:"next_step,omitempty"`
+		Details   map[string]string   `json:"details,omitempty"`
+		Recovery  []output.Breadcrumb `json:"recovery"`
 	}
 
 	resp := &output.Response{
@@ -2019,9 +2033,11 @@ func writeLaunchError(env *output.Envelope, cfg launchConfig, reason string, err
 		Data: structuredErr{
 			Error:     message,
 			Reason:    code,
+			ExitCode:  exitCode,
 			Retryable: retryable,
 			NextStep:  nextStep,
 			Details:   details,
+			Recovery:  recovery,
 		},
 	}
 	_ = env.WriteJSON(resp)
