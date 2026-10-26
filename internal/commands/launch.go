@@ -408,7 +408,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// ── Step 8: Plan / limit pre-flight ─────────────────────────────────────
 	// Only apply eligibility gates when we have real capability data.
 	if capsKnown {
-		if err := launchCheckPlanLimits(env, cfg, caps); err != nil {
+		if err := launchCheckPlanLimits(env, cfg, caps, client); err != nil {
 			return err
 		}
 	}
@@ -1243,13 +1243,38 @@ func projectNameFromRemote(remote string) string {
 
 // ── Plan / limit pre-flight ───────────────────────────────────────────────────
 
-func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities) error {
+// Account pages live at https://<account>.deployhq.com/account/... and NOT under
+// a shared app host, so the links have to be built per account.
+//
+// The subdomain is taken from the CLIENT, not from the raw credential. Users may
+// supply DEPLOYHQ_ACCOUNT as a full hostname ("acme.deployhq.com") -- pkg/sdk
+// explicitly tolerates that and trims the suffix -- so interpolating the raw
+// value produced "acme.deployhq.com.deployhq.com", a dead link, which is exactly
+// the defect this guidance was rewritten to fix. Client.Account() derives it
+// from the already-normalised base URL, so a WithBaseURL override is honoured
+// too, and the normalisation lives in one place rather than two that can drift.
+func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities, client *sdk.Client) error {
+	accountSubdomain := client.Account()
+
+	packagesURL := fmt.Sprintf("https://%s.deployhq.com/account/packages", accountSubdomain)
+	paymentURL := fmt.Sprintf("https://%s.deployhq.com/account/payment_details", accountSubdomain)
+
+	// AccountCapabilities carries only a boolean per resource, no reason code,
+	// so each message names what bounds that resource rather than guessing:
+	// Static Hosting needs no payment method and is capped per account;
+	// a Managed VPS needs a payment method on file (or a paid plan).
+	nextSteps := map[string]string{
+		detect.ProtocolStaticHosting: "Each account can have 1 site (3 on a paid plan). Remove an existing site, " +
+			"or review your plan at " + packagesURL,
+		detect.ProtocolManagedVPS: "A Managed VPS needs a payment method on file. Add one at " + paymentURL +
+			", or review your plan at " + packagesURL,
+	}
+
 	if cfg.targetProtocol == detect.ProtocolStaticHosting && !caps.StaticHostingEligible {
-		// Not eligible = plan limit or billing wall
 		return &launchError{
 			Reason:   reasonPlanLimitReached,
 			Message:  "Your account cannot provision Static Hosting sites",
-			NextStep: "Check your plan or billing at https://app.deployhq.com/account/plan. Free plans support 1 site.",
+			NextStep: nextSteps[detect.ProtocolStaticHosting],
 			Details:  map[string]string{"target": detect.ProtocolStaticHosting},
 		}
 	}
@@ -1257,7 +1282,7 @@ func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.Acc
 		return &launchError{
 			Reason:   reasonPlanLimitReached,
 			Message:  "Your account cannot provision Managed VPS servers",
-			NextStep: "Ensure your billing details are set up at https://app.deployhq.com/account/billing",
+			NextStep: nextSteps[detect.ProtocolManagedVPS],
 			Details:  map[string]string{"target": detect.ProtocolManagedVPS},
 		}
 	}

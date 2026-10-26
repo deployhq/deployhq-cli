@@ -35,6 +35,19 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   server in a group in parallel; it describes the group's transfer order
   instead.
 
+### Fixed
+
+- **`dhq launch`**: the `plan_limit_reached` guidance linked
+  `app.deployhq.com/account/plan` and `app.deployhq.com/account/billing`, which
+  are not real pages: account pages live on the account's own subdomain. It now
+  links `https://<account>.deployhq.com/account/packages` and, for a Managed
+  VPS, `.../account/payment_details`, and says what bounds each resource:
+  Static Hosting allows 1 site per account (3 on a paid plan) and needs no
+  payment method; a Managed VPS needs a payment method on file. The embedded
+  agent skill reference says the same. The links are built from the SDK
+  client's normalised account, so `DEPLOYHQ_ACCOUNT` given as a full hostname
+  (`acme.deployhq.com`) no longer produces `acme.deployhq.com.deployhq.com`.
+
 ## [0.21.0] - 2026-08-06
 
 ### Added
