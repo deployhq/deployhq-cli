@@ -17,6 +17,16 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `--dry-run` previews, and re-runs only add what is missing. Build commands are
   added only when the project has none.
 
+- **`--server`** on `excluded-files`, `config-files`, `ssh-commands` and
+  `integrations` `create` and `update`: target specific servers or server
+  groups by name or identifier (repeatable or comma-separated). An unknown or
+  ambiguous name fails with the available choices instead of guessing.
+- **`--all-servers`** on the same `update` commands. Without either flag, an
+  update leaves the existing targeting unchanged.
+- **`dhq config-files create --build-only`**: a file that is only available
+  to build commands and never uploaded to a server — previously the
+  accidental result of every create, now an explicit choice.
+
 ### Changed
 
 - **`dhq projects create`**: checks for a project with the same name first. In
@@ -32,12 +42,17 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   wizard lists it and creates another only when the same name is submitted
   again.
 
+- **`dhq excluded-files update`**: `--path` is now optional, so a rule can be
+  re-targeted without restating its pattern.
+- **`dhq excluded-files list --json`** / **`show`** now include an empty
+  `servers` list instead of omitting it, so a rule that applies to no server
+  is visible.
+
 ### Fixed
 
 - **`dhq config init`**: now writes the `--project`, `--account` and `--email`
   values it is given instead of an empty project entry. `--api-key` is never
   written to a config file.
-### Fixed
 
 - **Server targeting on create**: excluded files, config files, SSH commands
   and integrations created with dhq were stored with no target servers, so
@@ -49,26 +64,6 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `dhq launch` now apply to all servers by default (including servers added
   later). Items created by earlier versions are not changed; re-target them
   with `update <id> --all-servers`.
-
-### Added
-
-- **`--server`** on `excluded-files`, `config-files`, `ssh-commands` and
-  `integrations` `create` and `update`: target specific servers or server
-  groups by name or identifier (repeatable or comma-separated). An unknown or
-  ambiguous name fails with the available choices instead of guessing.
-- **`--all-servers`** on the same `update` commands. Without either flag, an
-  update leaves the existing targeting unchanged.
-- **`dhq config-files create --build-only`**: a file that is only available
-  to build commands and never uploaded to a server — previously the
-  accidental result of every create, now an explicit choice.
-
-### Changed
-
-- **`dhq excluded-files update`**: `--path` is now optional, so a rule can be
-  re-targeted without restating its pattern.
-- **`dhq excluded-files list --json`** / **`show`** now include an empty
-  `servers` list instead of omitting it, so a rule that applies to no server
-  is visible.
 
 ## [0.21.0] - 2026-08-06
 

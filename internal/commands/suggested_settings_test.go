@@ -21,6 +21,7 @@ type fakeProjectSettings struct {
 	excluded      []string
 	cache         []string
 	posts         int
+	excludedPosts []string // raw request bodies of excluded-file creates
 }
 
 func (f *fakeProjectSettings) server(t *testing.T) *httptest.Server {
@@ -60,6 +61,7 @@ func (f *fakeProjectSettings) server(t *testing.T) *httptest.Server {
 			list(w, f.excluded, false)
 		case strings.HasSuffix(r.URL.Path, "/excluded_files") && r.Method == http.MethodPost:
 			f.posts++
+			f.excludedPosts = append(f.excludedPosts, string(body))
 			f.excluded = append(f.excluded, field("path"))
 			_, _ = w.Write([]byte(`{"identifier":"x-new","path":"` + field("path") + `"}`))
 		case strings.HasSuffix(r.URL.Path, "/build_cache_files") && r.Method == http.MethodGet:
@@ -135,6 +137,21 @@ func TestApplySuggestedSettings_IdempotentOnRerun(t *testing.T) {
 	assert.Zero(t, again.pending(), "second run must find nothing to apply")
 	applySuggestedSettings(t.Context(), env, client, again)
 	assert.Equal(t, 4, f.posts, "second run must not create anything")
+}
+
+// Suggested exclusions apply to every server. Without all_servers the API
+// attaches the rule to no server, so the file would still be uploaded.
+func TestApplySuggestedSettings_ExcludedFilesApplyToAllServers(t *testing.T) {
+	f := &fakeProjectSettings{}
+	client := newTestClient(t, f.server(t))
+	env, _, _ := testLaunchEnvelope()
+
+	applySuggestedSettings(t.Context(), env, client, planSuggestedSettings(t.Context(), client, "my-app", nodeDetection))
+
+	require.Len(t, f.excludedPosts, 2)
+	for _, body := range f.excludedPosts {
+		assert.Contains(t, body, `"all_servers":true`)
+	}
 }
 
 // The plan summary names every item and its status on stderr.

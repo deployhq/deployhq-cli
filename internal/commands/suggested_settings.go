@@ -194,7 +194,7 @@ func applySuggestedPaths(env *output.Envelope, kind string, items []suggestedIte
 
 func applySuggestedExcludedFiles(ctx context.Context, env *output.Envelope, client *sdk.Client, projectID string, items []suggestedItem) {
 	applySuggestedPaths(env, "excluded file", items, func(path string) error {
-		_, err := client.CreateExcludedFile(ctx, projectID, sdk.ExcludedFileCreateRequest{Path: path})
+		_, err := client.CreateExcludedFile(ctx, projectID, sdk.ExcludedFileCreateRequest{Path: path, AllServers: true})
 		return err
 	})
 }
