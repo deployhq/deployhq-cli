@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -13,7 +14,9 @@ func newServerGroupsCmd() *cobra.Command {
 		Use:     "server-groups",
 		Aliases: []string{"sg"},
 		Short:   "Manage server groups",
-		Long: `Logical groupings of servers — typically by environment (production, staging) or role (web, worker). Deploying to a group fans out to every server in it in parallel.
+		Long: `Logical groupings of servers — typically by environment (production, staging) or role (web, worker). Deploying to a group deploys to every server in it.
+
+The group's transfer order decides how: sequential runs each server's whole deployment as one unit, parallel finishes each step on every server before any server starts the next step.
 
 Useful for clusters and blue-green setups where one logical "deploy" actually targets many machines.`,
 	}
@@ -27,6 +30,35 @@ Useful for clusters and blue-green setups where one logical "deploy" actually ta
 	)
 
 	return cmd
+}
+
+// transferOrders are the values the DeployHQ backend accepts for a server
+// group's transfer_order. Anything else is refused with a 422, so the CLI
+// rejects it locally first.
+var transferOrders = []string{"sequential", "parallel"}
+
+// transferOrderUsage is the --transfer-order help shared by the project and
+// template server-group commands, so the two read alike.
+const transferOrderUsage = "Transfer order: sequential (each server's whole deployment runs as one unit) " +
+	"or parallel (each step finishes on every server before any server starts the next step)"
+
+// validateTransferOrder rejects a supplied --transfer-order the backend would
+// refuse. An omitted flag passes: nothing is sent, so the backend's default
+// applies. It runs before any project or client resolution, so a malformed
+// invocation fails with no network access.
+func validateTransferOrder(cmd *cobra.Command, value string) error {
+	if !cmd.Flags().Changed("transfer-order") {
+		return nil
+	}
+	for _, v := range transferOrders {
+		if value == v {
+			return nil
+		}
+	}
+	return &output.UserError{
+		Message: fmt.Sprintf("Invalid --transfer-order %q", value),
+		Hint:    "Use one of: " + strings.Join(transferOrders, ", "),
+	}
 }
 
 func newServerGroupsListCmd() *cobra.Command {
@@ -136,14 +168,22 @@ func newServerGroupsShowCmd() *cobra.Command {
 }
 
 func newServerGroupsCreateCmd() *cobra.Command {
-	var name string
+	var name, transferOrder string
 
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a server group",
+		Long: `Create a server group in a project.
+
+Omit --transfer-order to take DeployHQ's default (sequential).`,
+		Example: `  dhq server-groups create -p my-app --name "Web"
+  dhq server-groups create -p my-app --name "Web" --transfer-order parallel`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if name == "" {
 				return &output.UserError{Message: "Name is required", Hint: "Use --name flag"}
+			}
+			if err := validateTransferOrder(cmd, transferOrder); err != nil {
+				return err
 			}
 
 			projectID, err := cliCtx.RequireProject()
@@ -156,7 +196,10 @@ func newServerGroupsCreateCmd() *cobra.Command {
 				return err
 			}
 
-			group, err := client.CreateServerGroup(cliCtx.Background(), projectID, sdk.ServerGroupCreateRequest{Name: name})
+			group, err := client.CreateServerGroup(cliCtx.Background(), projectID, sdk.ServerGroupCreateRequest{
+				Name:          name,
+				TransferOrder: transferOrder,
+			})
 			if err != nil {
 				return err
 			}
@@ -171,17 +214,22 @@ func newServerGroupsCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Server group name (required)")
+	cmd.Flags().StringVar(&transferOrder, "transfer-order", "", transferOrderUsage)
 	return cmd
 }
 
 func newServerGroupsUpdateCmd() *cobra.Command {
-	var name string
+	var name, transferOrder string
 
 	cmd := &cobra.Command{
 		Use:   "update <identifier>",
 		Short: "Update a server group",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateTransferOrder(cmd, transferOrder); err != nil {
+				return err
+			}
+
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
 				return err
@@ -192,7 +240,10 @@ func newServerGroupsUpdateCmd() *cobra.Command {
 				return err
 			}
 
-			group, err := client.UpdateServerGroup(cliCtx.Background(), projectID, args[0], sdk.ServerGroupUpdateRequest{Name: name})
+			group, err := client.UpdateServerGroup(cliCtx.Background(), projectID, args[0], sdk.ServerGroupUpdateRequest{
+				Name:          name,
+				TransferOrder: transferOrder,
+			})
 			if err != nil {
 				return err
 			}
@@ -207,6 +258,7 @@ func newServerGroupsUpdateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "New name")
+	cmd.Flags().StringVar(&transferOrder, "transfer-order", "", transferOrderUsage)
 	return cmd
 }
 

@@ -11,6 +11,20 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Added
 
+- **`dhq server-groups create` / `dhq server-groups update`**: `--transfer-order`
+  (`sequential` or `parallel`) sets how a deployment to the group moves through
+  its servers — each server's whole deployment as one unit, or each step
+  finished on every server before any server starts the next. Sent as `transfer_order`
+  only when given; omitted, nothing is sent, so the backend's default applies on
+  create and the group's current order is kept on update. Any other value is
+  rejected locally, before any request. A backend that does not yet default
+  the field (deployhq/deployhq#1256) refuses a create without it with `422
+  transfer_order is not included in the list`; pass the flag there.
+
+- **SDK**: `ServerGroupCreateRequest.TransferOrder` and
+  `ServerGroupUpdateRequest.TransferOrder` (`transfer_order`, `omitempty`).
+  Purely additive.
+
 - **`dhq projects apply-suggestions [path]`**: adds DeployHQ's suggested build
   settings (build commands, excluded files, build cache files) to any project,
   not only DeployHQ hosting set up by `dhq launch`. Shows what it will add,
@@ -30,11 +44,19 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Changed
 
+- **`dhq templates server-groups create` / `update`**: `--transfer-order` help
+  now names the two accepted values, matching the project-level command.
+  Behaviour is unchanged.
+
+- **`dhq server-groups` help** no longer claims a deployment reaches every
+  server in a group in parallel; it describes the group's transfer order
+  instead.
+
 - **`dhq projects create`**: checks for a project with the same name first. In
   non-interactive mode it lists the existing project and fails unless
   `--allow-duplicate` is passed; interactively it asks. The new project is saved
   to `.deployhq.toml` in the current directory (never replacing a different
-  project already there), so later runs in the folder reuse it; `--no-save`
+  project already there, or a file it can't read), so later runs in the folder reuse it; `--no-save`
   opts out.
 - **`dhq launch`**: saves a newly created project to `.deployhq.toml` right
   away, so a re-run after a later failure reuses it instead of creating
