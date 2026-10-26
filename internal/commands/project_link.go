@@ -106,11 +106,17 @@ func initDuplicateProjectCheck(ctx context.Context, env *output.Envelope, client
 // linkProjectToDirectory records permalink as the project in the current
 // directory's .deployhq.toml, so later commands (and new agent sessions) in
 // this folder find and reuse it instead of creating another. It never replaces
-// a different project already recorded there — it warns instead. Best-effort:
-// a write failure is a warning, not an error.
+// a different project already recorded there — it warns instead — and never
+// rewrites a file it can't parse. Best-effort: a failure is a warning, not an
+// error.
 func linkProjectToDirectory(env *output.Envelope, permalink string) {
 	path := config.ProjectConfigPath()
-	current := config.Get(path, "project")
+	current, err := config.GetStrict(path, "project")
+	if err != nil {
+		env.Warn("Could not read %s, so the project was not saved to it: %v", path, err)
+		env.Warn("Fix the file, then link the project: dhq config set project %s", permalink)
+		return
+	}
 	switch {
 	case current == permalink:
 		return

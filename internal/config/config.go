@@ -8,7 +8,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -210,6 +212,23 @@ func Get(path, key string) string {
 		return ""
 	}
 	return v.GetString(key)
+}
+
+// GetStrict is Get for callers about to write the file: it returns "" (and no
+// error) when the file or key does not exist, but an error when the file
+// exists and cannot be read or parsed, so the caller doesn't mistake it for an
+// empty config and overwrite it.
+func GetStrict(path, key string) (string, error) {
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	v := viper.New()
+	v.SetConfigFile(path)
+	v.SetConfigType("toml")
+	if err := v.ReadInConfig(); err != nil {
+		return "", fmt.Errorf("config: read %s: %w", path, err)
+	}
+	return v.GetString(key), nil
 }
 
 // Unset removes a key from the specified config file.

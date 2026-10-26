@@ -185,3 +185,21 @@ func TestInitWizard_FreeNameCreatesImmediately(t *testing.T) {
 	require.NoError(t, msg.err)
 	assert.Equal(t, 1, posts)
 }
+
+// A .deployhq.toml that exists but can't be parsed is left exactly as it is:
+// reading it as "no project" would overwrite the user's settings.
+func TestLinkProjectToDirectory_LeavesUnparseableFileUntouched(t *testing.T) {
+	t.Chdir(t.TempDir())
+	broken := []byte("project = 'old-app\naccount = 'acme'\n[[[\n")
+	require.NoError(t, os.WriteFile(".deployhq.toml", broken, 0o644))
+	env, stdout, stderr := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "my-app")
+
+	after, err := os.ReadFile(".deployhq.toml")
+	require.NoError(t, err)
+	assert.Equal(t, broken, after, "an unreadable .deployhq.toml must not be rewritten")
+	assert.Contains(t, stderr.String(), ".deployhq.toml")
+	assert.Contains(t, stderr.String(), "dhq config set project my-app")
+	assert.Empty(t, stdout.String(), "the warning goes to stderr only")
+}
