@@ -262,6 +262,31 @@ func TestServersCreate_KeyAuthNeedsNoPassword(t *testing.T) {
 	assert.True(t, serverPasswordRequired("ftp", false))
 }
 
+// Like DeployHQ, key authentication exists only for SSH (with --use-ssh-keys)
+// and rsync; DeployHQ ignores use_ssh_keys on any other protocol.
+func TestServerUsesSSHKeys_OnlySSHAndRsync(t *testing.T) {
+	assert.True(t, serverUsesSSHKeys("ssh", true))
+	assert.False(t, serverUsesSSHKeys("ssh", false))
+	assert.True(t, serverUsesSSHKeys("rsync", false))
+	assert.False(t, serverUsesSSHKeys("ftp", true))
+	assert.False(t, serverUsesSSHKeys("ftps", true))
+}
+
+// --install-key on an FTP server would edit authorized_keys on a host that
+// never uses the key, so it is refused before any request.
+func TestServersCreate_InstallKeyRefusedForFTP_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	called := blockNetwork(t)
+	calls := stubInstallSSHKey(t, nil)
+
+	err := runServersCmd(t, "servers", "create", "--name", "ftp", "--protocol-type", "ftp",
+		"--hostname", "h", "--username", "u", "--password", "x", "--use-ssh-keys", "--install-key")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--install-key")
+	assert.Empty(t, *calls)
+	assert.False(t, *called)
+}
+
 func TestServersCreate_ExampleLeadsWithKeyAuth(t *testing.T) {
 	ex := newServersCreateCmd().Example
 	firstExample := strings.SplitN(ex, "\n\n", 2)[0]

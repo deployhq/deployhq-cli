@@ -37,9 +37,11 @@ func serverPasswordRequired(protocolType string, useSSHKeys bool) bool {
 }
 
 // serverUsesSSHKeys reports whether DeployHQ will connect to the server with
-// its own SSH key (rather than a password).
+// its own SSH key (rather than a password). As in DeployHQ, that is SSH with
+// keys enabled, or rsync (always key-based); use_ssh_keys means nothing on any
+// other protocol.
 func serverUsesSSHKeys(protocolType string, useSSHKeys bool) bool {
-	return useSSHKeys || protocolType == "rsync"
+	return (protocolType == "ssh" && useSSHKeys) || protocolType == "rsync"
 }
 
 // passwordAgentHint is the guidance shown when a password is needed but cannot
