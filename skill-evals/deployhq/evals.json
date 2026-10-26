@@ -339,7 +339,7 @@
       "prompt": "Log me in to the 'mycompany' DeployHQ account, my email is user@example.com",
       "expected": {
         "command": "dhq auth login",
-        "flags": ["mycompany", "user@example.com"]
+        "flags": ["--account", "mycompany", "--email", "user@example.com"]
       },
       "must_not_contain": ["api-key"],
       "notes": "The person runs dhq auth login in their own terminal and types the API key at its hidden prompt. The agent never asks for the key or puts it on a command line."
