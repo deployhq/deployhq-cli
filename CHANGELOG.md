@@ -11,6 +11,30 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Added
 
+- **`dhq server-groups create` / `dhq server-groups update`**: `--transfer-order`
+  (`sequential` or `parallel`) sets how a deployment to the group moves through
+  its servers — each server's whole deployment as one unit, or each step
+  finished on every server before any server starts the next. Sent as `transfer_order`
+  only when given; omitted, nothing is sent, so the backend's default applies on
+  create and the group's current order is kept on update. Any other value is
+  rejected locally, before any request. A backend that does not yet default
+  the field (deployhq/deployhq#1256) refuses a create without it with `422
+  transfer_order is not included in the list`; pass the flag there.
+
+- **SDK**: `ServerGroupCreateRequest.TransferOrder` and
+  `ServerGroupUpdateRequest.TransferOrder` (`transfer_order`, `omitempty`).
+  Purely additive.
+
+### Changed
+
+- **`dhq templates server-groups create` / `update`**: `--transfer-order` help
+  now names the two accepted values, matching the project-level command.
+  Behaviour is unchanged.
+
+- **`dhq server-groups` help** no longer claims a deployment reaches every
+  server in a group in parallel; it describes the group's transfer order
+  instead.
+
 - **`dhq servers create`**: `--password-stdin` reads the server password from
   stdin, or asks for it with hidden input in a terminal, so it never has to be
   typed into the command. When a password is required (FTP/FTPS, or SSH without
@@ -18,6 +42,10 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   it with hidden input; non-interactive runs fail before any request, with a
   hint to add password-based servers from your own terminal or the DeployHQ
   web app rather than handing the password to an AI agent.
+
+- **`dhq servers create`** help leads with the key-based SSH example; the
+  password example moves to the end, uses `--password-stdin`, and warns that a
+  password typed into a command ends up in shell history.
 
 ### Fixed
 
@@ -34,12 +62,6 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   because its key is not there yet, the error hint now shows the public key and
   a one-line command to install it, for the project's key as well as a global
   key.
-
-### Changed
-
-- **`dhq servers create`** help leads with the key-based SSH example; the
-  password example moves to the end, uses `--password-stdin`, and warns that a
-  password typed into a command ends up in shell history.
 
 ## [0.21.0] - 2026-08-06
 
