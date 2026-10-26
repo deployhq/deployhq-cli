@@ -22,6 +22,9 @@ const (
 	suggestionSkipped = "skipped" // not applied (e.g. project already has build commands)
 	suggestionAdded   = "added"   // created by this run
 	suggestionFailed  = "failed"  // create attempt failed
+	// suggestionNotAttempted marks a build command left out because an earlier
+	// step of the pipeline failed: adding it alone would build out of order.
+	suggestionNotAttempted = "not_attempted"
 )
 
 // suggestedItem is one suggested build command, excluded-file pattern or
@@ -60,13 +63,18 @@ func (p *suggestedSettingsPlan) pending() int {
 	return n
 }
 
-// failed names every item that could not be created, e.g. `excluded file "node_modules/"`.
+// failed names every item that was not created: those whose create failed,
+// e.g. `excluded file "node_modules/"`, and build commands not attempted after
+// an earlier one failed, marked "(not attempted)".
 func (p *suggestedSettingsPlan) failed() []string {
 	var names []string
 	add := func(kind string, items []suggestedItem, label func(suggestedItem) string) {
 		for _, it := range items {
-			if it.Status == suggestionFailed {
+			switch it.Status {
+			case suggestionFailed:
 				names = append(names, fmt.Sprintf("%s %q", kind, label(it)))
+			case suggestionNotAttempted:
+				names = append(names, fmt.Sprintf("%s %q (not attempted)", kind, label(it)))
 			}
 		}
 	}
@@ -197,8 +205,12 @@ func planSuggestedSettings(ctx context.Context, client *sdk.Client, projectID st
 	}, nil
 }
 
-// applySuggestedBuildCommands creates every planned build command in order.
-// Failures are non-fatal and leave a manual hint on stderr.
+// applySuggestedBuildCommands creates the planned build commands in order.
+// They run as a pipeline, so it stops at the first that fails: adding the later
+// steps alone would leave e.g. "npm run build" without "npm ci", and a re-run
+// can't repair that because build commands are skipped once the project has
+// any. The failed step and the ones after it are left for the user to add by
+// hand, with the commands to do so on stderr. Failures are not fatal here.
 func applySuggestedBuildCommands(ctx context.Context, env *output.Envelope, client *sdk.Client, projectID string, items []suggestedItem) {
 	for i := range items {
 		it := &items[i]
@@ -213,12 +225,32 @@ func applySuggestedBuildCommands(ctx context.Context, env *output.Envelope, clie
 			HaltOnError:  it.haltOnError,
 		}); err != nil {
 			it.Status, it.Error = suggestionFailed, err.Error()
+			for j := i + 1; j < len(items); j++ {
+				if items[j].Status == suggestionAdd {
+					items[j].Status = suggestionNotAttempted
+				}
+			}
 			env.Warn("Could not set the suggested build command (%q): %v", it.Command, err)
-			env.Warn("Add it manually: dhq build-commands create -p %s --command %q", projectID, it.Command)
-			continue
+			env.Warn("Stopped adding build commands. Add the remaining ones manually, in order:")
+			for _, c := range manualBuildCommands(projectID, items) {
+				env.Warn("  %s", c)
+			}
+			return
 		}
 		it.Status = suggestionAdded
 	}
+}
+
+// manualBuildCommands returns, in order, the 'dhq build-commands create'
+// command for every build command that failed or was not attempted.
+func manualBuildCommands(projectID string, items []suggestedItem) []string {
+	var cmds []string
+	for _, it := range items {
+		if it.Status == suggestionFailed || it.Status == suggestionNotAttempted {
+			cmds = append(cmds, fmt.Sprintf("dhq build-commands create -p %s --command %q", projectID, it.Command))
+		}
+	}
+	return cmds
 }
 
 // applySuggestedPaths creates every planned path with create. Failures are
@@ -304,6 +336,32 @@ func requireReadableDir(dir string) error {
 	return nil
 }
 
+// applySuggestionsFailureHint says how to finish a partly applied plan. Failed
+// build commands must be added by hand, with the commands applySuggestedBuildCommands
+// printed (a re-run skips build commands once the project has any); failed
+// excluded or build cache files are added by a re-run.
+func applySuggestionsFailureHint(plan *suggestedSettingsPlan) string {
+	var hints []string
+	if len(manualBuildCommands(plan.Project, plan.BuildCommands)) > 0 {
+		hints = append(hints, "Add the remaining build commands manually, in order, with the 'dhq build-commands create' commands printed above; a re-run skips build commands once the project has some.")
+	}
+	pathFailed := false
+	for _, it := range append(append([]suggestedItem{}, plan.ExcludedFiles...), plan.BuildCacheFiles...) {
+		if it.Status == suggestionFailed {
+			pathFailed = true
+			break
+		}
+	}
+	if pathFailed {
+		what := "settings"
+		if len(hints) > 0 {
+			what = "excluded and build cache files"
+		}
+		hints = append(hints, fmt.Sprintf("Re-run 'dhq projects apply-suggestions -p %s' to retry the %s; only missing ones are added.", plan.Project, what))
+	}
+	return strings.Join(hints, "\n")
+}
+
 func newProjectsApplySuggestionsCmd() *cobra.Command {
 	var dryRun bool
 
@@ -380,7 +438,7 @@ see what would be applied without changing anything.`,
 				env.Warn("Could not add: %s", strings.Join(failed, ", "))
 				failErr = &output.UserError{
 					Message: fmt.Sprintf("%s: %s", summary, strings.Join(failed, ", ")),
-					Hint:    fmt.Sprintf("Re-run 'dhq projects apply-suggestions -p %s' to retry; only missing settings are added.", projectID),
+					Hint:    applySuggestionsFailureHint(plan),
 				}
 			}
 

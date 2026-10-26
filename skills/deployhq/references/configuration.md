@@ -111,7 +111,11 @@ dhq projects apply-suggestions -p my-app --json             # apply
 - Build commands are added only when the project has none. If it already has a
   build pipeline, the suggestions are reported as `skipped` and nothing changes.
 - Each item in the JSON result has a `status`: `add` (dry run), `added`,
-  `exists`, `skipped` or `failed`.
+  `exists`, `skipped`, `failed` or `not_attempted`.
+- Build commands stop at the first that fails; the later ones are
+  `not_attempted`. Add the failed and remaining ones with the
+  `dhq build-commands create` commands printed on stderr, in order (a re-run
+  skips build commands once the project has some).
 
 ## Build Commands
 

@@ -198,6 +198,9 @@ type fakeSuggestionsAPI struct {
 	status map[string]int
 	posts  map[string]int // successful or not, by settings path suffix
 	calls  int            // requests for the project or detection
+	// buildCommands overrides the detected build commands (a JSON array);
+	// by default detection suggests the single step "npm ci".
+	buildCommands string
 }
 
 func (f *fakeSuggestionsAPI) install(t *testing.T) {
@@ -215,8 +218,12 @@ func (f *fakeSuggestionsAPI) install(t *testing.T) {
 			_, _ = w.Write([]byte(`{"name":"My App","permalink":"my-app","identifier":"p-1"}`))
 			return
 		case r.Method == http.MethodPost && path == "/detection":
+			buildCommands := f.buildCommands
+			if buildCommands == "" {
+				buildCommands = `[{"description":"Install","command":"npm ci"}]`
+			}
 			_, _ = w.Write([]byte(`{"stack":"nextjs",` +
-				`"build_commands":[{"description":"Install","command":"npm ci"}],` +
+				`"build_commands":` + buildCommands + `,` +
 				`"excluded_files":[{"path":"node_modules/"}],` +
 				`"build_cache_files":[{"path":".next/cache/"}]}`))
 			return
@@ -416,4 +423,53 @@ func TestProjectsApplySuggestions_RejectsPathThatIsNotADirectory(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotZero(t, api.calls)
 	})
+}
+
+// Build commands are an ordered pipeline: once one can't be added, adding the
+// later ones would leave e.g. "npm run build" without "npm ci", and a re-run
+// can't repair that (build commands are skipped once the project has any). So
+// the command stops at the first failure and points at adding the rest by hand.
+func TestProjectsApplySuggestions_StopsBuildCommandsAtFirstFailure(t *testing.T) {
+	api := &fakeSuggestionsAPI{
+		status: map[string]int{"POST /build_commands": http.StatusUnprocessableEntity},
+		buildCommands: `[{"description":"Install","command":"npm ci"},` +
+			`{"description":"Build","command":"npm run build"}]`,
+	}
+	api.install(t)
+
+	written, err := runApplySuggestions(t)
+
+	require.Error(t, err)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Equal(t, 1, api.posts["/build_commands"], "no build command may be added after one fails")
+	assert.Equal(t, 1, api.posts["/excluded_files"], "other settings are still applied")
+	// The manual commands themselves are printed once, on stderr, by the shared
+	// applySuggestedBuildCommands (see TestLaunchApplyBuildCommand_StopsAtFirstFailure).
+	assert.Contains(t, err.Error(), "dhq build-commands create", "the hint points at adding them by hand")
+	assert.Contains(t, err.Error(), `build command "npm run build" (not attempted)`)
+	assert.NotContains(t, err.Error(), "Re-run", "a re-run skips build commands once the project has any")
+
+	var resp struct {
+		OK   bool                  `json:"ok"`
+		Data suggestedSettingsPlan `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(strings.NewReader(written)).Decode(&resp), "JSON result: %q", written)
+	assert.False(t, resp.OK)
+	assert.Equal(t, []string{suggestionFailed, suggestionNotAttempted}, statuses(resp.Data.BuildCommands))
+}
+
+// When both a build command and a path fail, the hint covers both: add the
+// build commands by hand, and re-run for the paths.
+func TestProjectsApplySuggestions_HintCoversBuildCommandsAndPaths(t *testing.T) {
+	api := &fakeSuggestionsAPI{status: map[string]int{
+		"POST /build_commands": http.StatusUnprocessableEntity,
+		"POST /excluded_files": http.StatusUnprocessableEntity,
+	}}
+	api.install(t)
+
+	_, err := runApplySuggestions(t)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dhq build-commands create")
+	assert.Contains(t, err.Error(), "Re-run 'dhq projects apply-suggestions -p my-app' to retry the excluded and build cache files")
 }

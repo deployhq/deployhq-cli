@@ -276,6 +276,41 @@ func TestLaunchApplyBuildCommand_CreateErrorWarnsWithHint(t *testing.T) {
 	assert.Contains(t, warn, "npm run build")
 }
 
+func TestLaunchApplyBuildCommand_StopsAtFirstFailure(t *testing.T) {
+	// Build commands are an ordered pipeline: after a failed step, adding the
+	// later ones would build without (e.g.) installing dependencies. Launch
+	// stops and prints the manual commands for the failed step and the rest.
+	var mu sync.Mutex
+	posts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			_, _ = w.Write([]byte("[]"))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			mu.Lock()
+			posts++
+			mu.Unlock()
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":"command is invalid"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	env, _, stderr := testLaunchEnvelope()
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "my-app"}, newSpecValidatingClient(t, srv),
+		detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm ci"}, {Command: "npm run build"}}})
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, posts, "no build command may be added after one fails")
+	warn := stderr.String()
+	assert.Contains(t, warn, `dhq build-commands create -p my-app --command "npm ci"`)
+	assert.Contains(t, warn, `dhq build-commands create -p my-app --command "npm run build"`)
+	assert.Equal(t, 1, strings.Count(warn, `--command "npm run build"`), "manual commands are printed once")
+}
+
 func TestLaunchApplyBuildCommand_TruncatesLongDescription(t *testing.T) {
 	// Description is capped at 100 runes (mirrors the web wizard) while the full
 	// command is preserved.
