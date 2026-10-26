@@ -281,3 +281,19 @@ func TestWaitForDeployment_TableWithoutTerminalWaits(t *testing.T) {
 		})
 	}
 }
+
+// With stdout on a terminal but stdin piped, the CLI runs non-interactive.
+// The live view needs keyboard input, so --wait uses plain progress there.
+func TestWaitForDeployment_NonInteractiveTerminalUsesPlainProgress(t *testing.T) {
+	fastPoll(t)
+	seq := &deploymentSequence{statuses: []string{"running", "completed"}}
+	srv := httptest.NewServer(seq.handler(t))
+	defer srv.Close()
+	var stdout, stderr bytes.Buffer
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr, IsTTY: true, NonInteractive: true}
+
+	err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, seq.count(), "it polled until the deployment finished")
+	assert.Contains(t, stderr.String(), "Deployment completed")
+}

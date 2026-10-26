@@ -637,9 +637,10 @@ func deploymentBreadcrumbs(depID, projectID string, inProgress bool) []output.Br
 // the timeout, in seconds, elapses; 0 = no timeout).
 //
 // In an interactive terminal (without --json) it shows the live TUI. Otherwise
-// (pipes, CI, agents, --json, or --table/-q without a terminal) it prints plain
-// progress lines to stderr and, in JSON mode, writes the FINAL deployment to
-// stdout once it has finished, so "status" is "completed" on success. Any outcome other than "completed" — failed,
+// (pipes, CI, agents, --json, non-interactive runs, or --table/-q without a
+// terminal) it prints plain progress lines to stderr and, in JSON mode, writes
+// the FINAL deployment to stdout once it has finished, so "status" is
+// "completed" on success. Any outcome other than "completed" — failed,
 // cancelled, or timed out — returns an error, so the exit code is non-zero.
 func waitForDeployment(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, depID string, timeout int) error {
 	env.Status("Deployment %s queued, waiting for it to finish...", depID)
@@ -660,7 +661,7 @@ func waitForDeployment(ctx context.Context, client *sdk.Client, env *output.Enve
 		}
 	}
 
-	if env.IsTTY && !env.WantsJSON() {
+	if env.IsTTY && !env.NonInteractive && !env.WantsJSON() {
 		// Interactive terminal: the live TUI. Unlike `deployments watch`, any
 		// final status other than "completed" (cancelled, aborted, or a fetch
 		// that failed) is an error here.
