@@ -56,6 +56,9 @@ func repoServer(t *testing.T, onCreate http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/projects":
+			// No project with this name yet (launch may check before creating).
+			_, _ = w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/projects":
 			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
 				"name": "my-app", "permalink": "my-app", "public_key": testDeployPubKey,
