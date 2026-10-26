@@ -257,11 +257,16 @@ type ServerGroup struct {
 // ServerGroupCreateRequest is the payload for creating a server group.
 type ServerGroupCreateRequest struct {
 	Name string `json:"name"`
+	// TransferOrder is "sequential" or "parallel". Left empty it is omitted
+	// from the request, so the backend's default applies.
+	TransferOrder string `json:"transfer_order,omitempty"`
 }
 
 // ServerGroupUpdateRequest is the payload for updating a server group.
 type ServerGroupUpdateRequest struct {
 	Name string `json:"name,omitempty"`
+	// TransferOrder is "sequential" or "parallel"; empty leaves it unchanged.
+	TransferOrder string `json:"transfer_order,omitempty"`
 }
 
 // ServerAgent is the embedded agent object within a server response.
