@@ -423,6 +423,13 @@ func (m *initModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.creating {
 				return m, nil // already connecting
 			}
+			// gh already added the key and only the repository request
+			// failed: retry that, since running gh again would fail on the
+			// duplicate key.
+			if m.deployKeyAdded {
+				m.creating = true
+				return m, m.createRepo
+			}
 			if m.cursor == 0 {
 				m.creating = true
 				return m, m.addDeployKeyViaGH
@@ -959,6 +966,10 @@ func (m *initModel) View() string {
 		if m.deployKeyAdded {
 			b.WriteString(initSuccess.Render("  ✅ Deploy key added via GitHub CLI"))
 			b.WriteString("\n")
+			if !m.creating {
+				b.WriteString("\n  Press Enter to retry connecting the repository...")
+				b.WriteString("\n")
+			}
 		} else {
 			m.viewSelect(&b, "Add deploy key automatically?", []string{"Yes, add via GitHub CLI", "No, I'll add it manually"})
 		}
