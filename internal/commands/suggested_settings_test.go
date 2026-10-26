@@ -337,3 +337,23 @@ func TestProjectsApplySuggestions_StopsWhenExistingPathsCannotBeListed(t *testin
 		})
 	}
 }
+
+// On a partial failure in --json mode the plan response is the command's only
+// JSON document: the returned error is marked as already reported, so main
+// writes no second error object, and it still exits 1.
+func TestProjectsApplySuggestions_PartialFailureWritesOneJSONObject(t *testing.T) {
+	api := &fakeSuggestionsAPI{status: map[string]int{"POST /excluded_files": http.StatusUnprocessableEntity}}
+	api.install(t)
+
+	written, err := runApplySuggestions(t)
+
+	require.Error(t, err)
+	assert.True(t, output.IsReported(err), "main must not write a second JSON object")
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err), "still exits 1")
+
+	dec := json.NewDecoder(strings.NewReader(written))
+	var resp map[string]any
+	require.NoError(t, dec.Decode(&resp))
+	assert.Equal(t, false, resp["ok"])
+	assert.False(t, dec.More(), "exactly one JSON document: %q", written)
+}

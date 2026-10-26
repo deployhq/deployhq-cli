@@ -368,7 +368,12 @@ see what would be applied without changing anything.`,
 				if err := env.WriteJSON(resp); err != nil {
 					return err
 				}
-				return failErr
+				if failErr != nil {
+					// The plan response above is the error report; main must
+					// not write a second JSON object.
+					return &output.ReportedError{Err: failErr}
+				}
+				return nil
 			}
 			if failErr != nil {
 				return failErr
