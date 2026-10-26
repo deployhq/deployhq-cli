@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -51,14 +52,28 @@ func duplicateProjectError(name string, matches []sdk.Project) error {
 	}
 }
 
-// confirmDuplicateProjectFn asks whether to create a project although others
-// with the same name exist. A variable so tests can stub the prompt.
-var confirmDuplicateProjectFn = func(name string) bool {
-	prompt := promptui.Select{
-		Label: fmt.Sprintf("Create another project named %q anyway?", name),
-		Items: []string{"No", "Yes, create another"},
+// nopWriteCloser adapts an io.Writer to the io.WriteCloser promptui wants,
+// without closing the underlying writer (the envelope's stderr).
+type nopWriteCloser struct{ io.Writer }
+
+func (nopWriteCloser) Close() error { return nil }
+
+// duplicateProjectSelect builds the duplicate-name prompt, drawing on out.
+// out is stderr: stdout carries only data, and with --json in a terminal the
+// prompt's text would otherwise precede the JSON and make it unparsable.
+func duplicateProjectSelect(name string, out io.Writer) *promptui.Select {
+	return &promptui.Select{
+		Label:  fmt.Sprintf("Create another project named %q anyway?", name),
+		Items:  []string{"No", "Yes, create another"},
+		Stdout: nopWriteCloser{out},
 	}
-	idx, _, err := prompt.Run()
+}
+
+// confirmDuplicateProjectFn asks whether to create a project although others
+// with the same name exist, drawing the prompt on out. A variable so tests can
+// stub the prompt.
+var confirmDuplicateProjectFn = func(name string, out io.Writer) bool {
+	idx, _, err := duplicateProjectSelect(name, out).Run()
 	return err == nil && idx == 1
 }
 
@@ -83,7 +98,7 @@ func confirmNoDuplicateProject(ctx context.Context, env *output.Envelope, client
 		return duplicateProjectError(name, matches)
 	}
 	env.Warn("A project named %q already exists: %s", name, describeProjects(matches))
-	if !confirmDuplicateProjectFn(name) {
+	if !confirmDuplicateProjectFn(name, env.Stderr) {
 		return duplicateProjectError(name, matches)
 	}
 	return nil

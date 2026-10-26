@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -79,11 +81,40 @@ func TestConfirmNoDuplicateProject_InteractiveAsks(t *testing.T) {
 	env, _, _ := testLaunchEnvelope()
 	env.NonInteractive = false
 
-	confirmDuplicateProjectFn = func(string) bool { return false }
+	confirmDuplicateProjectFn = func(string, io.Writer) bool { return false }
 	assert.Error(t, confirmNoDuplicateProject(t.Context(), env, newSpecValidatingClient(t, srv), "My App", false))
 
-	confirmDuplicateProjectFn = func(string) bool { return true }
+	confirmDuplicateProjectFn = func(string, io.Writer) bool { return true }
 	assert.NoError(t, confirmNoDuplicateProject(t.Context(), env, newSpecValidatingClient(t, srv), "My App", false))
+}
+
+// The prompt must draw on stderr: with --json in a terminal, anything it
+// wrote to stdout would precede the JSON and make it unparsable.
+func TestConfirmNoDuplicateProject_PromptWritesToStderr(t *testing.T) {
+	srv := projectsListServer(t, twoProjectsJSON)
+	orig := confirmDuplicateProjectFn
+	t.Cleanup(func() { confirmDuplicateProjectFn = orig })
+
+	env, _, stderr := testLaunchEnvelopeJSON()
+	env.NonInteractive = false
+
+	var promptOut io.Writer
+	confirmDuplicateProjectFn = func(_ string, out io.Writer) bool {
+		promptOut = out
+		return true
+	}
+	require.NoError(t, confirmNoDuplicateProject(t.Context(), env, newSpecValidatingClient(t, srv), "My App", false))
+	assert.Same(t, stderr, promptOut)
+}
+
+func TestDuplicateProjectSelect_WritesToGivenWriter(t *testing.T) {
+	var out bytes.Buffer
+	sel := duplicateProjectSelect("My App", &out)
+	require.NotNil(t, sel.Stdout)
+	_, err := sel.Stdout.Write([]byte("prompt"))
+	require.NoError(t, err)
+	assert.Equal(t, "prompt", out.String())
+	assert.NoError(t, sel.Stdout.Close())
 }
 
 // A failed lookup must never block project creation.
