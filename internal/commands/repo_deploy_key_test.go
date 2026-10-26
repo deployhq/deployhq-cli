@@ -627,3 +627,21 @@ func TestLaunchRepoErrors_QuoteProject(t *testing.T) {
 	require.True(t, isLaunchErr(launchNewProjectRepoFailure(assert.AnError, "a&b"), &le))
 	assert.Contains(t, le.NextStep, "--project 'a&b' added")
 }
+
+// --json=<fields> must not filter launch's error away: it is the only JSON
+// object written for the failure, so reason, exit_code and recovery have to
+// survive a field selection aimed at the success payload.
+func TestWriteLaunchError_JSONFieldsDoNotFilterError(t *testing.T) {
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	env.JSONFields = []string{"url"}
+	err := writeLaunchError(env, launchConfig{}, reasonRepoUnreachable, &launchError{Reason: reasonRepoUnreachable, Message: "rejected"})
+	assert.True(t, output.IsReported(err))
+
+	var got map[string]interface{}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	data, ok := got["data"].(map[string]interface{})
+	require.True(t, ok, "error payload missing: %s", stdout.String())
+	assert.Equal(t, reasonRepoUnreachable, data["reason"])
+	assert.NotZero(t, data["exit_code"])
+	assert.Contains(t, data, "recovery")
+}
