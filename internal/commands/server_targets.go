@@ -64,9 +64,15 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 			loaded = true
 		}
 		if id, candidates := resolveServerName(in, servers); id != "" {
+			if dups := sameNamedServers(in, servers); len(dups) > 1 {
+				return nil, ambiguousServerError(in, dups, nil)
+			}
 			ids = append(ids, id)
 			continue
 		} else if groupID, _ := resolveGroupName(in, groups); groupID != "" {
+			if dups := sameNamedGroups(in, groups); len(dups) > 1 {
+				return nil, ambiguousServerError(in, nil, dups)
+			}
 			ids = append(ids, groupID)
 			continue
 		} else {
@@ -97,6 +103,49 @@ func unresolvedServerError(input string, candidates []sdk.Server, groups []sdk.S
 	return &output.UserError{
 		Message: fmt.Sprintf("No unique server or server group matches %q", input),
 		Hint:    hint,
+	}
+}
+
+// sameNamedServers returns every server whose name equals input under the
+// case-insensitive comparison resolveServerName uses for an exact match. That
+// helper returns the first such server, so more than one means the name is
+// ambiguous and the caller must pick by identifier.
+func sameNamedServers(input string, servers []sdk.Server) []sdk.Server {
+	var matches []sdk.Server
+	for _, s := range servers {
+		if strings.EqualFold(s.Name, input) {
+			matches = append(matches, s)
+		}
+	}
+	return matches
+}
+
+// sameNamedGroups is sameNamedServers for server groups (resolveGroupName).
+func sameNamedGroups(input string, groups []sdk.ServerGroup) []sdk.ServerGroup {
+	var matches []sdk.ServerGroup
+	for _, g := range groups {
+		if strings.EqualFold(g.Name, input) {
+			matches = append(matches, g)
+		}
+	}
+	return matches
+}
+
+func ambiguousServerError(input string, servers []sdk.Server, groups []sdk.ServerGroup) error {
+	kind := "server"
+	var names []string
+	for _, s := range servers {
+		names = append(names, fmt.Sprintf("%s (%s)", s.Name, s.Identifier))
+	}
+	if len(groups) > 0 {
+		kind = "server group"
+	}
+	for _, g := range groups {
+		names = append(names, fmt.Sprintf("%s (%s, group)", g.Name, g.Identifier))
+	}
+	return &output.UserError{
+		Message: fmt.Sprintf("--server %q matches more than one %s", input, kind),
+		Hint:    "Use the identifier instead. Matches: " + strings.Join(names, ", "),
 	}
 }
 
