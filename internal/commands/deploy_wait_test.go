@@ -250,3 +250,34 @@ func TestWaitForDeployment_TerminalTimeoutReportsLastStatus(t *testing.T) {
 	assert.Contains(t, err.Error(), "Timed out after 1s")
 	assert.Contains(t, err.Error(), "last status: running")
 }
+
+// --table (or -q) turns JSON off even without a terminal, e.g. in CI. --wait
+// must still wait there, with plain progress, and never open the live view.
+func TestWaitForDeployment_TableWithoutTerminalWaits(t *testing.T) {
+	for name, tc := range map[string]struct {
+		statuses []string
+		wantErr  bool
+	}{
+		"completed": {statuses: []string{"running", "completed"}},
+		"cancelled": {statuses: []string{"running", "cancelled"}, wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fastPoll(t)
+			seq := &deploymentSequence{statuses: tc.statuses}
+			srv := httptest.NewServer(seq.handler(t))
+			defer srv.Close()
+			var stdout, stderr bytes.Buffer
+			env := &output.Envelope{Stdout: &stdout, Stderr: &stderr, TableMode: true}
+
+			err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 0)
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), `"cancelled"`)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, 2, seq.count(), "it polled until the deployment finished")
+			assert.Empty(t, stdout.String(), "no JSON is written when JSON is off")
+		})
+	}
+}
