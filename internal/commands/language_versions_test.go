@@ -34,4 +34,8 @@ func TestLanguageVersionsList_TipPointsAtBuildLanguagesSet(t *testing.T) {
 	assert.Contains(t, stderr, "Tip:")
 	assert.NotContains(t, stderr, "--packages")
 	assert.Contains(t, stderr, "build-languages set")
+	// Both suggested commands name the project, so they work when it was only
+	// given with -p on this command.
+	assert.Contains(t, stderr, "dhq build-configs create -p my-app --server")
+	assert.Contains(t, stderr, "dhq build-languages set -p my-app <language>")
 }
