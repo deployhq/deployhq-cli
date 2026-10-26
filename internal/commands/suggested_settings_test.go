@@ -255,8 +255,8 @@ func (f *fakeSuggestionsAPI) install(t *testing.T) {
 }
 
 // runApplySuggestions runs the real 'dhq projects apply-suggestions --json' in
-// an empty directory and returns its error and the JSON document it wrote.
-func runApplySuggestions(t *testing.T) (error, string) {
+// an empty directory and returns the JSON document it wrote and its error.
+func runApplySuggestions(t *testing.T) (string, error) {
 	t.Helper()
 	withResolvableContext(t)
 	t.Setenv("HOME", t.TempDir())
@@ -266,7 +266,7 @@ func runApplySuggestions(t *testing.T) (error, string) {
 
 	err := runServersCmd(t, "projects", "apply-suggestions", "--json")
 	written, _ := os.ReadFile(jsonl)
-	return err, string(written)
+	return string(written), err
 }
 
 // A partial failure must not look like success: the command exits non-zero,
@@ -275,7 +275,7 @@ func TestProjectsApplySuggestions_FailsWhenAnItemFails(t *testing.T) {
 	api := &fakeSuggestionsAPI{status: map[string]int{"POST /excluded_files": http.StatusUnprocessableEntity}}
 	api.install(t)
 
-	err, written := runApplySuggestions(t)
+	written, err := runApplySuggestions(t)
 
 	require.Error(t, err, "a failed item must fail the command")
 	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
@@ -301,7 +301,7 @@ func TestProjectsApplySuggestions_SucceedsWhenEveryItemIsAdded(t *testing.T) {
 	api := &fakeSuggestionsAPI{}
 	api.install(t)
 
-	err, written := runApplySuggestions(t)
+	written, err := runApplySuggestions(t)
 
 	require.NoError(t, err)
 	assert.Equal(t, map[string]int{"/build_commands": 1, "/excluded_files": 1, "/build_cache_files": 1}, api.posts)
@@ -315,7 +315,7 @@ func TestProjectsApplySuggestions_StopsWhenBuildCommandsCannotBeListed(t *testin
 	api := &fakeSuggestionsAPI{status: map[string]int{"GET /build_commands": http.StatusInternalServerError}}
 	api.install(t)
 
-	err, _ := runApplySuggestions(t)
+	_, err := runApplySuggestions(t)
 
 	require.Error(t, err, "an unknown build pipeline must stop the command")
 	assert.Zero(t, api.posts["/build_commands"], "no build command may be added")
