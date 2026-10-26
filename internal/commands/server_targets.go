@@ -170,28 +170,42 @@ func unresolvedServerError(input string, candidates []sdk.Server, groups []sdk.S
 }
 
 // sameNamedServers returns every server whose name equals input under the
-// case-insensitive comparison resolveServerName uses for an exact match. That
-// helper returns the first such server, so more than one means the name is
-// ambiguous and the caller must pick by identifier.
+// case-insensitive comparison resolveServerName uses for an exact match or,
+// when nothing matches exactly, under its punctuation-insensitive comparison.
+// That helper returns the first exact match, and when several match ignoring
+// punctuation it falls through to a looser "contains" match, so more than one
+// here means the name is ambiguous and the caller must pick by identifier.
 func sameNamedServers(input string, servers []sdk.Server) []sdk.Server {
-	var matches []sdk.Server
+	var exact, normalized []sdk.Server
 	for _, s := range servers {
 		if strings.EqualFold(s.Name, input) {
-			matches = append(matches, s)
+			exact = append(exact, s)
+		}
+		if normalize(s.Name) == normalize(input) {
+			normalized = append(normalized, s)
 		}
 	}
-	return matches
+	if len(exact) > 0 {
+		return exact
+	}
+	return normalized
 }
 
 // sameNamedGroups is sameNamedServers for server groups (resolveGroupName).
 func sameNamedGroups(input string, groups []sdk.ServerGroup) []sdk.ServerGroup {
-	var matches []sdk.ServerGroup
+	var exact, normalized []sdk.ServerGroup
 	for _, g := range groups {
 		if strings.EqualFold(g.Name, input) {
-			matches = append(matches, g)
+			exact = append(exact, g)
+		}
+		if normalize(g.Name) == normalize(input) {
+			normalized = append(normalized, g)
 		}
 	}
-	return matches
+	if len(exact) > 0 {
+		return exact
+	}
+	return normalized
 }
 
 func ambiguousServerError(input string, servers []sdk.Server, groups []sdk.ServerGroup) error {

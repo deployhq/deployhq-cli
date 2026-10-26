@@ -610,3 +610,36 @@ func TestResolveServerTargets_UppercaseUUIDPassesThroughWhenGroupListFails(t *te
 	require.NoError(t, err)
 	assert.Equal(t, []string{unlisted}, ids)
 }
+
+// Two names that are equal once punctuation is ignored are ambiguous: the
+// shared resolver would fall through to a looser "contains" match and pick one.
+func TestResolveServerTargets_NormalizedDuplicateServerNameIsAmbiguous(t *testing.T) {
+	srv := targetsServer(t, http.StatusOK, `[
+		{"identifier":"`+targetServerUUID+`","name":"prod-us!","protocol_type":"ssh"},
+		{"identifier":"`+duplicateServerUUID+`","name":"prod--us","protocol_type":"ssh"}]`,
+		http.StatusOK, `[]`)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"prod-us"})
+	require.Error(t, err)
+	assert.Nil(t, ids)
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Contains(t, userErr.Message, "more than one server")
+	assert.Contains(t, userErr.Hint, targetServerUUID)
+	assert.Contains(t, userErr.Hint, duplicateServerUUID)
+}
+
+func TestResolveServerTargets_NormalizedDuplicateGroupNameIsAmbiguous(t *testing.T) {
+	const dupGroupUUID = "8e1c7a52-6666-4c3e-9a0b-000000000006"
+	srv := targetsServer(t, http.StatusOK, `[]`,
+		http.StatusOK, `[
+		{"identifier":"`+targetGroupUUID+`","name":"web-eu!"},
+		{"identifier":"`+dupGroupUUID+`","name":"web--eu"}]`)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"web-eu"})
+	require.Error(t, err)
+	assert.Nil(t, ids)
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Contains(t, userErr.Message, "more than one server group")
+}
