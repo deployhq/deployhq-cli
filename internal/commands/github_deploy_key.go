@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -108,10 +109,31 @@ func launchRepoFailure(err error) error {
 	}
 }
 
+// isRepoAccessRejected reports whether err is DeployHQ refusing a repository
+// because it could not read it with the configured authentication: for an SSH
+// URL, the deploy key is not on the git host yet. Other failures (timeouts,
+// server errors, other validation errors) are not, and must keep their own
+// message, exit code and retryability.
+func isRepoAccessRejected(err error) bool {
+	var apiErr *sdk.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	for _, msg := range append([]string{apiErr.Message}, apiErr.Errors...) {
+		if strings.Contains(strings.ToLower(msg), "using the authentication method provided") {
+			return true
+		}
+	}
+	return false
+}
+
 // launchRepoKeyError explains a rejected SSH repository: the project's deploy
 // key is not on the git host yet. It carries the public key, where to add it,
 // and the command that resumes launch with the same project.
 func launchRepoKeyError(ctx context.Context, client *sdk.Client, projectID string, proj *sdk.Project, gitRemote string, err error) error {
+	if !isRepoAccessRejected(err) {
+		return launchRepoFailure(err)
+	}
 	publicKey := ""
 	if proj != nil {
 		publicKey = proj.PublicKey

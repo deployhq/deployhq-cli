@@ -350,10 +350,11 @@ func newReposLatestRevisionCmd() *cobra.Command {
 
 // repoConnectError adds deploy-key instructions to a failed repository
 // connection for an SSH URL. DeployHQ checks it can read an SSH repository with
-// the project's deploy key when it is connected, so the usual cause is that the
-// key has not been added to the git host yet. Other errors pass through as-is.
+// the project's deploy key when it is connected, so when it refuses access the
+// cause is that the key has not been added to the git host yet. Other errors
+// pass through as-is.
 func repoConnectError(ctx context.Context, client *sdk.Client, projectID, scmType, url, branch string, err error) error {
-	if !isSSHRepoURL(url) {
+	if !isSSHRepoURL(url) || !isRepoAccessRejected(err) {
 		return err
 	}
 	project, projErr := client.GetProject(ctx, projectID)

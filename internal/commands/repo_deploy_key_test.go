@@ -225,6 +225,53 @@ func TestRepoConnectError_HTTPS_Unchanged(t *testing.T) {
 	assert.Equal(t, createErr, err)
 }
 
+// Only DeployHQ's "couldn't connect with the authentication method" refusal
+// means the deploy key is missing. Any other failure (a server error, a
+// different validation error) passes through unchanged, keeping its exit code
+// and retryability.
+func otherRepoFailures() map[string]http.HandlerFunc {
+	return map[string]http.HandlerFunc{
+		"server error": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		},
+		"other validation error": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			json.NewEncoder(w).Encode(map[string][]string{"errors": {"url is invalid"}}) //nolint:errcheck
+		},
+	}
+}
+
+func TestRepoConnectError_SSH_OtherFailuresUnchanged(t *testing.T) {
+	for name, handler := range otherRepoFailures() {
+		t.Run(name, func(t *testing.T) {
+			client := newTestClient(t, repoServer(t, handler))
+			_, createErr := client.CreateRepository(t.Context(), "my-app", repoCreateReq("git@github.com:acme/my-app.git"))
+			require.Error(t, createErr)
+
+			err := repoConnectError(t.Context(), client, "my-app", "git", "git@github.com:acme/my-app.git", "main", createErr)
+			assert.Equal(t, createErr, err)
+		})
+	}
+}
+
+func TestLaunchRepoKeyError_OtherFailuresGetNoKeyInstructions(t *testing.T) {
+	for name, handler := range otherRepoFailures() {
+		t.Run(name, func(t *testing.T) {
+			client := newTestClient(t, repoServer(t, handler))
+			_, createErr := client.CreateRepository(t.Context(), "my-app", repoCreateReq("git@github.com:acme/my-app.git"))
+			require.Error(t, createErr)
+
+			err := launchRepoKeyError(t.Context(), client, "my-app", nil, "git@github.com:acme/my-app.git", createErr)
+			assert.NotContains(t, err.Error(), testDeployPubKey)
+			var le *launchError
+			if isLaunchErr(err, &le) {
+				assert.NotContains(t, le.NextStep, testDeployPubKey)
+				assert.Empty(t, le.Details["public_key"])
+			}
+		})
+	}
+}
+
 func TestGitHubDeployKeySettingsURL(t *testing.T) {
 	assert.Equal(t, "https://github.com/acme/app/settings/keys/new", githubDeployKeySettingsURL("git@github.com:acme/app.git"))
 	assert.Equal(t, "https://github.com/acme/app/settings/keys/new", githubDeployKeySettingsURL("ssh://git@github.com/acme/app.git"))
