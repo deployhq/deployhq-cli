@@ -576,3 +576,37 @@ func TestResolveServerTargets_IdentifierPassesThroughWhenServerListFails(t *test
 	var apiErr *sdk.APIError
 	require.ErrorAs(t, err, &apiErr, "a name cannot be resolved without the server list")
 }
+
+// With a listing failed, a value that matches nothing may be a name the failed
+// listing would have resolved, so only a real UUID is taken as an identifier.
+func TestResolveServerTargets_LongDashedNameIsNotPassedThroughWhenGroupListFails(t *testing.T) {
+	require.True(t, isUUID(longGroupName), "fixture must look like an identifier to isUUID")
+	srv := longNamesServer(t, http.StatusInternalServerError)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{longGroupName})
+	require.Error(t, err)
+	assert.Nil(t, ids)
+
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr, "the group-list failure must surface, not a pass-through identifier")
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	assert.Contains(t, err.Error(), `"`+longGroupName+`"`)
+}
+
+func TestResolveServerTargets_LongDashedNameIsNotPassedThroughWhenServerListFails(t *testing.T) {
+	srv := targetsServer(t, http.StatusInternalServerError, `{"error":"boom"}`, http.StatusOK, `[]`)
+
+	_, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{longServerName})
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr, "the server-list failure must surface, not a pass-through identifier")
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+}
+
+func TestResolveServerTargets_UppercaseUUIDPassesThroughWhenGroupListFails(t *testing.T) {
+	const unlisted = "8E1C7A52-9999-4C3E-9A0B-00000000000A"
+	srv := longNamesServer(t, http.StatusInternalServerError)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlisted})
+	require.NoError(t, err)
+	assert.Equal(t, []string{unlisted}, ids)
+}

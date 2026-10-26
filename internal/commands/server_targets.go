@@ -36,7 +36,9 @@ func addAllServersFlag(cmd *cobra.Command, all *bool) {
 // identifiers. Names are matched against the project's servers first and then
 // its server groups; only a value that matches no name is taken as an
 // identifier — one the listings show, or one that looks like an identifier
-// (isUUID), since a long name with a dash can look like one too. The listings
+// (isUUID), since a long name with a dash can look like one too. If a listing
+// failed, only a canonical UUID is taken that way, so a name the failed listing
+// would have resolved reports the listing error instead. The listings
 // are fetched once, on the first value. It never prompts: an unknown or
 // ambiguous name fails with the available choices so agents can retry.
 func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID string, inputs []string) ([]string, error) {
@@ -76,7 +78,19 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 			ids = append(ids, groupID)
 			continue
 		}
-		if isListedIdentifier(in, servers, groups) || isUUID(in) {
+		if isListedIdentifier(in, servers, groups) {
+			ids = append(ids, in)
+			continue
+		}
+		// With both listings in hand, an unlisted value that looks like an
+		// identifier is passed through. If either failed, the value may be a
+		// name the failed listing would have resolved — a long dashed name
+		// passes isUUID — so only a canonical UUID is trusted then.
+		looksLikeID := isUUID(in)
+		if serversErr != nil || groupsErr != nil {
+			looksLikeID = isCanonicalUUID(in)
+		}
+		if looksLikeID {
 			ids = append(ids, in)
 			continue
 		}
@@ -96,6 +110,29 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 		}
 	}
 	return ids, nil
+}
+
+// isCanonicalUUID reports whether s is a UUID in the canonical 8-4-4-4-12
+// hexadecimal form (either case). It is stricter than isUUID, which also
+// accepts long dashed names.
+func isCanonicalUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			isHex := c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
+			if !isHex {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // isListedIdentifier reports whether input is exactly the identifier of one of
