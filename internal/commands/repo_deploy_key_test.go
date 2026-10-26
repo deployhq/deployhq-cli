@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -359,6 +360,24 @@ func TestInitWizard_SSHRepo_OtherFailuresDoNotBlameDeployKey(t *testing.T) {
 			assert.NotContains(t, m.View(), testDeployPubKey)
 		})
 	}
+}
+
+// Pressing Enter again on the deploy-key step while the repository is being
+// connected must not send a second connection request.
+func TestInitWizard_DeployKeyManual_EnterWhileConnectingIsIgnored(t *testing.T) {
+	m := &initModel{
+		step:    stepDeployKeyManual,
+		repoURL: "git@github.com:acme/my-app.git",
+		scmType: "git",
+		project: &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd, "the first Enter connects the repository")
+	assert.True(t, m.creating)
+
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Nil(t, cmd, "a second Enter while connecting must not connect again")
+	assert.True(t, m.creating)
 }
 
 func TestInitWizard_GHKeyAdded_ThenConnects(t *testing.T) {
