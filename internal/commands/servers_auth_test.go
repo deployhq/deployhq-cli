@@ -5,6 +5,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -29,6 +32,8 @@ type fakeServerAPI struct {
 	// createFailures is how many leading create calls fail with an SSH auth error.
 	createFailures int
 	lastServer     map[string]any
+	// sshKeysStatus, when non-zero, is the status listing account SSH keys returns.
+	sshKeysStatus int
 }
 
 func installFakeServerAPI(t *testing.T, api *fakeServerAPI) {
@@ -58,6 +63,8 @@ func installFakeServerAPI(t *testing.T, api *fakeServerAPI) {
 			return respond(http.StatusCreated, `{"identifier":"srv-1","name":"prod","protocol_type":"ssh"}`)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/projects/my-app"):
 			return respond(http.StatusOK, `{"identifier":"p-1","name":"My App","permalink":"my-app","public_key":"`+projectPublicKey+`"}`)
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/ssh_keys") && api.sshKeysStatus != 0:
+			return respond(api.sshKeysStatus, `{"error":"You do not have permission to view SSH keys"}`)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/ssh_keys"):
 			return respond(http.StatusOK, `[{"identifier":"key-abc123","title":"global","public_key":"`+globalPublicKey+`"}]`)
 		}
@@ -168,7 +175,7 @@ func TestServersCreate_AuthFailureShowsKeyAndInstallCommand(t *testing.T) {
 	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
 	assert.Contains(t, uerr.Message, "SSH authentication failed")
 	assert.Contains(t, uerr.Hint, projectPublicKey)
-	assert.Contains(t, uerr.Hint, `ssh deploy@prod.example.com "mkdir -p ~/.ssh`)
+	assert.Contains(t, uerr.Hint, `| ssh deploy@prod.example.com 'mkdir -p ~/.ssh`)
 	assert.Contains(t, uerr.Hint, "ask the person before modifying their server")
 	assert.Contains(t, uerr.Hint, "re-run with --install-key")
 }
@@ -267,7 +274,61 @@ func TestServersCreate_ExampleLeadsWithKeyAuth(t *testing.T) {
 
 func TestSSHKeyInstallCommand(t *testing.T) {
 	assert.Equal(t,
-		`ssh deploy@h "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo 'ssh-ed25519 AAAA k' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"`,
+		`printf '%s\n' 'ssh-ed25519 AAAA k' | ssh deploy@h 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'`,
 		sshKeyInstallCommand("h", 22, "deploy", "ssh-ed25519 AAAA k"))
-	assert.True(t, strings.HasPrefix(sshKeyInstallCommand("h", 2222, "deploy", "k"), "ssh -p 2222 deploy@h "))
+	assert.True(t, strings.Contains(sshKeyInstallCommand("h", 2222, "deploy", "k"), "| ssh -p 2222 deploy@h "))
+}
+
+// The printed command is pasted into a shell, by a person or an agent, so a
+// key comment must reach the server as plain text, never run locally.
+func TestSSHKeyInstallCommand_KeyIsNotExpandedByTheLocalShell(t *testing.T) {
+	dir := t.TempDir()
+	got := filepath.Join(dir, "stdin")
+	// A stand-in for ssh that records the key it is sent on stdin.
+	fake := "#!/bin/sh\ncat > " + got + "\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ssh"), []byte(fake), 0o755)) //nolint:gosec // test stub must be executable
+
+	key := `ssh-ed25519 AAAA it's "$(touch ` + filepath.Join(dir, "pwned") + `)" ` + "`id` \\n $HOME"
+	cmd := exec.Command("/bin/sh", "-c", sshKeyInstallCommand("h", 22, "deploy", key)) //nolint:gosec // the command under test
+	cmd.Env = []string{"PATH=" + dir + ":/usr/bin:/bin", "HOME=/nonexistent"}
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+
+	sent, err := os.ReadFile(got)
+	require.NoError(t, err)
+	assert.Equal(t, key+"\n", string(sent), "the key reaches the server byte for byte")
+	assert.NoFileExists(t, filepath.Join(dir, "pwned"), "nothing in the key runs locally")
+}
+
+// If the account keys cannot be listed, dhq cannot know which key DeployHQ
+// will use, so it must not install the project key in its place.
+func TestServersCreate_InstallKeyDoesNotGuessWhenGlobalKeyLookupFails(t *testing.T) {
+	withResolvableContext(t)
+	api := &fakeServerAPI{createFailures: 1, sshKeysStatus: http.StatusForbidden}
+	installFakeServerAPI(t, api)
+	calls := stubInstallSSHKey(t, nil)
+
+	err := runServersCmd(t, append(sshCreateArgs, "--install-key", "--global-key-pair-id", "key-abc123")...)
+	require.Error(t, err)
+
+	assert.Empty(t, *calls, "no key is installed when the global key cannot be looked up")
+	assert.NotContains(t, err.Error(), projectPublicKey, "the hint must not offer the project key instead")
+}
+
+// With --non-interactive, --password-stdin never waits at a hidden prompt,
+// even when stdin is a terminal (an agent running under a pseudo-terminal).
+func TestServersCreate_PasswordStdinNonInteractiveDoesNotPrompt_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	called := blockNetwork(t)
+	orig := stdinTerminalFd
+	stdinTerminalFd = func(io.Reader) (int, bool) { return -1, true }
+	t.Cleanup(func() { stdinTerminalFd = orig })
+
+	err := runServersCmd(t, "servers", "create", "--name", "ftp", "--protocol-type", "ftp",
+		"--hostname", "h", "--username", "u", "--password-stdin", "--non-interactive")
+	require.Error(t, err)
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Contains(t, uerr.Message, "--password-stdin")
+	assert.False(t, *called)
 }

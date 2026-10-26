@@ -71,13 +71,28 @@ func readServerPassword(cmd *cobra.Command, env *output.Envelope, password strin
 	return promptHiddenPassword(env, int(os.Stdin.Fd()))
 }
 
+// stdinTerminalFd reports whether r is a terminal, and its file descriptor.
+// A variable so tests can stand in a terminal.
+var stdinTerminalFd = func(r io.Reader) (int, bool) {
+	if f, ok := r.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		return int(f.Fd()), true
+	}
+	return 0, false
+}
+
 // readPasswordStdin implements --password-stdin: a hidden prompt when stdin is
 // a terminal, otherwise the piped input with the trailing newline removed
 // (the same convention as `docker login --password-stdin`).
 func readPasswordStdin(cmd *cobra.Command, env *output.Envelope) (string, error) {
 	in := cmd.InOrStdin()
-	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		return promptHiddenPassword(env, int(f.Fd()))
+	if fd, ok := stdinTerminalFd(in); ok {
+		if env.NonInteractive {
+			return "", &output.UserError{
+				Message: "--password-stdin has nothing piped in, and non-interactive mode cannot ask for the password",
+				Hint:    "Pipe the password in from a file (dhq servers create ... --password-stdin < password.txt), or run the command without --non-interactive in a terminal to be asked for it.",
+			}
+		}
+		return promptHiddenPassword(env, fd)
 	}
 	raw, err := io.ReadAll(io.LimitReader(in, maxPasswordStdinBytes+1))
 	if err != nil {
@@ -124,11 +139,14 @@ func isSSHAuthFailure(err error) bool {
 func resolveDeployPublicKey(ctx context.Context, client *sdk.Client, projectID, globalKeyPairID string) (string, error) {
 	if globalKeyPairID != "" {
 		keys, err := client.ListSSHKeys(ctx, nil)
-		if err == nil {
-			for _, k := range keys {
-				if k.Identifier == globalKeyPairID && k.PublicKey != "" {
-					return strings.TrimSpace(k.PublicKey), nil
-				}
+		if err != nil {
+			// Without the list, which key DeployHQ will use is unknown, so
+			// don't offer the project key in its place.
+			return "", fmt.Errorf("could not look up SSH key %s: %w", globalKeyPairID, err)
+		}
+		for _, k := range keys {
+			if k.Identifier == globalKeyPairID && k.PublicKey != "" {
+				return strings.TrimSpace(k.PublicKey), nil
 			}
 		}
 	}
@@ -152,14 +170,25 @@ func authorizedKeysAppendScript(publicKey string) string {
 	)
 }
 
+// authorizedKeysStdinScript is the remote shell snippet that appends the key
+// it reads on stdin to ~/.ssh/authorized_keys.
+const authorizedKeysStdinScript = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+
 // sshKeyInstallCommand is the one-line command a person can run, with their
-// own SSH access, to install DeployHQ's public key on the server.
+// own SSH access, to install DeployHQ's public key on the server. It is pasted
+// into a shell, so the key is single-quoted and sent on stdin: nothing in it
+// (e.g. a $ or backtick in the comment) is expanded locally.
 func sshKeyInstallCommand(host string, port int, user, publicKey string) string {
 	portFlag := ""
 	if port != 0 && port != 22 {
 		portFlag = fmt.Sprintf("-p %d ", port)
 	}
-	return fmt.Sprintf(`ssh %s%s@%s "%s"`, portFlag, user, host, authorizedKeysAppendScript(publicKey))
+	return fmt.Sprintf("printf '%%s\\n' %s | ssh %s%s@%s %s", shellSingleQuote(publicKey), portFlag, user, host, shellSingleQuote(authorizedKeysStdinScript))
+}
+
+// shellSingleQuote quotes s for a POSIX shell.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // sshKeyMissingHint explains an SSH authentication failure during server
