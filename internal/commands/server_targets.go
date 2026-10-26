@@ -39,10 +39,11 @@ func addAllServersFlag(cmd *cobra.Command, all *bool) {
 // fails with the available choices so agents can retry.
 func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID string, inputs []string) ([]string, error) {
 	var (
-		ids     []string
-		servers []sdk.Server
-		groups  []sdk.ServerGroup
-		loaded  bool
+		ids       []string
+		servers   []sdk.Server
+		groups    []sdk.ServerGroup
+		groupsErr error
+		loaded    bool
 	)
 	for _, raw := range inputs {
 		in := strings.TrimSpace(raw)
@@ -59,16 +60,25 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 			if err != nil {
 				return nil, err
 			}
-			// Groups are optional context; a failure here only narrows matching.
-			groups, _ = client.ListServerGroups(ctx, projectID, nil)
+			// A failed group listing must not block names that match a server,
+			// so it is only reported once a name matches no server.
+			groups, groupsErr = client.ListServerGroups(ctx, projectID, nil)
 			loaded = true
 		}
 		if id, candidates := resolveServerName(in, servers); id != "" {
+			if dups := sameNamedServers(in, servers); len(dups) > 1 {
+				return nil, ambiguousServerError(in, dups, nil)
+			}
 			ids = append(ids, id)
 			continue
 		} else if groupID, _ := resolveGroupName(in, groups); groupID != "" {
+			if dups := sameNamedGroups(in, groups); len(dups) > 1 {
+				return nil, ambiguousServerError(in, nil, dups)
+			}
 			ids = append(ids, groupID)
 			continue
+		} else if groupsErr != nil {
+			return nil, fmt.Errorf("--server %q matches no server, and listing server groups failed: %w", in, groupsErr)
 		} else {
 			return nil, unresolvedServerError(in, candidates, groups)
 		}
@@ -97,6 +107,49 @@ func unresolvedServerError(input string, candidates []sdk.Server, groups []sdk.S
 	return &output.UserError{
 		Message: fmt.Sprintf("No unique server or server group matches %q", input),
 		Hint:    hint,
+	}
+}
+
+// sameNamedServers returns every server whose name equals input under the
+// case-insensitive comparison resolveServerName uses for an exact match. That
+// helper returns the first such server, so more than one means the name is
+// ambiguous and the caller must pick by identifier.
+func sameNamedServers(input string, servers []sdk.Server) []sdk.Server {
+	var matches []sdk.Server
+	for _, s := range servers {
+		if strings.EqualFold(s.Name, input) {
+			matches = append(matches, s)
+		}
+	}
+	return matches
+}
+
+// sameNamedGroups is sameNamedServers for server groups (resolveGroupName).
+func sameNamedGroups(input string, groups []sdk.ServerGroup) []sdk.ServerGroup {
+	var matches []sdk.ServerGroup
+	for _, g := range groups {
+		if strings.EqualFold(g.Name, input) {
+			matches = append(matches, g)
+		}
+	}
+	return matches
+}
+
+func ambiguousServerError(input string, servers []sdk.Server, groups []sdk.ServerGroup) error {
+	kind := "server"
+	var names []string
+	for _, s := range servers {
+		names = append(names, fmt.Sprintf("%s (%s)", s.Name, s.Identifier))
+	}
+	if len(groups) > 0 {
+		kind = "server group"
+	}
+	for _, g := range groups {
+		names = append(names, fmt.Sprintf("%s (%s, group)", g.Name, g.Identifier))
+	}
+	return &output.UserError{
+		Message: fmt.Sprintf("--server %q matches more than one %s", input, kind),
+		Hint:    "Use the identifier instead. Matches: " + strings.Join(names, ", "),
 	}
 }
 

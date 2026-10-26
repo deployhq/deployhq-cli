@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/deployhq/deployhq-cli/internal/detect"
+	"github.com/deployhq/deployhq-cli/internal/output"
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -393,4 +396,95 @@ func TestTemplateCreates_DefaultToAllServers(t *testing.T) {
 			assertAllServers(t, api.payload(t, tc.key))
 		})
 	}
+}
+
+// ── resolveServerTargets ──────────────────────────────────────────────────────
+
+const duplicateServerUUID = "8e1c7a52-4444-4c3e-9a0b-000000000004"
+
+// targetsServer answers the server and server-group listings with the given
+// status and body, so resolveServerTargets can be exercised directly.
+func targetsServer(t *testing.T, serversStatus int, servers string, groupsStatus int, groups string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/servers"):
+			w.WriteHeader(serversStatus)
+			_, _ = w.Write([]byte(servers))
+		case strings.HasSuffix(r.URL.Path, "/server_groups"):
+			w.WriteHeader(groupsStatus)
+			_, _ = w.Write([]byte(groups))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not found"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestResolveServerTargets_DuplicateServerNameIsAmbiguous(t *testing.T) {
+	srv := targetsServer(t, http.StatusOK, `[
+		{"identifier":"`+targetServerUUID+`","name":"Production","protocol_type":"ssh"},
+		{"identifier":"`+duplicateServerUUID+`","name":"Production","protocol_type":"ssh"},
+		{"identifier":"`+otherServerUUID+`","name":"Staging","protocol_type":"ssh"}]`,
+		http.StatusOK, `[]`)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"production"})
+	require.Error(t, err)
+	assert.Nil(t, ids)
+
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Contains(t, userErr.Message, `"production"`)
+	assert.Contains(t, userErr.Message, "more than one server")
+	assert.Contains(t, userErr.Hint, targetServerUUID)
+	assert.Contains(t, userErr.Hint, duplicateServerUUID)
+	assert.NotContains(t, userErr.Hint, otherServerUUID, "only the matching servers are candidates")
+}
+
+func TestResolveServerTargets_DuplicateGroupNameIsAmbiguous(t *testing.T) {
+	const dupGroupUUID = "8e1c7a52-5555-4c3e-9a0b-000000000005"
+	srv := targetsServer(t, http.StatusOK, `[
+		{"identifier":"`+targetServerUUID+`","name":"Production","protocol_type":"ssh"}]`,
+		http.StatusOK, `[
+		{"identifier":"`+targetGroupUUID+`","name":"Web Cluster"},
+		{"identifier":"`+dupGroupUUID+`","name":"web cluster"}]`)
+
+	_, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"Web Cluster"})
+	require.Error(t, err)
+
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Contains(t, userErr.Message, `"Web Cluster"`)
+	assert.Contains(t, userErr.Message, "more than one server group")
+	assert.Contains(t, userErr.Hint, targetGroupUUID)
+	assert.Contains(t, userErr.Hint, dupGroupUUID)
+}
+
+func TestResolveServerTargets_FailedGroupListIsReportedForNonServerName(t *testing.T) {
+	srv := targetsServer(t, http.StatusOK, `[
+		{"identifier":"`+targetServerUUID+`","name":"Production","protocol_type":"ssh"}]`,
+		http.StatusInternalServerError, `{"error":"boom"}`)
+
+	_, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"Web Cluster"})
+	require.Error(t, err)
+
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr, "the group-list failure must surface, not an unknown-name error")
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	var userErr *output.UserError
+	assert.False(t, errors.As(err, &userErr), "must not be reported as an unknown server")
+	assert.Contains(t, err.Error(), `"Web Cluster"`)
+}
+
+func TestResolveServerTargets_FailedGroupListStillResolvesServerName(t *testing.T) {
+	srv := targetsServer(t, http.StatusOK, `[
+		{"identifier":"`+targetServerUUID+`","name":"Production","protocol_type":"ssh"}]`,
+		http.StatusInternalServerError, `{"error":"boom"}`)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"Production"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{targetServerUUID}, ids)
 }
