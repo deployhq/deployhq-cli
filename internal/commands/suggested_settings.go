@@ -2,7 +2,10 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/detect"
@@ -283,6 +286,24 @@ func printSuggestedSettingsPlan(env *output.Envelope, plan *suggestedSettingsPla
 	}
 }
 
+// requireReadableDir rejects a path that isn't a readable directory. Detection
+// on such a path sees no files, so a typo would otherwise run on nothing.
+func requireReadableDir(dir string) error {
+	info, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return &output.UserError{Message: fmt.Sprintf("No such directory: %s", dir)}
+	case err != nil:
+		return &output.UserError{Message: fmt.Sprintf("Cannot read %s: %v", dir, err)}
+	case !info.IsDir():
+		return &output.UserError{Message: fmt.Sprintf("%s is not a directory", dir)}
+	}
+	if _, err := os.ReadDir(dir); err != nil {
+		return &output.UserError{Message: fmt.Sprintf("Cannot read %s: %v", dir, err)}
+	}
+	return nil
+}
+
 func newProjectsApplySuggestionsCmd() *cobra.Command {
 	var dryRun bool
 
@@ -307,6 +328,9 @@ see what would be applied without changing anything.`,
 			dir := "."
 			if len(args) == 1 {
 				dir = args[0]
+			}
+			if err := requireReadableDir(dir); err != nil {
+				return err
 			}
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {

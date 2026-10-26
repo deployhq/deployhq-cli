@@ -197,6 +197,7 @@ type fakeSuggestionsAPI struct {
 	mu     sync.Mutex
 	status map[string]int
 	posts  map[string]int // successful or not, by settings path suffix
+	calls  int            // requests for the project or detection
 }
 
 func (f *fakeSuggestionsAPI) install(t *testing.T) {
@@ -206,6 +207,9 @@ func (f *fakeSuggestionsAPI) install(t *testing.T) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		path := r.URL.Path
+		if strings.HasPrefix(path, "/projects/") || path == "/detection" {
+			f.calls++
+		}
 		switch {
 		case r.Method == http.MethodGet && path == "/projects/my-app":
 			_, _ = w.Write([]byte(`{"name":"My App","permalink":"my-app","identifier":"p-1"}`))
@@ -255,8 +259,9 @@ func (f *fakeSuggestionsAPI) install(t *testing.T) {
 }
 
 // runApplySuggestions runs the real 'dhq projects apply-suggestions --json' in
-// an empty directory and returns the JSON document it wrote and its error.
-func runApplySuggestions(t *testing.T) (string, error) {
+// an empty directory, with any extra args, and returns the JSON document it
+// wrote and its error.
+func runApplySuggestions(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	withResolvableContext(t)
 	t.Setenv("HOME", t.TempDir())
@@ -264,7 +269,7 @@ func runApplySuggestions(t *testing.T) (string, error) {
 	jsonl := filepath.Join(t.TempDir(), "out.jsonl")
 	t.Setenv("DEPLOYHQ_OUTPUT_FILE", jsonl)
 
-	err := runServersCmd(t, "projects", "apply-suggestions", "--json")
+	err := runServersCmd(t, append([]string{"projects", "apply-suggestions", "--json"}, args...)...)
 	written, _ := os.ReadFile(jsonl)
 	return string(written), err
 }
@@ -356,4 +361,59 @@ func TestProjectsApplySuggestions_PartialFailureWritesOneJSONObject(t *testing.T
 	require.NoError(t, dec.Decode(&resp))
 	assert.Equal(t, false, resp["ok"])
 	assert.False(t, dec.More(), "exactly one JSON document: %q", written)
+}
+
+// A path that isn't a readable directory (e.g. a typo) is rejected before any
+// request: detecting on nothing could otherwise "succeed".
+func TestProjectsApplySuggestions_RejectsPathThatIsNotADirectory(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		api := &fakeSuggestionsAPI{}
+		api.install(t)
+
+		_, err := runApplySuggestions(t, "./appp")
+
+		require.Error(t, err)
+		assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+		assert.Contains(t, err.Error(), "No such directory: ./appp")
+		assert.Zero(t, api.calls, "no request may be made")
+	})
+	t.Run("regular file", func(t *testing.T) {
+		api := &fakeSuggestionsAPI{}
+		api.install(t)
+		file := filepath.Join(t.TempDir(), "package.json")
+		require.NoError(t, os.WriteFile(file, []byte("{}"), 0o600))
+
+		_, err := runApplySuggestions(t, file)
+
+		require.Error(t, err)
+		assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+		assert.Contains(t, err.Error(), file+" is not a directory")
+		assert.Zero(t, api.calls, "no request may be made")
+	})
+	t.Run("unreadable", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root can read any directory")
+		}
+		api := &fakeSuggestionsAPI{}
+		api.install(t)
+		dir := filepath.Join(t.TempDir(), "locked")
+		require.NoError(t, os.Mkdir(dir, 0o000))
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+		_, err := runApplySuggestions(t, dir)
+
+		require.Error(t, err)
+		assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+		assert.Contains(t, err.Error(), "Cannot read "+dir)
+		assert.Zero(t, api.calls, "no request may be made")
+	})
+	t.Run("existing directory", func(t *testing.T) {
+		api := &fakeSuggestionsAPI{}
+		api.install(t)
+
+		_, err := runApplySuggestions(t, t.TempDir())
+
+		require.NoError(t, err)
+		assert.NotZero(t, api.calls)
+	})
 }
