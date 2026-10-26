@@ -15,9 +15,9 @@ subsequent deploys once `.deployhq.toml` exists (launch writes it).
 
 A single `dhq launch` run can, in order:
 
-1. create a DeployHQ project,
-2. connect the repository (for a private repository, this gives DeployHQ read access to the code),
-3. enrol the account in the managed-resources beta,
+1. enroll the account in the managed-resources beta,
+2. create a DeployHQ project,
+3. connect the repository (for a private repository, this gives DeployHQ read access to the code),
 4. create the hosting (a Static Hosting site, or a Managed VPS that is billed once the beta ends),
 5. deploy and publish the site at a public URL.
 
