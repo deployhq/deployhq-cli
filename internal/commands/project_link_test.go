@@ -231,6 +231,9 @@ func TestLinkProjectToDirectory_KeepsParentFolderLink(t *testing.T) {
 	assert.Equal(t, "other", config.Get(parentConfig, "project"))
 	assert.Contains(t, stderr.String(), `"other"`)
 	assert.Contains(t, stderr.String(), "dhq config set project new")
+	// Following the hint creates a file here that hides the parent's other
+	// settings, so the hint says to carry them over.
+	assert.Contains(t, stderr.String(), "copy any other settings")
 }
 
 // A parent folder already linking the same project needs nothing written.

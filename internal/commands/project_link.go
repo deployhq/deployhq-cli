@@ -126,7 +126,7 @@ func linkProjectToDirectory(env *output.Envelope, permalink string) {
 			return
 		case linked != "":
 			env.Warn("%s already links project %q for this folder; leaving it unchanged.", inherited, linked)
-			env.Warn("To use the new project in this folder only: dhq config set project %s", permalink)
+			env.Warn("To use the new project in this folder only: dhq config set project %s, then copy any other settings from %s (account, email) into the new file, which replaces it here.", permalink, inherited)
 			return
 		}
 		// The parent file has settings but no project. The loader reads only
