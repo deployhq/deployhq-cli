@@ -649,10 +649,10 @@ func waitForDeployment(ctx context.Context, client *sdk.Client, env *output.Enve
 		defer cancel()
 	}
 
-	timedOut := func(last *sdk.Deployment) error {
+	timedOut := func(last string) error {
 		status := "unknown"
-		if last != nil && last.Status != "" {
-			status = last.Status
+		if last != "" {
+			status = last
 		}
 		return &output.UserError{
 			Message: fmt.Sprintf("Timed out after %ds waiting for deployment %s to finish (last status: %s). The deployment may still be running.", timeout, depID, status),
@@ -661,17 +661,33 @@ func waitForDeployment(ctx context.Context, client *sdk.Client, env *output.Enve
 	}
 
 	if !env.WantsJSON() {
-		err := watchDeployment(ctx, client, env, projectID, depID)
+		// Interactive terminal: the live TUI. Unlike `deployments watch`, any
+		// final status other than "completed" (cancelled, aborted, or a fetch
+		// that failed) is an error here.
+		status, err := runWatchTUI(ctx, client, env, projectID, depID)
 		if ctx.Err() == context.DeadlineExceeded {
-			return timedOut(nil)
+			return timedOut(status)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		if status != "completed" {
+			return &output.UserError{
+				Message: fmt.Sprintf("Deployment %s finished with status %q (not completed)", depID, status),
+				Hint:    fmt.Sprintf("dhq deployments show %s -p %s", depID, projectID),
+			}
+		}
+		return nil
 	}
 
 	dep, err := followDeploymentPlain(ctx, client, env, projectID, depID)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return timedOut(dep)
+			last := ""
+			if dep != nil {
+				last = dep.Status
+			}
+			return timedOut(last)
 		}
 		return err
 	}

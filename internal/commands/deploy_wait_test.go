@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -212,4 +213,40 @@ func TestDeployWaitCommand_JSONWaitsForFinalStatus(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out, &resp), "stdout: %s", out)
 	assert.Equal(t, "completed", resp.Data["status"])
 	assert.NotContains(t, resp.Summary, "queued")
+}
+
+// ttyEnvelope is an interactive terminal without --json: --wait shows the
+// live view there.
+func ttyEnvelope(t *testing.T) (*output.Envelope, *bytes.Buffer) {
+	t.Helper()
+	orig := watchTUIOptions
+	watchTUIOptions = []tea.ProgramOption{tea.WithInput(nil)}
+	t.Cleanup(func() { watchTUIOptions = orig })
+	var stdout, stderr bytes.Buffer
+	return &output.Envelope{Stdout: &stdout, Stderr: &stderr, IsTTY: true}, &stderr
+}
+
+func TestWaitForDeployment_TerminalCancelledIsNonZero(t *testing.T) {
+	fastPoll(t)
+	seq := &deploymentSequence{statuses: []string{"running", "cancelled"}}
+	srv := httptest.NewServer(seq.handler(t))
+	defer srv.Close()
+	env, _ := ttyEnvelope(t)
+
+	err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 0)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `"cancelled"`)
+}
+
+func TestWaitForDeployment_TerminalTimeoutReportsLastStatus(t *testing.T) {
+	fastPoll(t)
+	seq := &deploymentSequence{statuses: []string{"running"}}
+	srv := httptest.NewServer(seq.handler(t))
+	defer srv.Close()
+	env, _ := ttyEnvelope(t)
+
+	err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Timed out after 1s")
+	assert.Contains(t, err.Error(), "last status: running")
 }

@@ -20,8 +20,19 @@ var (
 	styleRunning  = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow
 )
 
+// watchTUIOptions are extra bubbletea options for the watch TUI. A variable
+// so tests can run it without a terminal for keyboard input.
+var watchTUIOptions []tea.ProgramOption
+
 // watchDeploymentTUI runs a bubbletea TUI that updates steps in-place.
 func watchDeploymentTUI(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) error {
+	_, err := runWatchTUI(ctx, client, env, projectID, deploymentID)
+	return err
+}
+
+// runWatchTUI runs the watch TUI and returns the last deployment status it
+// saw, so a caller can apply its own rule for what counts as success.
+func runWatchTUI(ctx context.Context, client *sdk.Client, env *output.Envelope, projectID, deploymentID string) (string, error) {
 	m := &watchModel{
 		ctx:          ctx,
 		client:       client,
@@ -30,10 +41,11 @@ func watchDeploymentTUI(ctx context.Context, client *sdk.Client, env *output.Env
 		deploymentID: deploymentID,
 	}
 
-	p := tea.NewProgram(m, tea.WithOutput(env.Stderr))
+	opts := append([]tea.ProgramOption{tea.WithOutput(env.Stderr)}, watchTUIOptions...)
+	p := tea.NewProgram(m, opts...)
 	finalModel, err := p.Run()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	fm := finalModel.(*watchModel)
@@ -60,10 +72,10 @@ func watchDeploymentTUI(ctx context.Context, client *sdk.Client, env *output.Env
 		fmt.Fprintf(env.Stderr, "Next commands:\n") //nolint:errcheck
 		fmt.Fprintf(env.Stderr, "  dhq deployments logs %s -p %s\n", deploymentID, projectID) //nolint:errcheck
 		fmt.Fprintf(env.Stderr, "  dhq rollback %s -p %s\n", deploymentID, projectID) //nolint:errcheck
-		return &output.UserError{Message: "Deployment failed"}
+		return fm.status, &output.UserError{Message: "Deployment failed"}
 	}
 
-	return nil
+	return fm.status, nil
 }
 
 // bubbletea messages
