@@ -68,6 +68,42 @@ func TestCreateServerGroup(t *testing.T) {
 	assert.Equal(t, "Staging", group.Name)
 }
 
+// transfer_order is sent only when set: an empty value must be absent from the
+// body, not sent as "", so the backend's default applies.
+func TestCreateServerGroup_TransferOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		order   string
+		present bool
+	}{
+		{"set", "parallel", true},
+		{"unset", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body struct {
+					ServerGroup map[string]any `json:"server_group"`
+				}
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				got, present := body.ServerGroup["transfer_order"]
+				assert.Equal(t, tc.present, present, "transfer_order presence in %v", body.ServerGroup)
+				if tc.present {
+					assert.Equal(t, tc.order, got)
+				}
+
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(ServerGroup{Identifier: "sg-new", Name: "Web"})
+			}))
+			defer server.Close()
+
+			c := newTestClient(t, server)
+			_, err := c.CreateServerGroup(context.Background(), "my-app",
+				ServerGroupCreateRequest{Name: "Web", TransferOrder: tc.order})
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestDeleteServerGroup(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
