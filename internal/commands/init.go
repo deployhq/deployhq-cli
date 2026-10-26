@@ -949,7 +949,7 @@ func (m *initModel) View() string {
 		fmt.Fprintf(&b, "  %s", m.project.PublicKey)
 		b.WriteString("\n\n")
 		if settings := githubDeployKeySettingsURL(m.repoURL); settings != "" {
-			b.WriteString(fmt.Sprintf("  Paste it at: %s", settings))
+			fmt.Fprintf(&b, "  Paste it at: %s", settings)
 			b.WriteString("\n\n")
 		}
 		b.WriteString(initDim.Render("  GitHub:    repo → Settings → Deploy keys → Add deploy key"))
