@@ -1452,7 +1452,7 @@ func createServerErr(t *testing.T, body string) error {
 	}))
 	t.Cleanup(srv.Close)
 	_, err := newTestClient(t, srv).CreateServer(t.Context(), "my-app",
-		sdk.ServerCreateRequest{Name: "site", ProtocolType: "static_hosting"})
+		sdk.ServerCreateRequest{Name: "vps", ProtocolType: "managed_vps"})
 	require.Error(t, err)
 	return err
 }
@@ -1472,6 +1472,7 @@ func TestPaymentMethodLaunchError_LinksToPaymentDetails(t *testing.T) {
 	le := paymentMethodLaunchError(err, testClient(t), "my-app", false)
 	require.NotNil(t, le)
 	assert.Equal(t, reasonPaymentMethodRequired, le.Reason)
+	assert.Equal(t, "A payment method is required before this account can provision a Managed VPS.", le.Message)
 	assert.False(t, le.Retryable)
 	// The link is on the host the request went to (staging, local), not always deployhq.com.
 	want := accountURLOf(t, err) + "/account/payment_details"

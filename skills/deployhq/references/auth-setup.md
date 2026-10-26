@@ -59,7 +59,7 @@ Some refusals are not credential problems, so `dhq auth login` will not fix them
 | `api_access_restricted` | The account's plan does not include API access (exit code 3) | Upgrade the plan at `https://<account>.deployhq.com/account/packages` |
 | `account_suspended` | The trial has ended, or a payment is outstanding (exit code 1) | Choose a plan or settle billing at `https://<account>.deployhq.com/account/packages` |
 | `account_suspended` (recovery action `contact_support`) | Suspended for another reason | Contact DeployHQ support |
-| `payment_method_required` | Hosting (Static Hosting / Managed VPS) needs a payment method on file (exit code 1) | Add a card under Payment Details at `https://<account>.deployhq.com/account/payment_details` |
+| `payment_method_required` | A Managed VPS needs a payment method on file; Static Hosting does not (exit code 1) | Add a card under Payment Details at `https://<account>.deployhq.com/account/payment_details` |
 
 These need a person with access to the account's billing; an agent should stop, report the cause and link, and not retry.
 

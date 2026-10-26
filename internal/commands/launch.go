@@ -152,7 +152,7 @@ func paymentMethodLaunchError(err error, client *sdk.Client, projectID string, p
 	}
 	le := &launchError{
 		Reason:   reasonPaymentMethodRequired,
-		Message:  "A payment method is required before this account can provision Static Hosting or Managed VPS.",
+		Message:  "A payment method is required before this account can provision a Managed VPS.",
 		NextStep: "Add a card under Payment Details at " + url + ", then re-run: dhq launch",
 		Details:  map[string]string{"payment_url": url},
 	}
