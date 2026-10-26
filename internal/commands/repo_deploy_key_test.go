@@ -562,3 +562,68 @@ func TestWriteLaunchError_JSON_SingleObject(t *testing.T) {
 	plainEnv.IsTTY = true // a non-TTY envelope auto-selects JSON
 	assert.False(t, output.IsReported(writeLaunchError(plainEnv, launchConfig{}, reasonRepoUnreachable, &launchError{Message: "x"})))
 }
+
+func TestQuoteRerunArg(t *testing.T) {
+	cases := map[string]string{
+		"main":                           "main",
+		"feature/x-1.2_@v%+=:,":          "feature/x-1.2_@v%+=:,",
+		"git@github.com:acme/my-app.git": "git@github.com:acme/my-app.git",
+		"release&hotfix":                 "'release&hotfix'",
+		"it's":                           `'it'\''s'`,
+		"a b":                            "'a b'",
+		"$(id)":                          "'$(id)'",
+		"":                               "''",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, quoteRerunArg(in), "input %q", in)
+	}
+}
+
+// Values in the suggested re-run command are shell-quoted when needed, so a
+// valid branch like release&hotfix does not run shell syntax when pasted.
+func TestRepoConnectError_SSH_QuotesRerunValues(t *testing.T) {
+	cases := map[string]string{
+		"release&hotfix": "--branch 'release&hotfix'",
+		"it's":           `--branch 'it'\''s'`,
+		"main":           "--branch main",
+	}
+	for branch, want := range cases {
+		t.Run(branch, func(t *testing.T) {
+			client := newTestClient(t, repoServer(t, rejectRepo))
+			_, createErr := client.CreateRepository(t.Context(), "my-app", repoCreateReq("git@github.com:acme/my-app.git"))
+			require.Error(t, createErr)
+
+			err := repoConnectError(t.Context(), client, "my-app", "git", "git@github.com:acme/my-app.git", branch, createErr)
+			hint := err.Error()
+			var ue *output.UserError
+			if assert.ErrorAs(t, err, &ue) {
+				hint = ue.Hint
+			}
+			assert.Contains(t, hint, "dhq repos create -p my-app --scm-type git --url git@github.com:acme/my-app.git "+want)
+		})
+	}
+}
+
+// The gh command in the deploy-key instructions quotes the repository taken
+// from the URL the person typed.
+func TestDeployKeyInstructions_QuotesGHRepo(t *testing.T) {
+	got := deployKeyInstructions("git@github.com:acme/my&app.git", testDeployPubKey, "")
+	assert.Contains(t, got, "-R 'acme/my&app' --title DeployHQ")
+	plain := deployKeyInstructions("git@github.com:acme/my-app.git", testDeployPubKey, "")
+	assert.Contains(t, plain, "-R acme/my-app --title DeployHQ")
+}
+
+// The --project value in launch's resume instruction is quoted too.
+func TestLaunchRepoErrors_QuoteProject(t *testing.T) {
+	client := newTestClient(t, repoServer(t, rejectRepo))
+	_, createErr := client.CreateRepository(t.Context(), "my-app", repoCreateReq("git@github.com:acme/my-app.git"))
+	require.Error(t, createErr)
+
+	proj := &sdk.Project{PublicKey: testDeployPubKey}
+	var le *launchError
+	require.True(t, isLaunchErr(launchRepoKeyError(t.Context(), client, "a&b", proj, "git@github.com:acme/my-app.git", createErr), &le))
+	assert.Contains(t, le.NextStep, "--project 'a&b' added")
+
+	require.True(t, isLaunchErr(launchNewProjectRepoFailure(assert.AnError, "a&b"), &le))
+	assert.Contains(t, le.NextStep, "--project 'a&b' added")
+}
