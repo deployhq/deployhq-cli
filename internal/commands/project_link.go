@@ -107,10 +107,11 @@ func initDuplicateProjectCheck(ctx context.Context, env *output.Envelope, client
 // linkProjectToDirectory records permalink as the project in the current
 // directory's .deployhq.toml, so later commands (and new agent sessions) in
 // this folder find and reuse it instead of creating another. It never replaces
-// a different project already recorded there, nor shadows one a parent
-// folder's .deployhq.toml links (commands here already use it) — it warns
-// instead — and never rewrites a file it can't parse. Best-effort: a failure
-// is a warning, not an error.
+// a different project already recorded there, and never creates a file here
+// when a parent folder's .deployhq.toml is the one commands here use (the
+// loader reads only the nearest file, so a new one would shadow the parent's
+// project and settings) — it warns instead — and never rewrites a file it
+// can't parse. Best-effort: a failure is a warning, not an error.
 func linkProjectToDirectory(env *output.Envelope, permalink string) {
 	path := config.ProjectConfigPath()
 	if inherited := parentProjectConfig(path); inherited != "" {
@@ -128,6 +129,11 @@ func linkProjectToDirectory(env *output.Envelope, permalink string) {
 			env.Warn("To use the new project in this folder only: dhq config set project %s", permalink)
 			return
 		}
+		// The parent file has settings but no project. The loader reads only
+		// the nearest file, so a new one here would hide those settings.
+		env.Warn("%s holds this folder's settings, so the project was not saved to a new file here (it would hide them).", inherited)
+		env.Warn("To link it, add it to that file: dhq config set project %s (run in %s)", permalink, filepath.Dir(inherited))
+		return
 	}
 	current, err := config.GetStrict(path, "project")
 	if err != nil {

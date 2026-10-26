@@ -244,3 +244,28 @@ func TestLinkProjectToDirectory_ParentFolderLinksSameProject(t *testing.T) {
 	assert.Empty(t, stderr.String())
 	assert.Empty(t, stdout.String())
 }
+
+// A parent folder's .deployhq.toml with settings but no project is the only
+// config file commands here read, so a new file in the subfolder would hide
+// those settings. Nothing is written; the user is told to add the project to
+// the parent file instead.
+func TestLinkProjectToDirectory_KeepsParentFolderSettings(t *testing.T) {
+	parent := t.TempDir()
+	parentConfig := filepath.Join(parent, ".deployhq.toml")
+	original := []byte("account = \"acme\"\n")
+	require.NoError(t, os.WriteFile(parentConfig, original, 0o644))
+	sub := filepath.Join(parent, "sub")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	t.Chdir(sub)
+	env, stdout, stderr := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "new")
+
+	assert.NoFileExists(t, ".deployhq.toml", "a subfolder file would hide the parent's settings")
+	after, err := os.ReadFile(parentConfig)
+	require.NoError(t, err)
+	assert.Equal(t, original, after, "the parent file must not be changed")
+	assert.Contains(t, stderr.String(), parentConfig+" holds this folder's settings")
+	assert.Contains(t, stderr.String(), "dhq config set project new (run in "+parent+")")
+	assert.Empty(t, stdout.String())
+}
