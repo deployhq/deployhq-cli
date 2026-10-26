@@ -47,21 +47,6 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   the re-run command (`--project`), and how to delete it. The project is saved
   to `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
 
-- **`dhq launch`**: the `plan_limit_reached` guidance was wrong in two ways and
-  is corrected. It claimed "Free plans support 1 site", which is no longer true —
-  free plans cannot provision Managed VPS or Static Hosting at all, both now
-  requiring a paid plan and an accepted payment method. It also linked
-  `app.deployhq.com/account/plan` and `app.deployhq.com/account/billing`, neither
-  of which is a real route: DeployHQ account pages live on the account's own
-  subdomain, at `https://<account>.deployhq.com/account/packages` and
-  `.../account/payment_details`. A blocked user following the old message
-  therefore hit a 404 and still did not know what to fix. The same "free plans
-  support 1 site" claim is corrected in the embedded agent skill reference.
-  The links are built from the SDK client's normalised account rather than the
-  raw credential, so users who set `DEPLOYHQ_ACCOUNT` to a full hostname
-  (`acme.deployhq.com`) no longer get `acme.deployhq.com.deployhq.com`.
-
-
 - **`dhq server-groups create` / `dhq server-groups update`**: `--transfer-order`
   (`sequential` or `parallel`) sets how a deployment to the group moves through
   its servers — each server's whole deployment as one unit, or each step
