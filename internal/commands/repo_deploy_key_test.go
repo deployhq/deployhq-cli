@@ -279,9 +279,28 @@ func TestGitHubDeployKeySettingsURL(t *testing.T) {
 }
 
 func TestIsSSHRepoURL(t *testing.T) {
-	assert.True(t, isSSHRepoURL("git@github.com:acme/app.git"))
-	assert.True(t, isSSHRepoURL("ssh://git@host/acme/app.git"))
-	assert.False(t, isSSHRepoURL("https://github.com/acme/app.git"))
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{"git@github.com:acme/app.git", true},
+		{"deploy@git.example.com:org/repo.git", true},
+		{"hg@bitbucket.org:acme/app", true},
+		{"ssh://git@host/acme/app.git", true},
+		{"ssh://host:2222/acme/app.git", true},
+		{"https://github.com/acme/app.git", false},
+		{"http://user@git.example.com/org/repo.git", false},
+		{"https://user@git.example.com:8443/org/repo.git", false},
+		{"/srv/git/app.git", false},
+		{"./app.git", false},
+		{"../repos/user@host:app", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			assert.Equal(t, tt.want, isSSHRepoURL(tt.url))
+		})
+	}
 }
 
 func repoCreateReq(url string) sdk.RepositoryCreateRequest {

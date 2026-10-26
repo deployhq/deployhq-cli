@@ -53,13 +53,21 @@ func installDeployKeyViaGH(repoURL, publicKey, title string) error {
 	return nil
 }
 
-// isSSHRepoURL reports whether repoURL is an SSH-style git URL
-// (git@host:owner/repo or ssh://...). DeployHQ checks it can read such a
-// repository with the project's deploy key the moment the repository is
-// connected, so the key has to be on the git host first. HTTP(S) URLs are not
-// checked at connect time.
+// isSSHRepoURL reports whether repoURL is an SSH-style git URL: ssh://...,
+// or git's scp-like user@host:path form with any user name (git@github.com:
+// owner/repo, deploy@git.example.com:org/repo.git). DeployHQ checks it can
+// read such a repository with the project's deploy key the moment the
+// repository is connected, so the key has to be on the git host first.
+// HTTP(S) URLs are not checked at connect time.
 func isSSHRepoURL(repoURL string) bool {
-	return strings.HasPrefix(repoURL, "git@") || strings.HasPrefix(repoURL, "ssh://")
+	if strings.HasPrefix(repoURL, "ssh://") {
+		return true
+	}
+	if strings.Contains(repoURL, "://") {
+		return false
+	}
+	userHost, _, found := strings.Cut(repoURL, ":")
+	return found && strings.Contains(userHost, "@") && !strings.Contains(userHost, "/")
 }
 
 // githubDeployKeySettingsURL returns the GitHub page where a deploy key can be
