@@ -33,53 +33,59 @@ func addAllServersFlag(cmd *cobra.Command, all *bool) {
 }
 
 // resolveServerTargets turns --server values into server or server-group
-// identifiers. Values that already look like identifiers are passed through
-// without an API call; names are matched against the project's servers first
-// and then its server groups. It never prompts: an unknown or ambiguous name
-// fails with the available choices so agents can retry.
+// identifiers. Names are matched against the project's servers first and then
+// its server groups; only a value that matches no name is taken as an
+// identifier — one the listings show, or one that looks like an identifier
+// (isUUID), since a long name with a dash can look like one too. The listings
+// are fetched once, on the first value. It never prompts: an unknown or
+// ambiguous name fails with the available choices so agents can retry.
 func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID string, inputs []string) ([]string, error) {
 	var (
-		ids       []string
-		servers   []sdk.Server
-		groups    []sdk.ServerGroup
-		groupsErr error
-		loaded    bool
+		ids        []string
+		servers    []sdk.Server
+		groups     []sdk.ServerGroup
+		serversErr error
+		groupsErr  error
+		loaded     bool
 	)
 	for _, raw := range inputs {
 		in := strings.TrimSpace(raw)
 		if in == "" {
 			continue
 		}
-		if isUUID(in) {
-			ids = append(ids, in)
-			continue
-		}
 		if !loaded {
-			var err error
-			servers, err = client.ListServers(ctx, projectID, nil)
-			if err != nil {
-				return nil, err
-			}
-			// A failed group listing must not block names that match a server,
-			// so it is only reported once a name matches no server.
+			// A failed listing must not block values the other listing (or the
+			// identifier fallback) resolves, so errors are only reported once a
+			// value resolves no other way.
+			servers, serversErr = client.ListServers(ctx, projectID, nil)
 			groups, groupsErr = client.ListServerGroups(ctx, projectID, nil)
 			loaded = true
 		}
-		if id, candidates := resolveServerName(in, servers); id != "" {
+		id, candidates := resolveServerName(in, servers)
+		if id != "" {
 			if dups := sameNamedServers(in, servers); len(dups) > 1 {
 				return nil, ambiguousServerError(in, dups, nil)
 			}
 			ids = append(ids, id)
 			continue
-		} else if groupID, _ := resolveGroupName(in, groups); groupID != "" {
+		}
+		if groupID, _ := resolveGroupName(in, groups); groupID != "" {
 			if dups := sameNamedGroups(in, groups); len(dups) > 1 {
 				return nil, ambiguousServerError(in, nil, dups)
 			}
 			ids = append(ids, groupID)
 			continue
-		} else if groupsErr != nil {
+		}
+		if isListedIdentifier(in, servers, groups) || isUUID(in) {
+			ids = append(ids, in)
+			continue
+		}
+		switch {
+		case serversErr != nil:
+			return nil, fmt.Errorf("--server %q: listing servers failed: %w", in, serversErr)
+		case groupsErr != nil:
 			return nil, fmt.Errorf("--server %q matches no server, and listing server groups failed: %w", in, groupsErr)
-		} else {
+		default:
 			return nil, unresolvedServerError(in, candidates, groups)
 		}
 	}
@@ -90,6 +96,22 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 		}
 	}
 	return ids, nil
+}
+
+// isListedIdentifier reports whether input is exactly the identifier of one of
+// the listed servers or server groups.
+func isListedIdentifier(input string, servers []sdk.Server, groups []sdk.ServerGroup) bool {
+	for _, s := range servers {
+		if s.Identifier == input {
+			return true
+		}
+	}
+	for _, g := range groups {
+		if g.Identifier == input {
+			return true
+		}
+	}
+	return false
 }
 
 func unresolvedServerError(input string, candidates []sdk.Server, groups []sdk.ServerGroup) error {

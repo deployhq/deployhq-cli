@@ -96,6 +96,19 @@ func (a *targetingAPI) writeCount() int {
 	return len(a.writes)
 }
 
+// getCount is how many GET requests hit a path ending in suffix.
+func (a *targetingAPI) getCount(suffix string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n := 0
+	for _, p := range a.gets {
+		if strings.HasSuffix(p, suffix) {
+			n++
+		}
+	}
+	return n
+}
+
 func (a *targetingAPI) listedServers() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -156,7 +169,10 @@ func TestExcludedFilesCreate_ServerIdentifierPassesThrough(t *testing.T) {
 	require.NoError(t, runServersCmd(t, "excluded-files", "create", "--path", "deploy.sh", "--server", targetServerUUID))
 
 	assertTargets(t, api.payload(t, "excluded_file"), targetServerUUID)
-	assert.False(t, api.listedServers(), "an identifier needs no lookup")
+	// A long name with a dash can look like an identifier, so even an
+	// identifier is checked against the names — with one listing of each.
+	assert.Equal(t, 1, api.getCount("/servers"))
+	assert.Equal(t, 1, api.getCount("/server_groups"))
 }
 
 func TestExcludedFilesCreate_ResolvesServerAndGroupNames(t *testing.T) {
@@ -487,4 +503,76 @@ func TestResolveServerTargets_FailedGroupListStillResolvesServerName(t *testing.
 	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"Production"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{targetServerUUID}, ids)
+}
+
+// A name of 32+ characters containing a dash looks like an identifier to
+// isUUID, so names must be looked up before a value is taken as an identifier.
+const (
+	longServerName = "production-europe-west-web-server"
+	longGroupName  = "production-europe-west-web-cluster"
+)
+
+func longNamesServer(t *testing.T, groupsStatus int) *httptest.Server {
+	t.Helper()
+	return targetsServer(t, http.StatusOK, `[
+		{"identifier":"`+targetServerUUID+`","name":"`+longServerName+`","protocol_type":"ssh"},
+		{"identifier":"`+otherServerUUID+`","name":"Staging","protocol_type":"ssh"}]`,
+		groupsStatus, `[{"identifier":"`+targetGroupUUID+`","name":"`+longGroupName+`"}]`)
+}
+
+func TestResolveServerTargets_LongDashedServerNameResolves(t *testing.T) {
+	require.True(t, isUUID(longServerName), "fixture must look like an identifier")
+	srv := longNamesServer(t, http.StatusOK)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{longServerName})
+	require.NoError(t, err)
+	assert.Equal(t, []string{targetServerUUID}, ids)
+}
+
+func TestResolveServerTargets_LongDashedGroupNameResolves(t *testing.T) {
+	require.True(t, isUUID(longGroupName), "fixture must look like an identifier")
+	srv := longNamesServer(t, http.StatusOK)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{longGroupName})
+	require.NoError(t, err)
+	assert.Equal(t, []string{targetGroupUUID}, ids)
+}
+
+func TestResolveServerTargets_ListedIdentifiersResolveToThemselves(t *testing.T) {
+	srv := longNamesServer(t, http.StatusOK)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app",
+		[]string{otherServerUUID, targetGroupUUID})
+	require.NoError(t, err)
+	assert.Equal(t, []string{otherServerUUID, targetGroupUUID}, ids)
+}
+
+func TestResolveServerTargets_UnlistedIdentifierPassesThrough(t *testing.T) {
+	const unlisted = "8e1c7a52-9999-4c3e-9a0b-000000000009"
+	srv := longNamesServer(t, http.StatusOK)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlisted})
+	require.NoError(t, err)
+	assert.Equal(t, []string{unlisted}, ids)
+}
+
+func TestResolveServerTargets_IdentifierPassesThroughWhenGroupListFails(t *testing.T) {
+	const unlisted = "8e1c7a52-9999-4c3e-9a0b-000000000009"
+	srv := longNamesServer(t, http.StatusInternalServerError)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlisted})
+	require.NoError(t, err)
+	assert.Equal(t, []string{unlisted}, ids)
+}
+
+func TestResolveServerTargets_IdentifierPassesThroughWhenServerListFails(t *testing.T) {
+	srv := targetsServer(t, http.StatusInternalServerError, `{"error":"boom"}`, http.StatusOK, `[]`)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{targetServerUUID})
+	require.NoError(t, err)
+	assert.Equal(t, []string{targetServerUUID}, ids)
+
+	_, err = resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{"Production"})
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr, "a name cannot be resolved without the server list")
 }
