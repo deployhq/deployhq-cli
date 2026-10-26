@@ -260,7 +260,38 @@ Support: support@deployhq.com`,
 	// Install --help --agent JSON help on all commands
 	installAgentHelp(root)
 
+	// After every subcommand is registered, so each one's Args is covered.
+	argErrorsAsUserErrors(root)
+
 	return root
+}
+
+// argErrorsAsUserErrors makes cobra's own argument and flag errors (wrong
+// number of arguments, unknown flag, flag without a value) user errors, so they
+// exit 1 rather than 2. Flag errors go through the root's FlagErrorFunc, which
+// every subcommand inherits; argument errors through each command's Args.
+func argErrorsAsUserErrors(root *cobra.Command) {
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return asUserError(err)
+	})
+	walkCommands(root, func(cmd *cobra.Command) {
+		if cmd.Args == nil {
+			return
+		}
+		validate := cmd.Args
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			return asUserError(validate(c, args))
+		}
+	})
+}
+
+// asUserError turns an untyped error into a UserError with the same message,
+// leaving an error that already has its own exit code untouched.
+func asUserError(err error) error {
+	if err == nil || output.ClassifyError(err) != output.ExitInternalError {
+		return err
+	}
+	return &output.UserError{Message: err.Error()}
 }
 
 // parseJSONFlag interprets the --json flag value.

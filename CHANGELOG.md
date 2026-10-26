@@ -60,7 +60,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `accept_cost_required`, `beta_enroll_required`, `repo_unreachable`,
   `rate_limited`), 3 for auth (`email_verification_required`), 6 when the
   subdomain is taken — instead of 2 (internal error). The same code appears as
-  `exit_code` in `--json`.
+  `exit_code` in `--json`. Command-argument and flag errors (wrong number of
+  arguments, unknown flag, flag without a value) now exit 1 instead of 2.
 
 ## [0.21.0] - 2026-08-06
 
