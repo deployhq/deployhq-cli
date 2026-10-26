@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/detect"
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -54,6 +55,22 @@ func (p *suggestedSettingsPlan) pending() int {
 		}
 	}
 	return n
+}
+
+// failed names every item that could not be created, e.g. `excluded file "node_modules/"`.
+func (p *suggestedSettingsPlan) failed() []string {
+	var names []string
+	add := func(kind string, items []suggestedItem, label func(suggestedItem) string) {
+		for _, it := range items {
+			if it.Status == suggestionFailed {
+				names = append(names, fmt.Sprintf("%s %q", kind, label(it)))
+			}
+		}
+	}
+	add("build command", p.BuildCommands, func(it suggestedItem) string { return it.Command })
+	add("excluded file", p.ExcludedFiles, func(it suggestedItem) string { return it.Path })
+	add("build cache file", p.BuildCacheFiles, func(it suggestedItem) string { return it.Path })
+	return names
 }
 
 // planSuggestedBuildCommands diffs the suggested build steps against the
@@ -295,18 +312,37 @@ see what would be applied without changing anything.`,
 				applySuggestedSettings(ctx, env, client, plan)
 			}
 
+			failed := plan.failed()
 			summary := fmt.Sprintf("Applied suggested settings to %s", projectID)
 			switch {
 			case pending == 0:
 				summary = fmt.Sprintf("Nothing to apply — %s already has the suggested settings", projectID)
 			case dryRun:
 				summary = fmt.Sprintf("Dry run: %d suggested setting(s) would be added to %s", pending, projectID)
+			case len(failed) > 0:
+				summary = fmt.Sprintf("%d of %d suggested setting(s) could not be added to %s", len(failed), pending, projectID)
+			}
+			var failErr error
+			if len(failed) > 0 {
+				env.Warn("Could not add: %s", strings.Join(failed, ", "))
+				failErr = &output.UserError{
+					Message: fmt.Sprintf("%s: %s", summary, strings.Join(failed, ", ")),
+					Hint:    fmt.Sprintf("Re-run 'dhq projects apply-suggestions -p %s' to retry; only missing settings are added.", projectID),
+				}
 			}
 
 			if env.WantsJSON() {
-				return env.WriteJSON(output.NewResponse(plan, summary,
+				resp := output.NewResponse(plan, summary,
 					output.Breadcrumb{Action: "build-commands", Cmd: fmt.Sprintf("dhq build-commands list -p %s", projectID)},
-				))
+				)
+				resp.OK = failErr == nil
+				if err := env.WriteJSON(resp); err != nil {
+					return err
+				}
+				return failErr
+			}
+			if failErr != nil {
+				return failErr
 			}
 			env.Status("%s", summary)
 			return nil

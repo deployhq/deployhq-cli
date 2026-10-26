@@ -15,7 +15,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   settings (build commands, excluded files, build cache files) to any project,
   not only DeployHQ hosting set up by `dhq launch`. Shows what it will add,
   `--dry-run` previews, and re-runs only add what is missing. Build commands are
-  added only when the project has none.
+  added only when the project has none. Exits non-zero if any item could not
+  be added.
 
 - **`--server`** on `excluded-files`, `config-files`, `ssh-commands` and
   `integrations` `create` and `update`: target specific servers or server

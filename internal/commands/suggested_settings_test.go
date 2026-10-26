@@ -1,14 +1,18 @@
 package commands
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/deployhq/deployhq-cli/internal/detect"
+	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -174,4 +178,125 @@ func TestProjectsApplySuggestions_Registered(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "apply-suggestions", sub.Name())
 	assert.NotNil(t, sub.Flags().Lookup("dry-run"))
+}
+
+// fakeSuggestionsAPI answers every request 'dhq projects apply-suggestions'
+// makes for project my-app, through http.DefaultTransport (the SDK client the
+// real command builds has no other seam). Settings lists are empty; status
+// overrides a list or create response for a settings path suffix
+// ("/build_commands", "/excluded_files", "/build_cache_files"), keyed by
+// "GET <suffix>" or "POST <suffix>".
+type fakeSuggestionsAPI struct {
+	mu     sync.Mutex
+	status map[string]int
+	posts  map[string]int // successful or not, by settings path suffix
+}
+
+func (f *fakeSuggestionsAPI) install(t *testing.T) {
+	t.Helper()
+	f.posts = map[string]int{}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		path := r.URL.Path
+		switch {
+		case r.Method == http.MethodGet && path == "/projects/my-app":
+			_, _ = w.Write([]byte(`{"name":"My App","permalink":"my-app","identifier":"p-1"}`))
+			return
+		case r.Method == http.MethodPost && path == "/detection":
+			_, _ = w.Write([]byte(`{"stack":"nextjs",` +
+				`"build_commands":[{"description":"Install","command":"npm ci"}],` +
+				`"excluded_files":[{"path":"node_modules/"}],` +
+				`"build_cache_files":[{"path":".next/cache/"}]}`))
+			return
+		}
+		for _, suffix := range []string{"/build_commands", "/excluded_files", "/build_cache_files"} {
+			if !strings.HasSuffix(path, "/projects/my-app"+suffix) {
+				continue
+			}
+			if r.Method == http.MethodPost {
+				f.posts[suffix]++
+			}
+			if code := f.status[r.Method+" "+suffix]; code != 0 {
+				w.WriteHeader(code)
+				_, _ = w.Write([]byte(`{"error":"failed"}`))
+				return
+			}
+			if r.Method == http.MethodGet {
+				_, _ = w.Write([]byte(`[]`))
+			} else {
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"identifier":"new"}`))
+			}
+			return
+		}
+		// Anything else (e.g. the root command's update check) is not part of
+		// what these tests assert.
+		_, _ = w.Write([]byte(`{}`))
+	})
+
+	orig := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		rec.Header().Set("Content-Type", "application/json")
+		handler.ServeHTTP(rec, r)
+		resp := rec.Result()
+		resp.Request = r
+		return resp, nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = orig })
+}
+
+// runApplySuggestions runs the real 'dhq projects apply-suggestions --json' in
+// an empty directory and returns its error and the JSON document it wrote.
+func runApplySuggestions(t *testing.T) (error, string) {
+	t.Helper()
+	withResolvableContext(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	jsonl := filepath.Join(t.TempDir(), "out.jsonl")
+	t.Setenv("DEPLOYHQ_OUTPUT_FILE", jsonl)
+
+	err := runServersCmd(t, "projects", "apply-suggestions", "--json")
+	written, _ := os.ReadFile(jsonl)
+	return err, string(written)
+}
+
+// A partial failure must not look like success: the command exits non-zero,
+// names what failed, and the JSON result still carries the per-item outcome.
+func TestProjectsApplySuggestions_FailsWhenAnItemFails(t *testing.T) {
+	api := &fakeSuggestionsAPI{status: map[string]int{"POST /excluded_files": http.StatusUnprocessableEntity}}
+	api.install(t)
+
+	err, written := runApplySuggestions(t)
+
+	require.Error(t, err, "a failed item must fail the command")
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Contains(t, err.Error(), "node_modules/", "the failed item is named")
+	assert.NotContains(t, err.Error(), "npm ci", "items that were added are not reported as failed")
+	assert.Equal(t, 1, api.posts["/build_commands"], "the other items are still applied")
+	assert.Equal(t, 1, api.posts["/build_cache_files"], "the other items are still applied")
+
+	var resp struct {
+		OK   bool                  `json:"ok"`
+		Data suggestedSettingsPlan `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(strings.SplitN(written, "\n", 2)[0]), &resp), "JSON result: %q", written)
+	assert.False(t, resp.OK)
+	require.Len(t, resp.Data.ExcludedFiles, 1)
+	assert.Equal(t, suggestionFailed, resp.Data.ExcludedFiles[0].Status)
+	assert.Equal(t, []string{suggestionAdded}, statuses(resp.Data.BuildCommands))
+}
+
+// Control for the failure tests: with every request succeeding, the same
+// command run exits zero and adds every item.
+func TestProjectsApplySuggestions_SucceedsWhenEveryItemIsAdded(t *testing.T) {
+	api := &fakeSuggestionsAPI{}
+	api.install(t)
+
+	err, written := runApplySuggestions(t)
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int{"/build_commands": 1, "/excluded_files": 1, "/build_cache_files": 1}, api.posts)
+	assert.Contains(t, written, `"ok":true`)
 }
