@@ -1117,7 +1117,7 @@ func launchCreateProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	// Stop here if the repository can't be connected: later steps would work on
 	// a project with no code to deploy.
 	if err := launchEnsureRepo(ctx, env, cfg, client, proj.Permalink, gitRemote); err != nil {
-		return "", launchRepoFailure(err)
+		return "", launchNewProjectRepoFailure(err, proj.Permalink)
 	}
 
 	return proj.Permalink, nil

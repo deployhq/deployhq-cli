@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -361,14 +362,29 @@ func repoConnectError(ctx context.Context, client *sdk.Client, projectID, scmTyp
 	if projErr != nil || project == nil || project.PublicKey == "" {
 		return err
 	}
-	rerun := fmt.Sprintf("dhq repos create -p %s --scm-type %s --url %s", projectID, scmType, url)
+	rerun := fmt.Sprintf("dhq repos create -p %s --scm-type %s --url %s",
+		quoteRerunArg(projectID), quoteRerunArg(scmType), quoteRerunArg(url))
 	if branch != "" {
-		rerun += " --branch " + branch
+		rerun += " --branch " + quoteRerunArg(branch)
 	}
 	return &output.UserError{
 		Message: err.Error(),
 		Hint:    deployKeyInstructions(url, project.PublicKey, rerun),
 	}
+}
+
+// rerunArgSafe matches values that can be pasted into a shell unquoted.
+var rerunArgSafe = regexp.MustCompile(`^[A-Za-z0-9@%+=:,./_-]+$`)
+
+// quoteRerunArg makes a value safe to paste into a suggested shell command:
+// left bare when it has no shell syntax, otherwise single-quoted with any
+// embedded ' written as '\''. A valid git branch such as release&hotfix would
+// otherwise run shell syntax when the command is copied.
+func quoteRerunArg(s string) string {
+	if rerunArgSafe.MatchString(s) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // deployKeyBreadcrumbs returns breadcrumbs with CLI commands for adding a deploy key.

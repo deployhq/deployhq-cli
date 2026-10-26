@@ -94,7 +94,7 @@ func deployKeyInstructions(repoURL, publicKey, rerun string) string {
 	fmt.Fprintf(&b, "Public deploy key:\n  %s\n\n", publicKey)
 	if settings := githubDeployKeySettingsURL(repoURL); settings != "" {
 		fmt.Fprintf(&b, "Paste it at: %s\n", settings)
-		fmt.Fprintf(&b, "Or with the GitHub CLI: echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -\n", publicKey, extractGitHubRepo(repoURL))
+		fmt.Fprintf(&b, "Or with the GitHub CLI: echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -\n", publicKey, quoteRerunArg(extractGitHubRepo(repoURL)))
 	} else {
 		b.WriteString("Add it in your git host's repository settings, under Deploy keys (Bitbucket: Access keys).\n")
 	}
@@ -120,6 +120,23 @@ func launchRepoFailure(err error) error {
 		// A network or server failure keeps its own exit code.
 		exitCode: output.ClassifyError(err),
 	}
+}
+
+// launchNewProjectRepoFailure is launchRepoFailure for a project this run just
+// created. Re-running launch without --project would create a second project,
+// so every failure says to reuse this one, as the deploy-key error already does.
+func launchNewProjectRepoFailure(err error, projectID string) error {
+	wrapped := launchRepoFailure(err)
+	var le *launchError
+	if !errors.As(wrapped, &le) || le.Details["project"] != "" {
+		return wrapped // the deploy-key error already names the project
+	}
+	le.NextStep = fmt.Sprintf("Verify the repository URL is accessible, then run the same dhq launch command with --project %s added, or connect it manually in the DeployHQ dashboard.", quoteRerunArg(projectID))
+	if le.Details == nil {
+		le.Details = map[string]string{}
+	}
+	le.Details["project"] = projectID
+	return le
 }
 
 // isRepoAccessRejected reports whether err is DeployHQ refusing a repository
@@ -162,7 +179,7 @@ func launchRepoKeyError(ctx context.Context, client *sdk.Client, projectID strin
 	return &launchError{
 		Reason:   reasonRepoUnreachable,
 		Message:  "Could not connect repository to project: " + err.Error(),
-		NextStep: deployKeyInstructions(gitRemote, publicKey, fmt.Sprintf("the same dhq launch command with --project %s added", projectID)),
+		NextStep: deployKeyInstructions(gitRemote, publicKey, fmt.Sprintf("the same dhq launch command with --project %s added", quoteRerunArg(projectID))),
 		Details:  map[string]string{"project": projectID, "public_key": publicKey},
 	}
 }
