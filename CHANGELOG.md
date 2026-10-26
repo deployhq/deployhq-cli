@@ -11,19 +11,16 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Fixed
 
-- **`dhq launch`**: the `plan_limit_reached` guidance was wrong in two ways and
-  is corrected. It claimed "Free plans support 1 site", which is no longer true —
-  free plans cannot provision Managed VPS or Static Hosting at all, both now
-  requiring a paid plan and an accepted payment method. It also linked
-  `app.deployhq.com/account/plan` and `app.deployhq.com/account/billing`, neither
-  of which is a real route: DeployHQ account pages live on the account's own
-  subdomain, at `https://<account>.deployhq.com/account/packages` and
-  `.../account/payment_details`. A blocked user following the old message
-  therefore hit a 404 and still did not know what to fix. The same "free plans
-  support 1 site" claim is corrected in the embedded agent skill reference.
-  The links are built from the SDK client's normalised account rather than the
-  raw credential, so users who set `DEPLOYHQ_ACCOUNT` to a full hostname
-  (`acme.deployhq.com`) no longer get `acme.deployhq.com.deployhq.com`.
+- **`dhq launch`**: the `plan_limit_reached` guidance linked
+  `app.deployhq.com/account/plan` and `app.deployhq.com/account/billing`, which
+  are not real pages: account pages live on the account's own subdomain. It now
+  links `https://<account>.deployhq.com/account/packages` and, for a Managed
+  VPS, `.../account/payment_details`, and says what bounds each resource:
+  Static Hosting allows 1 site per account (3 on a paid plan) and needs no
+  payment method; a Managed VPS needs a payment method on file. The embedded
+  agent skill reference says the same. The links are built from the SDK
+  client's normalised account, so `DEPLOYHQ_ACCOUNT` given as a full hostname
+  (`acme.deployhq.com`) no longer produces `acme.deployhq.com.deployhq.com`.
 
 ## [0.21.0] - 2026-08-06
 

@@ -922,11 +922,12 @@ func TestLaunchCheckPlanLimits_StaticIneligible(t *testing.T) {
 	assert.Equal(t, reasonPlanLimitReached, le.Reason)
 	// The guidance must point at pages that exist, on the account's own
 	// subdomain. It previously named app.deployhq.com/account/plan, which is
-	// not a route, and claimed free plans support one site, which they do not.
+	// not a route. Static Hosting needs no payment method; what bounds it is
+	// the per-account site limit, so that is what it names.
 	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/packages")
-	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/payment_details")
+	assert.Contains(t, le.NextStep, "1 site (3 on a paid plan)")
+	assert.NotContains(t, le.NextStep, "payment")
 	assert.NotContains(t, le.NextStep, "app.deployhq.com")
-	assert.NotContains(t, le.NextStep, "Free plans support")
 	// The PR contract says these fields are unchanged; pin them so a future
 	// error-construction change cannot break JSON consumers silently.
 	assert.False(t, le.Retryable)
@@ -945,8 +946,12 @@ func TestLaunchCheckPlanLimits_VPSIneligible(t *testing.T) {
 	var le *launchError
 	require.True(t, isLaunchErr(err, &le))
 	assert.Equal(t, reasonPlanLimitReached, le.Reason)
-	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/packages")
+	// A Managed VPS needs a payment method on file (or a paid plan already
+	// paying), so it names both pages.
+	assert.Contains(t, le.NextStep, "payment method")
 	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/payment_details")
+	assert.Contains(t, le.NextStep, "https://acme.deployhq.com/account/packages")
+	assert.NotContains(t, le.NextStep, "requires a paid plan")
 	assert.NotContains(t, le.NextStep, "app.deployhq.com")
 	assert.False(t, le.Retryable)
 	assert.Equal(t, detect.ProtocolManagedVPS, le.Details["target"])

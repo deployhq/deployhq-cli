@@ -1256,24 +1256,25 @@ func projectNameFromRemote(remote string) string {
 func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities, client *sdk.Client) error {
 	accountSubdomain := client.Account()
 
-	// Both metered resources are refused for the same two reasons, and
-	// AccountCapabilities carries only a boolean per resource -- no reason code --
-	// so the CLI cannot tell which of the two applies and must name both.
-	nextStep := func(resource string) string {
-		return fmt.Sprintf(
-			"%s requires a paid plan and an accepted payment method. Review your plan at "+
-				"https://%s.deployhq.com/account/packages and your payment details at "+
-				"https://%s.deployhq.com/account/payment_details",
-			resource, accountSubdomain, accountSubdomain,
-		)
+	packagesURL := fmt.Sprintf("https://%s.deployhq.com/account/packages", accountSubdomain)
+	paymentURL := fmt.Sprintf("https://%s.deployhq.com/account/payment_details", accountSubdomain)
+
+	// AccountCapabilities carries only a boolean per resource, no reason code,
+	// so each message names what bounds that resource rather than guessing:
+	// Static Hosting needs no payment method and is capped per account;
+	// a Managed VPS needs a payment method on file (or a paid plan).
+	nextSteps := map[string]string{
+		detect.ProtocolStaticHosting: "Each account can have 1 site (3 on a paid plan). Remove an existing site, " +
+			"or review your plan at " + packagesURL,
+		detect.ProtocolManagedVPS: "A Managed VPS needs a payment method on file. Add one at " + paymentURL +
+			", or review your plan at " + packagesURL,
 	}
 
 	if cfg.targetProtocol == detect.ProtocolStaticHosting && !caps.StaticHostingEligible {
-		// Not eligible = plan limit or billing wall
 		return &launchError{
 			Reason:   reasonPlanLimitReached,
 			Message:  "Your account cannot provision Static Hosting sites",
-			NextStep: nextStep("Static Hosting"),
+			NextStep: nextSteps[detect.ProtocolStaticHosting],
 			Details:  map[string]string{"target": detect.ProtocolStaticHosting},
 		}
 	}
@@ -1281,7 +1282,7 @@ func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.Acc
 		return &launchError{
 			Reason:   reasonPlanLimitReached,
 			Message:  "Your account cannot provision Managed VPS servers",
-			NextStep: nextStep("Managed VPS"),
+			NextStep: nextSteps[detect.ProtocolManagedVPS],
 			Details:  map[string]string{"target": detect.ProtocolManagedVPS},
 		}
 	}
