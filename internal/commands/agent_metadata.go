@@ -57,8 +57,9 @@ var commandMetadataTable = map[string]AgentMetadata{
 	"dhq projects create": {
 		// Refuses (non-interactive) when a project with the same name already
 		// exists unless --allow-duplicate is passed; saves the new project to
-		// .deployhq.toml in the current directory unless --no-save.
-		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		// .deployhq.toml in the current directory unless --no-save. With a
+		// terminal it asks instead of refusing, so it is interactive.
+		Interactive: true, Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"project"},
 	},
 	"dhq projects apply-suggestions": {

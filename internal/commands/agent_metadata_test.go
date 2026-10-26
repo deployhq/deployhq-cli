@@ -18,6 +18,15 @@ func TestAgentMetadata_Deploy(t *testing.T) {
 	assert.Contains(t, m.ResourceTypes, "deployment")
 }
 
+// projects create asks before creating a same-named project when it has a
+// terminal, and refuses instead without one: interactive, but safe to automate.
+func TestAgentMetadata_ProjectsCreate(t *testing.T) {
+	m := lookupAgentMetadata("dhq projects create")
+	assert.True(t, m.Interactive, "projects create can prompt about a duplicate name")
+	assert.True(t, m.SafeForAutomation)
+	assert.False(t, m.Idempotent)
+}
+
 func TestAgentMetadata_Rollback(t *testing.T) {
 	m := lookupAgentMetadata("dhq rollback")
 	assert.False(t, m.Interactive)
