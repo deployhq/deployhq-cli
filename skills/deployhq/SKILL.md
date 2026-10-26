@@ -100,7 +100,7 @@ Small steps, each one something the person can approve on its own:
    - DeployHQ hosting: `dhq beta enroll --protocol static_hosting` (needs an account admin) and `dhq servers create -p <project> --protocol-type static_hosting --subdomain <name> ...`, or a `managed_vps` server. Check with the person before each.
 7. **Configure** build commands, excluded files, env vars as the project needs (see "Configure deployment").
 8. **First deploy.** Summarise the project, branch and target, ask, then `dhq deploy -p <project> -s <server> --json`.
-9. **Confirm.** `dhq deployments show <id> -p <project> --json=status` until it is no longer pending/running; report success only for `completed`.
+9. **Confirm.** `dhq deployments watch <id> -p <project>` follows the deployment until it finishes (a new one may start as `queued`), then `dhq deployments show <id> -p <project> --json=status`; report success only for `completed`.
 
 `dhq launch` does steps 4 to 9 for DeployHQ hosting in a single command. It is an option when the person has chosen DeployHQ hosting and wants it done in one go, not the default; see [launch.md](references/launch.md).
 
