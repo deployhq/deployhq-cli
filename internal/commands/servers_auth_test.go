@@ -300,6 +300,28 @@ func TestSSHKeyInstallCommand_KeyIsNotExpandedByTheLocalShell(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(dir, "pwned"), "nothing in the key runs locally")
 }
 
+// --username and --hostname reach the printed command too, so shell syntax in
+// them must not run locally either; ordinary values print unquoted.
+func TestSSHKeyInstallCommand_DestinationIsNotExpandedByTheLocalShell(t *testing.T) {
+	dir := t.TempDir()
+	gotArgs := filepath.Join(dir, "args")
+	fake := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + gotArgs + "\ncat > /dev/null\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ssh"), []byte(fake), 0o755)) //nolint:gosec // test stub must be executable
+
+	user := "de ploy"
+	host := "h;touch " + filepath.Join(dir, "pwned")
+	cmd := exec.Command("/bin/sh", "-c", sshKeyInstallCommand(host, 22, user, "ssh-ed25519 AAAA k")) //nolint:gosec // the command under test
+	cmd.Env = []string{"PATH=" + dir + ":/usr/bin:/bin"}
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+
+	args, err := os.ReadFile(gotArgs)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(args), user+"@"+host+"\n"), "destination reaches ssh as one argument: %q", args)
+	assert.NoFileExists(t, filepath.Join(dir, "pwned"), "nothing in the destination runs locally")
+	assert.Contains(t, sshKeyInstallCommand("prod.example.com", 22, "deploy", "k"), "| ssh deploy@prod.example.com '")
+}
+
 // If the account keys cannot be listed, dhq cannot know which key DeployHQ
 // will use, so it must not install the project key in its place.
 func TestServersCreate_InstallKeyDoesNotGuessWhenGlobalKeyLookupFails(t *testing.T) {

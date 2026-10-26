@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -176,14 +177,27 @@ const authorizedKeysStdinScript = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >>
 
 // sshKeyInstallCommand is the one-line command a person can run, with their
 // own SSH access, to install DeployHQ's public key on the server. It is pasted
-// into a shell, so the key is single-quoted and sent on stdin: nothing in it
-// (e.g. a $ or backtick in the comment) is expanded locally.
+// into a shell, so the key is single-quoted and sent on stdin, and the user and
+// host are quoted when needed: nothing in them (e.g. a $ or backtick) is
+// expanded locally.
 func sshKeyInstallCommand(host string, port int, user, publicKey string) string {
 	portFlag := ""
 	if port != 0 && port != 22 {
 		portFlag = fmt.Sprintf("-p %d ", port)
 	}
-	return fmt.Sprintf("printf '%%s\\n' %s | ssh %s%s@%s %s", shellSingleQuote(publicKey), portFlag, user, host, shellSingleQuote(authorizedKeysStdinScript))
+	return fmt.Sprintf("printf '%%s\\n' %s | ssh %s%s %s", shellSingleQuote(publicKey), portFlag, shellQuoteIfNeeded(user+"@"+host), shellSingleQuote(authorizedKeysStdinScript))
+}
+
+// shellSafeWord matches words a POSIX shell passes through unchanged.
+var shellSafeWord = regexp.MustCompile(`^[A-Za-z0-9@%+=:,./_-]+$`)
+
+// shellQuoteIfNeeded leaves an ordinary word (e.g. deploy@prod.example.com)
+// as it is and single-quotes anything else.
+func shellQuoteIfNeeded(s string) string {
+	if shellSafeWord.MatchString(s) {
+		return s
+	}
+	return shellSingleQuote(s)
 }
 
 // shellSingleQuote quotes s for a POSIX shell.
