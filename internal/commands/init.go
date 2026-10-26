@@ -641,6 +641,10 @@ func (m *initModel) submitTextStep() (tea.Model, tea.Cmd) {
 		m.creating = true
 		return m, m.createProject
 	case stepRepoURL:
+		if m.input != m.repoURL {
+			// A key added for the previous repository doesn't cover this one.
+			m.deployKeyAdded = false
+		}
 		m.repoURL = m.input
 		if m.repoURL == "" {
 			// Skip repo, go to server

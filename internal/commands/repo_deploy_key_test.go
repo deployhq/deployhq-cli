@@ -717,3 +717,27 @@ func TestDeployKeyCommands_QuotePublicKey(t *testing.T) {
 	printDeployKeyHint(env, repoURL, key, "my-app")
 	assert.Contains(t, stderr.String(), want)
 }
+
+// A deploy key added for one repository says nothing about another: entering a
+// different repository URL must offer to add the key again.
+func TestInitWizard_ChangedRepoURL_ForgetsAddedDeployKey(t *testing.T) {
+	m := &initModel{
+		step:           stepRepoURL,
+		repoURL:        "git@github.com:acme/my-app.git",
+		deployKeyAdded: true,
+		project:        &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+	}
+	m.input = "git@github.com:acme/other-app.git"
+	m.submitTextStep()
+	assert.False(t, m.deployKeyAdded, "a new repository URL needs its own deploy key")
+
+	same := &initModel{
+		step:           stepRepoURL,
+		repoURL:        "git@github.com:acme/my-app.git",
+		deployKeyAdded: true,
+		project:        &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+	}
+	same.input = "git@github.com:acme/my-app.git"
+	same.submitTextStep()
+	assert.True(t, same.deployKeyAdded, "re-entering the same URL keeps the added key")
+}
