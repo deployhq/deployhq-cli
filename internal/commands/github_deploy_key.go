@@ -117,6 +117,23 @@ func launchRepoFailure(err error) error {
 	}
 }
 
+// launchNewProjectRepoFailure is launchRepoFailure for a project this run just
+// created. Re-running launch without --project would create a second project,
+// so every failure says to reuse this one, as the deploy-key error already does.
+func launchNewProjectRepoFailure(err error, projectID string) error {
+	wrapped := launchRepoFailure(err)
+	var le *launchError
+	if !errors.As(wrapped, &le) || le.Details["project"] != "" {
+		return wrapped // the deploy-key error already names the project
+	}
+	le.NextStep = fmt.Sprintf("Verify the repository URL is accessible, then run the same dhq launch command with --project %s added, or connect it manually in the DeployHQ dashboard.", projectID)
+	if le.Details == nil {
+		le.Details = map[string]string{}
+	}
+	le.Details["project"] = projectID
+	return le
+}
+
 // isRepoAccessRejected reports whether err is DeployHQ refusing a repository
 // because it could not read it with the configured authentication: for an SSH
 // URL, the deploy key is not on the git host yet. Other failures (timeouts,

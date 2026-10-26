@@ -165,6 +165,30 @@ func TestLaunchCreateProject_RepoRejected_Stops(t *testing.T) {
 	assert.NotContains(t, le.NextStep, "github.com/", "no GitHub URL for a non-GitHub host")
 }
 
+// Any other repository failure after launch created the project must also say
+// to reuse that project; a plain retry would create a second, suffixed one.
+func TestLaunchCreateProject_OtherRepoFailures_SayToReuseProject(t *testing.T) {
+	noGH(t)
+	for name, handler := range otherRepoFailures() {
+		for _, remote := range []string{"git@github.com:acme/my-app.git", "https://github.com/acme/my-app.git"} {
+			t.Run(name+" "+remote, func(t *testing.T) {
+				srv := repoServer(t, handler)
+				env, _, _ := testLaunchEnvelope()
+				cfg := launchConfig{targetProtocol: "static_hosting", branch: "main"}
+				_, err := launchCreateProject(t.Context(), env, cfg, newTestClient(t, srv), remote)
+				require.Error(t, err)
+
+				var le *launchError
+				require.True(t, isLaunchErr(err, &le), "must be a launchError, got %T: %v", err, err)
+				assert.Equal(t, reasonRepoUnreachable, le.Reason)
+				assert.Contains(t, le.NextStep, "--project my-app")
+				assert.Equal(t, "my-app", le.Details["project"])
+				assert.NotContains(t, le.NextStep, testDeployPubKey)
+			})
+		}
+	}
+}
+
 // An existing project whose repository is rejected keeps a single, clear
 // error (no double "Could not connect" wrapping).
 func TestLaunchEnsureProject_ExistingProject_RepoRejected_NoDoubleWrap(t *testing.T) {
