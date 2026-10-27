@@ -51,6 +51,8 @@ func NewRootCmd(version string) *cobra.Command {
 		Short:   "DeployHQ CLI — deploy from your terminal",
 		Long: `The official DeployHQ command-line interface for managing projects, servers, and deployments.
 
+AI agents: read the setup instructions at https://www.deployhq.com/agents.md first.
+
 Feedback & feature requests: https://changelog.deployhq.com
 Support: support@deployhq.com`,
 		Version: version,

@@ -46,7 +46,8 @@ func TestSignup_Success(t *testing.T) {
 }
 
 func TestSignup_EmailNotVerified(t *testing.T) {
-	// email_verified: false is non-blocking — api_key is still returned.
+	// email_verified: false still returns the api_key (requests made with it are
+	// refused until the email is verified).
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(SignupResponse{

@@ -2,21 +2,32 @@
 
 ## Authentication
 
+**Agents: never ask the person for their API key or password, and never put one
+in a command.** Signing in needs the person's API key, a secret that must not
+end up in a chat. If `dhq auth status` says `Not logged in`, ask the person to
+run `dhq auth login` themselves **in a separate terminal window** (not through
+the agent, and not via a `!` shell escape, which has no terminal to prompt in),
+then re-check with `dhq auth status`. In CI, set the environment variables below
+as secrets instead.
+
+The API key is under **Settings → Security → API Credentials** in DeployHQ
+(`https://<account>.deployhq.com/security`).
+
 ### `dhq auth login`
-Login interactively or with flags.
+Prompts for the account, email and API key (typed hidden) and stores them in the
+OS keychain. In non-interactive mode it does not prompt: it stops and says to sign
+in from a separate terminal (exit code 3).
 
 | Flag | Description |
 |------|-------------|
-| `--account` | Account subdomain |
-| `--email` | Login email |
-| `--api-key` | API key |
+| `--account` | Account subdomain (pre-fills the prompt) |
+| `--email` | Login email (pre-fills the prompt) |
+| `--api-key` | API key. Prefer the hidden prompt or `DEPLOYHQ_API_KEY`; never pass a key relayed through an AI chat |
 
 ```bash
-# Interactive (prompts for missing fields)
+# Run by the person, in their own terminal
 dhq auth login
-
-# Non-interactive (agent-friendly)
-dhq auth login --account mycompany --email user@example.com --api-key abc123
+dhq auth login --account mycompany --email user@example.com   # key still prompted
 ```
 
 ### `dhq auth logout`
@@ -27,25 +38,46 @@ dhq auth logout
 ```
 
 ### `dhq auth status`
-Show current authentication info.
+Shows the account dhq would use and checks with DeployHQ that the credentials
+work. Credentials are resolved exactly as for API commands: flags, `DEPLOYHQ_*`
+environment variables and config files win; the stored login for the same
+account fills gaps.
+
+| `status` | Meaning | Next step |
+|----------|---------|-----------|
+| `authenticated` | Credentials work | Continue |
+| `email_verification_required` | Signed in, but DeployHQ refuses every request until the account's email is verified | Ask the person to open the verification link DeployHQ emailed them, then re-run `dhq auth status` |
+| `invalid_credentials` | DeployHQ rejected the API key (wrong or revoked), or has no such account | Stored login: ask the person to run `dhq auth login` again in a separate terminal. Env/flags/config: fix the values there |
+| `api_access_restricted` | Credentials work, but the account's plan has no API access | Upgrade the plan |
+| `unconfirmed` | Network or server error while checking | Check connectivity and retry |
+
+`--json` returns `account`, `email`, `source` (`env`, `flag`, `file`, `stored`
+or `mixed`), `sources` (per field), `status`, and `message`/`next_step` when there
+is something to fix. `Not logged in` means no credentials were found.
 
 ```bash
 dhq auth status
 dhq auth status --json
 ```
 
+### Unverified email
+Until the account's email address is verified, every API request fails with
+"Your DeployHQ email address isn't verified yet" (exit code 3, `retryable: true`,
+recovery `dhq auth status`). Logging in again does not help: the person has to
+open the verification link from their inbox.
+
 ### `dhq auth token`
-Display current API token (masked).
+Print the stored API key to stdout (for scripts).
 
 ```bash
 dhq auth token
 ```
 
-### Environment Variables (CI/Agent)
+### Environment Variables (CI)
 ```bash
 export DEPLOYHQ_ACCOUNT=mycompany
 export DEPLOYHQ_EMAIL=user@example.com
-export DEPLOYHQ_API_KEY=abc123
+export DEPLOYHQ_API_KEY=...   # from your CI secret store
 ```
 
 No login needed when these are set.
@@ -66,16 +98,33 @@ These need a person with access to the account's billing; an agent should stop, 
 ## Signup
 
 ### `dhq signup`
-Create new DeployHQ account.
+Create a new DeployHQ account. **Agents: ask the person to run `dhq signup`
+themselves in a separate terminal window**; it asks for the password at a hidden
+prompt. Never ask for, or make up, a password.
+
+It asks the person to accept the Terms of Service
+(https://www.deployhq.com/terms). In non-interactive mode `--accept-terms` is
+required; pass it only when the person has said they accept the terms.
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--email` | yes | Account email |
-| `--password` | yes | Account password |
-| `--account-name` | no | Custom subdomain (auto-generated if omitted) |
+| `--email` | non-interactive | Account email |
+| `--password` | non-interactive | Account password |
+| `--accept-terms` | non-interactive | The person has read and accepted the Terms of Service |
+| `--account-name` | no | Requested subdomain (auto-generated if omitted) |
+| `--full-name` | no | Full name |
+
+After sign-up:
+- **Verify the email.** DeployHQ emails a verification link; until it is opened,
+  every API request is refused. `--json` output includes `next_step` when this
+  is still needed.
+- **Check the account address.** If the requested name was taken or not valid,
+  DeployHQ picks another (e.g. `acme` becomes `acme6`). dhq warns about it, and
+  `--json` sets `account_name_changed` and `requested_account_name`.
 
 ```bash
-dhq signup --email user@example.com --password "..."
+# Run by the person, in their own terminal
+dhq signup
 ```
 
 ## CLI Configuration
@@ -197,7 +246,7 @@ dhq completion powershell | Out-String | Invoke-Expression
 ## First-Time Setup
 
 ### `dhq hello`
-Interactive guided setup for new users:
+Interactive guided setup for new users (run by the person in their own terminal):
 1. Login or signup
 2. Project selection
 3. Quick orientation

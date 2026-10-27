@@ -41,7 +41,66 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   server in a group in parallel; it describes the group's transfer order
   instead.
 
+- **`dhq signup`**: `--accept-terms`. Sign-up now asks the person to accept the
+  Terms of Service (https://www.deployhq.com/terms) instead of accepting them
+  silently; an empty answer is a no. In non-interactive mode `--accept-terms` is
+  required, so terms are never accepted without someone saying so. `dhq hello`
+  and `dhq launch` sign-up use the same prompt.
+
+- **Root help**: `dhq --help` points AI agents to the setup instructions at
+  https://www.deployhq.com/agents.md.
+
+- **Sign-in guidance**: when `dhq auth login` (or any command that needs
+  credentials) can't prompt, e.g. under an AI agent, it now tells the person to
+  run `dhq auth login` themselves in a separate terminal window, or to set the
+  `DEPLOYHQ_*` environment variables for CI, instead of suggesting the API key be
+  passed as a flag. It never suggests pasting a key into an AI chat. The three
+  "X is required in non-interactive mode" errors of `dhq auth login` are now one
+  auth error (exit code 3). The JSON `recovery` action for auth errors is renamed
+  from `login` to `ask_user_to_login_in_separate_terminal`.
+
+- **API key location**: help and hints now point to Settings → Security → API
+  Credentials (`https://<account>.deployhq.com/security`), where the key
+  actually is, instead of "Profile → API Key".
+
+- **`dhq auth status`** checks the credentials with DeployHQ instead of only
+  reporting that some are stored, and resolves them exactly as API commands do
+  (flags, `DEPLOYHQ_*` environment variables and config files win; the stored
+  login for the same account fills gaps), so it reports the account those
+  commands use. Previously, with credentials in the environment, it could
+  check and report a different, stored account. `status` is now
+  `authenticated`, `email_verification_required`, `invalid_credentials` (wrong
+  or revoked key, or no such account), `api_access_restricted` (plan without
+  API access) or `unconfirmed` (network or server error). `--json` adds
+  `source`/`sources` (`env`, `flag`, `file`, `stored`, or `mixed`) and
+  `message`/`next_step`; text output has a `Source:` line.
+
+- **Account given as a hostname** (e.g. `DEPLOYHQ_ACCOUNT=acme.deployhq.com`) is
+  now normalised to the subdomain when credentials are resolved, so it also
+  matches a stored login for that account.
+
+- **Unverified email**: an API request refused because the account's email
+  address isn't verified yet now fails with "Your DeployHQ email address isn't
+  verified yet..." and a hint to open the verification link (exit code 3,
+  `retryable: true`, recovery `dhq auth status`), instead of a raw
+  `403 email_verification_required`. `dhq auth login` and `dhq hello` save valid
+  credentials and say the email still needs verifying.
+
+- **Sign-up output**: `dhq signup` and `dhq hello` say "check your inbox" when
+  the new account's email still needs verifying, and warn when the requested
+  account name wasn't available as-is (e.g. `acme` became `acme6`). `dhq signup
+  --json` adds `requested_account_name`, `account_name_changed` and `next_step`.
+  Non-interactive sign-up errors no longer suggest putting a password in the
+  command.
+
 ### Fixed
+
+- **`dhq launch --dry-run`** no longer reports a successful preview for an
+  account whose email isn't verified; it fails with the
+  `email_verification_required` reason, like the real run.
+
+- **`dhq hello`** sign-up sent no terms acceptance, which the sign-up API
+  rejects.
 
 - **Plan and billing refusals are explained**: when the account's plan has no
   API access, its trial has ended, it is suspended, or it has no payment method

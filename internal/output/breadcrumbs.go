@@ -90,6 +90,23 @@ func ErrorResponseFromErr(err error) *Response {
 		return &Response{OK: true}
 	}
 
+	err = RefineError(err)
+	if _, ok := err.(*EmailNotVerifiedError); ok {
+		return &Response{
+			OK: false,
+			Data: ErrorData{
+				Error:      EmailNotVerifiedMessage,
+				Code:       "auth_error",
+				ExitCode:   ExitAuthError,
+				Retryable:  true, // succeeds once the email address is verified
+				Suggestion: EmailNotVerifiedHint,
+				Recovery: []Breadcrumb{
+					{Action: "verify_email_then_check_status", Cmd: "dhq auth status"},
+				},
+			},
+		}
+	}
+
 	// Account-level refusals (plan, suspension, payment method) get a message
 	// naming the cause and a link to the page that resolves it, instead of the
 	// generic status-code mapping below (which would suggest logging in again).
@@ -208,14 +225,16 @@ func isRetryable(code, message string) bool {
 func recoveryActions(code, message string) []Breadcrumb {
 	msg := strings.ToLower(message)
 	switch {
+	// Signing in needs the person's API key, which must not pass through an AI
+	// agent: the person runs the login themselves in a separate terminal window.
 	case code == "auth_error":
 		return []Breadcrumb{
-			{Action: "login", Cmd: "dhq auth login"},
+			{Action: "ask_user_to_login_in_separate_terminal", Cmd: "dhq auth login"},
 			{Action: "check_status", Cmd: "dhq auth status"},
 		}
 	case strings.Contains(msg, "not logged in") || strings.Contains(msg, "not authenticated"):
 		return []Breadcrumb{
-			{Action: "login", Cmd: "dhq auth login"},
+			{Action: "ask_user_to_login_in_separate_terminal", Cmd: "dhq auth login"},
 		}
 	case strings.Contains(msg, "no project"):
 		return []Breadcrumb{
