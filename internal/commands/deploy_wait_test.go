@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -27,8 +28,17 @@ func fastPoll(t *testing.T) {
 	t.Cleanup(func() { pollInterval = orig })
 }
 
+// fastRetry shortens the waits between retries of a failed status check.
+func fastRetry(t *testing.T) {
+	t.Helper()
+	orig := fetchRetryDelays
+	fetchRetryDelays = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
+	t.Cleanup(func() { fetchRetryDelays = orig })
+}
+
 // deploymentSequence answers GET /projects/p/deployments/dep-1 with the given
-// statuses in order, repeating the last one forever.
+// statuses in order, repeating the last one forever. An entry such as "!503"
+// answers with that HTTP status instead.
 type deploymentSequence struct {
 	mu       sync.Mutex
 	statuses []string
@@ -56,9 +66,17 @@ func (s *deploymentSequence) handler(t *testing.T) http.HandlerFunc {
 	t.Helper()
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == "/projects/p/deployments/dep-1" {
+			status := s.next()
+			if code, ok := strings.CutPrefix(status, "!"); ok {
+				n, err := strconv.Atoi(code)
+				require.NoError(t, err)
+				w.WriteHeader(n)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": http.StatusText(n)})
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"identifier": "dep-1",
-				"status":     s.next(),
+				"status":     status,
 				"steps":      []any{},
 			})
 			return
@@ -313,4 +331,106 @@ func TestWaitForDeployment_NonInteractiveTerminalUsesPlainProgress(t *testing.T)
 	require.NoError(t, err)
 	assert.Equal(t, 2, seq.count(), "it polled until the deployment finished")
 	assert.Contains(t, stderr.String(), "Deployment completed")
+}
+
+// A status check that fails for a reason that may pass (a 5xx, a 429, a
+// network error) is retried, so one blip does not end the wait while the
+// deployment keeps running.
+func TestWaitForDeployment_RetriesATransientFailedCheck(t *testing.T) {
+	for _, blip := range []string{"!503", "!502", "!429"} {
+		t.Run(blip, func(t *testing.T) {
+			fastPoll(t)
+			fastRetry(t)
+			seq := &deploymentSequence{statuses: []string{"running", blip, "running", "completed"}}
+			srv := httptest.NewServer(seq.handler(t))
+			defer srv.Close()
+			env, stdout, _ := jsonEnvelope()
+
+			err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 0)
+			require.NoError(t, err)
+			assert.Equal(t, 4, seq.count())
+			assert.Contains(t, stdout.String(), `"status": "completed"`)
+		})
+	}
+}
+
+func TestWaitForDeployment_GivesUpAfterRetriesAndSaysItMayStillRun(t *testing.T) {
+	fastPoll(t)
+	fastRetry(t)
+	seq := &deploymentSequence{statuses: []string{"running", "!503"}}
+	srv := httptest.NewServer(seq.handler(t))
+	defer srv.Close()
+	env, stdout, _ := jsonEnvelope()
+
+	err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 0)
+	require.Error(t, err)
+	var ue *output.UserError
+	require.ErrorAs(t, err, &ue)
+	assert.Contains(t, ue.Message, "Could not check deployment dep-1")
+	assert.Contains(t, ue.Message, "last status: running")
+	assert.Contains(t, ue.Message, "may still be running")
+	assert.Contains(t, ue.Hint, "dhq deployments show dep-1 -p p")
+	assert.Equal(t, 1+1+len(fetchRetryDelays), seq.count(), "one success, then the failed check and its retries")
+	assert.Empty(t, stdout.String())
+}
+
+// A refusal that retrying cannot fix (wrong key, suspended account, deleted
+// deployment) is returned at once and keeps its own exit code.
+func TestWaitForDeployment_DoesNotRetryAPermanentFailure(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		exit   int
+	}{
+		{"!401", output.ExitAuthError},
+		{"!404", output.ExitNotFoundError},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			fastPoll(t)
+			fastRetry(t)
+			seq := &deploymentSequence{statuses: []string{"running", tc.status}}
+			srv := httptest.NewServer(seq.handler(t))
+			defer srv.Close()
+			env, _, _ := jsonEnvelope()
+
+			err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 0)
+			require.Error(t, err)
+			assert.Equal(t, 2, seq.count(), "must not retry")
+			assert.Equal(t, tc.exit, output.ClassifyError(err))
+		})
+	}
+}
+
+// In the live view a check that keeps failing is reported as such, not as
+// "finished with status ..." with whatever status was last seen.
+func TestWaitForDeployment_TerminalFailedCheckIsReported(t *testing.T) {
+	for _, statuses := range [][]string{{"running", "!500"}, {"!500"}} {
+		t.Run(strings.Join(statuses, ","), func(t *testing.T) {
+			fastPoll(t)
+			fastRetry(t)
+			seq := &deploymentSequence{statuses: statuses}
+			srv := httptest.NewServer(seq.handler(t))
+			defer srv.Close()
+			env, _ := ttyEnvelope(t)
+
+			err := waitForDeployment(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1", 0)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "may still be running")
+			assert.NotContains(t, err.Error(), "finished with status")
+		})
+	}
+}
+
+// deployments watch shares the live view: a check that keeps failing is an
+// error there too, not a silent exit 0.
+func TestWatchDeploymentTUI_FailedCheckIsAnError(t *testing.T) {
+	fastPoll(t)
+	fastRetry(t)
+	seq := &deploymentSequence{statuses: []string{"running", "!500"}}
+	srv := httptest.NewServer(seq.handler(t))
+	defer srv.Close()
+	env, _ := ttyEnvelope(t)
+
+	err := watchDeploymentTUI(context.Background(), newTestSDKClient(t, srv), env, "p", "dep-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "may still be running")
 }

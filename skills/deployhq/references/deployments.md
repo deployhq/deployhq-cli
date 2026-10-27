@@ -64,6 +64,7 @@ soon as the deployment is **queued** (`"status": "pending"`, summary
 | `completed` | `{"ok":true,"data":{..."status":"completed"...},"summary":"Deployment <id> completed"}` | 0 |
 | `failed` (including an aborted deployment) | `{"ok":false,"data":{"error":"Deployment <id> finished with status \"failed\" (not completed)",...}}` | 1 |
 | `--timeout` reached | `{"ok":false,"data":{"error":"Timed out after <n>s ... (last status: running) ...",...}}` | 1 |
+| Status check keeps failing (network, 5xx, 429; retried 3 times first) | `{"ok":false,"data":{"error":"Could not check deployment <id> (last status: running): ... The deployment may still be running.",...}}` | 1 |
 
 ```bash
 # Deploy, wait, and check the result
@@ -72,7 +73,8 @@ out=$(dhq deploy -p my-app -s Production --wait --timeout 900 --json)
 ```
 
 Only say a deployment succeeded after you have seen `"status": "completed"`.
-If you deployed without `--wait`, or `--wait` timed out, check it explicitly:
+If you deployed without `--wait`, or `--wait` timed out or could not check the
+status, check it explicitly:
 
 ```bash
 # NB: --json=<fields> unwraps the envelope, so read .status, not .data.status

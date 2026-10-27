@@ -47,6 +47,15 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   the error message.
 - **`dhq deployments watch`** outside a terminal exits non-zero for any final
   status other than `completed` (previously a `cancelled` status exited 0).
+- **Following a deployment survives a failed status check**: `deploy --wait`,
+  `deployments watch`, `launch` and `init` retry a check that failed with a
+  network error, a server error (5xx) or rate limiting (429), up to three
+  times with backoff, instead of stopping at the first one. If it still fails,
+  they exit non-zero with "Could not check deployment ... The deployment may
+  still be running." and the command to check it. Other refusals (wrong key,
+  suspended account, deleted deployment) are not retried. In the live terminal
+  view a failed check was reported as `finished with status "running"`, or
+  ended silently with exit 0 under `deployments watch`; it is now this error.
 - Agent skill: deploy with `--wait` and confirm the final status is
   `completed` before reporting success.
 

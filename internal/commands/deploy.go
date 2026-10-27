@@ -663,8 +663,9 @@ func waitForDeployment(ctx context.Context, client *sdk.Client, env *output.Enve
 
 	if env.IsTTY && !env.NonInteractive && !env.WantsJSON() {
 		// Interactive terminal: the live TUI. Unlike `deployments watch`, any
-		// final status other than "completed" (cancelled, aborted, or a fetch
-		// that failed) is an error here.
+		// final status other than "completed" (cancelled or aborted) is an
+		// error here. A status check that kept failing is reported by
+		// runWatchTUI.
 		status, err := runWatchTUI(ctx, client, env, projectID, depID)
 		if ctx.Err() == context.DeadlineExceeded {
 			return timedOut(status)

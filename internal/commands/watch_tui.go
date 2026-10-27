@@ -55,6 +55,10 @@ func runWatchTUI(ctx context.Context, client *sdk.Client, env *output.Envelope, 
 
 	fm := finalModel.(*watchModel)
 
+	if fm.fetchErr != nil && ctx.Err() == nil {
+		return fm.status, deploymentCheckError(projectID, deploymentID, fm.status, fm.fetchErr)
+	}
+
 	// Print failed logs after TUI exits
 	if fm.status == "failed" {
 		fmt.Fprintln(env.Stderr) //nolint:errcheck
@@ -107,6 +111,7 @@ type watchModel struct {
 	status       string
 	duration     string
 	done         bool
+	fetchErr     error // set when a status check failed even after retrying
 	confirmAbort bool
 	aborted      bool
 	spinnerFrame int
@@ -151,6 +156,7 @@ func (m *watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deploymentMsg:
 		if msg.err != nil {
 			m.done = true
+			m.fetchErr = msg.err
 			return m, tea.Quit
 		}
 		dep := msg.dep
@@ -236,7 +242,9 @@ func (m *watchModel) View() string {
 		b.WriteString(styleError.Render("⚠️  Could not abort deployment"))
 		b.WriteString("\n")
 	default:
-		if m.confirmAbort {
+		if m.fetchErr != nil {
+			b.WriteString(styleError.Render("⚠️  Could not check the deployment"))
+		} else if m.confirmAbort {
 			b.WriteString(styleRunning.Render("Abort this deployment? (y/n)"))
 		} else {
 			b.WriteString(styleDim.Render("Waiting for updates... (press q to abort)"))
@@ -253,6 +261,6 @@ func (m *watchModel) abortDeployment() tea.Msg {
 }
 
 func (m *watchModel) fetchDeployment() tea.Msg {
-	dep, err := m.client.GetDeployment(m.ctx, m.projectID, m.deploymentID)
+	dep, err := getDeploymentRetrying(m.ctx, m.client, m.projectID, m.deploymentID)
 	return deploymentMsg{dep: dep, err: err}
 }
