@@ -53,7 +53,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   key (the default) as well as a `--global-key-pair-id` key. Previously it only
   worked with a global key and otherwise silently did nothing. It now tries
   once, says why when it cannot install, and is rejected up front without SSH
-  key authentication or without `--hostname`/`--username`. In non-interactive
+  key authentication, without `--hostname`/`--username`, or with either one
+  starting with `-` (which `ssh` would read as an option). In non-interactive
   mode it runs ssh with `BatchMode=yes`, so it fails fast instead of waiting
   on a password prompt nobody can answer. Its `ssh-copy-id` step now passes
   `-f`, without which `ssh-copy-id` refused to install a public key that has
@@ -61,7 +62,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq servers create`**: when DeployHQ cannot log in to an SSH/rsync server
   because its key is not there yet, the error hint now shows the public key and
   a one-line command to install it, for the project's key as well as a global
-  key.
+  key. The command ends `ssh`'s options with `--`, so the destination is never
+  read as one.
 
 ## [0.21.0] - 2026-08-06
 

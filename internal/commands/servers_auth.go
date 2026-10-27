@@ -187,7 +187,7 @@ func sshKeyInstallCommand(host string, port int, user, publicKey string) string 
 	if port != 0 && port != 22 {
 		portFlag = fmt.Sprintf("-p %d ", port)
 	}
-	return fmt.Sprintf("printf '%%s\\n' %s | ssh %s%s %s", shellSingleQuote(publicKey), portFlag, shellQuoteIfNeeded(user+"@"+host), shellSingleQuote(authorizedKeysStdinScript))
+	return fmt.Sprintf("printf '%%s\\n' %s | ssh %s-- %s %s", shellSingleQuote(publicKey), portFlag, shellQuoteIfNeeded(user+"@"+host), shellSingleQuote(authorizedKeysStdinScript))
 }
 
 // shellSafeWord matches words a POSIX shell passes through unchanged.

@@ -177,7 +177,8 @@ server: ask them first, and only run it with their go-ahead. `--install-key`
 uses the person's own SSH login (their SSH keys, or a password prompt when run
 in their terminal). In non-interactive mode it never prompts, so it only works
 when that login needs no password; if it cannot install, dhq says why and shows
-the same key and command.
+the same key and command. It refuses a `--hostname` or `--username` that starts
+with `-`, since `ssh` would read it as an option.
 
 **Password-only servers (FTP/FTPS, or SFTP with a password).** Never ask the
 person to paste the server password into the chat: it stays in the conversation

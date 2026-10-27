@@ -175,7 +175,7 @@ func TestServersCreate_AuthFailureShowsKeyAndInstallCommand(t *testing.T) {
 	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
 	assert.Contains(t, uerr.Message, "SSH authentication failed")
 	assert.Contains(t, uerr.Hint, projectPublicKey)
-	assert.Contains(t, uerr.Hint, `| ssh deploy@prod.example.com 'mkdir -p ~/.ssh`)
+	assert.Contains(t, uerr.Hint, `| ssh -- deploy@prod.example.com 'mkdir -p ~/.ssh`)
 	assert.Contains(t, uerr.Hint, "ask the person before modifying their server")
 	assert.Contains(t, uerr.Hint, "re-run with --install-key")
 }
@@ -299,9 +299,9 @@ func TestServersCreate_ExampleLeadsWithKeyAuth(t *testing.T) {
 
 func TestSSHKeyInstallCommand(t *testing.T) {
 	assert.Equal(t,
-		`printf '%s\n' 'ssh-ed25519 AAAA k' | ssh deploy@h 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'`,
+		`printf '%s\n' 'ssh-ed25519 AAAA k' | ssh -- deploy@h 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'`,
 		sshKeyInstallCommand("h", 22, "deploy", "ssh-ed25519 AAAA k"))
-	assert.True(t, strings.Contains(sshKeyInstallCommand("h", 2222, "deploy", "k"), "| ssh -p 2222 deploy@h "))
+	assert.True(t, strings.Contains(sshKeyInstallCommand("h", 2222, "deploy", "k"), "| ssh -p 2222 -- deploy@h "))
 }
 
 // The printed command is pasted into a shell, by a person or an agent, so a
@@ -342,9 +342,9 @@ func TestSSHKeyInstallCommand_DestinationIsNotExpandedByTheLocalShell(t *testing
 
 	args, err := os.ReadFile(gotArgs)
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(string(args), user+"@"+host+"\n"), "destination reaches ssh as one argument: %q", args)
+	assert.True(t, strings.HasPrefix(string(args), "--\n"+user+"@"+host+"\n"), "destination reaches ssh as one argument, after --: %q", args)
 	assert.NoFileExists(t, filepath.Join(dir, "pwned"), "nothing in the destination runs locally")
-	assert.Contains(t, sshKeyInstallCommand("prod.example.com", 22, "deploy", "k"), "| ssh deploy@prod.example.com '")
+	assert.Contains(t, sshKeyInstallCommand("prod.example.com", 22, "deploy", "k"), "| ssh -- deploy@prod.example.com '")
 }
 
 // If the account keys cannot be listed, dhq cannot know which key DeployHQ
@@ -378,4 +378,50 @@ func TestServersCreate_PasswordStdinNonInteractiveDoesNotPrompt_NoHTTP(t *testin
 	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
 	assert.Contains(t, uerr.Message, "--password-stdin")
 	assert.False(t, *called)
+}
+
+// dhq runs ssh (and ssh-copy-id, which passes the destination on to ssh
+// without "--") with user@host as an argument, so a login that starts with
+// "-" would be read as an ssh option. It is refused before any request.
+func TestServersCreate_InstallKeyRefusesDashPrefixedLogin_NoHTTP(t *testing.T) {
+	for _, tc := range []struct{ flag, value string }{
+		{"--username", "-oProxyCommand=x"},
+		{"--hostname", "-oProxyCommand=x"},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			withResolvableContext(t)
+			called := blockNetwork(t)
+			orig := installSSHKeyFn
+			installed := false
+			installSSHKeyFn = func(*output.Envelope, string, int, string, string) error { installed = true; return nil }
+			t.Cleanup(func() { installSSHKeyFn = orig })
+
+			args := map[string]string{"--hostname": "h", "--username": "u"}
+			args[tc.flag] = tc.value
+			err := runServersCmd(t, "servers", "create", "--name", "prod", "--protocol-type", "ssh", "--use-ssh-keys",
+				"--hostname="+args["--hostname"], "--username="+args["--username"], "--install-key")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.flag+" must not start with \"-\"")
+			assert.False(t, *called, "no request is made")
+			assert.False(t, installed, "nothing is run on the server")
+		})
+	}
+}
+
+// The printed install command ends ssh's options with "--", so a login that
+// starts with "-" reaches ssh as the destination, not as an option.
+func TestSSHKeyInstallCommand_DashPrefixedLoginIsNotAnOption(t *testing.T) {
+	dir := t.TempDir()
+	gotArgs := filepath.Join(dir, "args")
+	fake := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + gotArgs + "\ncat > /dev/null\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ssh"), []byte(fake), 0o755)) //nolint:gosec // test stub must be executable
+
+	cmd := exec.Command("/bin/sh", "-c", sshKeyInstallCommand("h", 22, "-oProxyCommand=x", "ssh-ed25519 AAAA k")) //nolint:gosec // the command under test
+	cmd.Env = []string{"PATH=" + dir + ":/usr/bin:/bin"}
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+
+	args, err := os.ReadFile(gotArgs)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(args), "--\n-oProxyCommand=x@h\n"), "options end before the destination: %q", args)
 }

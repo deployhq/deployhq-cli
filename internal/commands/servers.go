@@ -492,6 +492,16 @@ func newServersCreateCmd() *cobra.Command {
 						Hint:    "dhq logs in to the server as that user to add DeployHQ's public key.",
 					}
 				}
+				// ssh-copy-id hands user@host to ssh without "--", so a value
+				// starting with "-" would be read as an ssh option.
+				for _, f := range []struct{ flag, value string }{{"--hostname", hostname}, {"--username", username}} {
+					if strings.HasPrefix(f.value, "-") {
+						return &output.UserError{
+							Message: fmt.Sprintf("%s must not start with \"-\"", f.flag),
+							Hint:    "dhq runs ssh with it to install the key, and ssh would read it as an option. Check the value.",
+						}
+					}
+				}
 			}
 			resolvedPassword, err := readServerPassword(cmd, cliCtx.Envelope, password, passwordStdin, protocolType, useSSHKeys)
 			if err != nil {

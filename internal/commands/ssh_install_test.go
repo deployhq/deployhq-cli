@@ -70,6 +70,7 @@ func TestSSHInstallArgs_BatchMode(t *testing.T) {
 	assert.Equal(t, "u@h", a[len(a)-1])
 	b := sshAppendArgs("h", "22", "u", "k", true)
 	assert.Equal(t, "u@h", b[len(b)-2])
+	assert.Equal(t, "--", b[len(b)-3], "ssh options end before the destination")
 }
 
 func TestSSHCopyIDArgs_ForceModeForPublicKeyOnly(t *testing.T) {

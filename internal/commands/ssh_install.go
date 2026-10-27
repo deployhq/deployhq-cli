@@ -94,8 +94,9 @@ func sshCopyIDArgs(keyFile, host, port, user string, batch bool) []string {
 }
 
 // sshAppendArgs builds the ssh arguments that append the key to authorized_keys.
+// "--" ends ssh's options, so the destination is never read as one.
 func sshAppendArgs(host, port, user, publicKey string, batch bool) []string {
 	args := []string{"-p", port}
 	args = append(args, sshInstallOptions(batch)...)
-	return append(args, fmt.Sprintf("%s@%s", user, host), authorizedKeysAppendScript(publicKey))
+	return append(args, "--", fmt.Sprintf("%s@%s", user, host), authorizedKeysAppendScript(publicKey))
 }
