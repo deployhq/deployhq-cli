@@ -193,6 +193,20 @@ check_eval() {
     fi
   done < <(echo "$eval_json" | jq -r '.must_not_contain[]? // empty')
 
+  # Forbidden patterns are POSIX extended regexes, for checks a fixed string
+  # can't express, such as a command whose flags may come in any order. Lines
+  # ending in a backslash are joined first, so a command continued over several
+  # lines is matched as one.
+  local joined pattern
+  joined=$(printf '%s\n' "$response" | awk '{ if (sub(/\\$/, "")) printf "%s ", $0; else print }')
+  while IFS= read -r pattern; do
+    [[ -z "$pattern" ]] && continue
+    if printf '%s\n' "$joined" | grep -qE -e "$pattern"; then
+      echo "FORBIDDEN_MATCH:$pattern"
+      return 1
+    fi
+  done < <(echo "$eval_json" | jq -r '.must_not_match[]? // empty')
+
   echo "PASS"
   return 0
 }
