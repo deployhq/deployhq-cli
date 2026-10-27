@@ -211,9 +211,10 @@ check_eval() {
   return 0
 }
 
-# Run evals
+# Run evals. The loop reads from process substitution, not a pipe, so it runs
+# in this shell and the PASSED/FAILED/ERRORS counts survive it.
 INDEX=0
-jq -c "[$EVAL_FILTER][]" "$EVALS_FILE" | while IFS= read -r eval_entry; do
+while IFS= read -r eval_entry; do
   INDEX=$((INDEX + 1))
   id=$(echo "$eval_entry" | jq -r '.id')
   category=$(echo "$eval_entry" | jq -r '.category')
@@ -243,8 +244,9 @@ jq -c "[$EVAL_FILTER][]" "$EVALS_FILE" | while IFS= read -r eval_entry; do
     echo "  Response: $response"
   fi
 
-  # Check result
-  result=$(check_eval "$eval_entry" "$response")
+  # Check result. check_eval returns non-zero on a failed check; `|| true`
+  # keeps set -e from ending the run so the failure is reported below.
+  result=$(check_eval "$eval_entry" "$response") || true
 
   if [[ "$result" == "PASS" ]]; then
     echo -e "${GREEN}PASS${RESET}"
@@ -260,7 +262,7 @@ jq -c "[$EVAL_FILTER][]" "$EVALS_FILE" | while IFS= read -r eval_entry; do
 
   # Rate limit courtesy
   sleep 0.5
-done
+done < <(jq -c "[$EVAL_FILTER][]" "$EVALS_FILE")
 
 echo ""
 echo -e "${BOLD}Results${RESET}"
