@@ -25,6 +25,16 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `ServerGroupUpdateRequest.TransferOrder` (`transfer_order`, `omitempty`).
   Purely additive.
 
+- **`--server`** on `excluded-files`, `config-files`, `ssh-commands` and
+  `integrations` `create` and `update`: target specific servers or server
+  groups by name or identifier (repeatable or comma-separated). An unknown or
+  ambiguous name fails with the available choices instead of guessing.
+- **`--all-servers`** on the same `update` commands. Without either flag, an
+  update leaves the existing targeting unchanged.
+- **`dhq config-files create --build-only`**: a file that is only available
+  to build commands and never uploaded to a server — previously the
+  accidental result of every create, now an explicit choice.
+
 ### Changed
 
 - **`dhq templates server-groups create` / `update`**: `--transfer-order` help
@@ -50,6 +60,25 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `dhq language-versions list` tip now points at `dhq build-languages set`
   instead of `--packages`.
   `update` with no flags now fails locally instead of sending an empty request.
+
+- **`dhq excluded-files update`**: `--path` is now optional, so a rule can be
+  re-targeted without restating its pattern.
+- **`dhq excluded-files list --json`** / **`show`** now include an empty
+  `servers` list instead of omitting it, so a rule that applies to no server
+  is visible.
+
+### Fixed
+
+- **Server targeting on create**: excluded files, config files, SSH commands
+  and integrations created with dhq were stored with no target servers, so
+  they silently did nothing — an "excluded" file was still uploaded, a config
+  file never reached a server, an SSH command never ran, an integration never
+  fired. `dhq excluded-files create`, `dhq config-files create`,
+  `dhq ssh-commands create`, `dhq integrations create`, the matching
+  `dhq templates ... create` commands and the suggested exclusions added by
+  `dhq launch` now apply to all servers by default (including servers added
+  later). Items created by earlier versions are not changed; re-target them
+  with `update <id> --all-servers`.
 
 ## [0.21.0] - 2026-08-06
 

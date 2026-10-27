@@ -152,8 +152,24 @@ func newConfigFilesShowCmd() *cobra.Command {
 
 func newConfigFilesCreateCmd() *cobra.Command {
 	var path, body, description string
+	var servers []string
+	var buildOnly bool
 	cmd := &cobra.Command{
 		Use: "create", Short: "Create a config file",
+		Long: `Create a config file that DeployHQ writes during each deployment.
+
+The file is uploaded to all servers in the project (including servers added
+later) unless --server names specific servers or server groups. Use
+--build-only for a file that is only available to build commands and never
+uploaded to a server (for example package-manager credentials).`,
+		Example: `  # Upload .env to every server
+  dhq config-files create --path .env --body "APP_ENV=production" -p my-app
+
+  # Only upload it to one server
+  dhq config-files create --path .env --body "APP_ENV=production" --server production -p my-app
+
+  # Make a file available to the build only
+  dhq config-files create --path .npmrc --body "//registry.npmjs.org/:_authToken=..." --build-only -p my-app`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if path == "" || body == "" {
 				return &output.UserError{Message: "Both --path and --body are required"}
@@ -166,24 +182,46 @@ func newConfigFilesCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			f, err := client.CreateConfigFile(cliCtx.Background(), projectID, sdk.ConfigFileCreateRequest{
-				Path: path, Body: body, Description: description,
-			})
+			req := sdk.ConfigFileCreateRequest{Path: path, Body: body, Description: description}
+			target := "all servers"
+			switch {
+			case buildOnly:
+				// No server targeting at all is how DeployHQ stores a
+				// build-only file.
+				build := true
+				req.Build = &build
+				target = "build only"
+			case cmd.Flags().Changed("server"):
+				ids, err := resolveServerTargets(cliCtx.Background(), client, projectID, servers)
+				if err != nil {
+					return err
+				}
+				req.ServerIdentifiers = ids
+				target = describeServerTargets(ids)
+			default:
+				req.AllServers = true
+			}
+			f, err := client.CreateConfigFile(cliCtx.Background(), projectID, req)
 			if err != nil {
 				return err
 			}
-			cliCtx.Envelope.Status("Created config file: %s", f.Path)
+			cliCtx.Envelope.Status("Created config file: %s (%s)", f.Path, target)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&path, "path", "", "File path (required)")
 	cmd.Flags().StringVar(&body, "body", "", "File content (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
+	addServerFlag(cmd, &servers)
+	cmd.Flags().BoolVar(&buildOnly, "build-only", false, "Only make the file available to build commands; never upload it to a server")
+	cmd.MarkFlagsMutuallyExclusive("server", "build-only")
 	return cmd
 }
 
 func newConfigFilesUpdateCmd() *cobra.Command {
 	var path, body, description string
+	var servers []string
+	var allServers bool
 	cmd := &cobra.Command{
 		Use: "update <id>", Short: "Update a config file", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -207,6 +245,14 @@ func newConfigFilesUpdateCmd() *cobra.Command {
 			if cmd.Flags().Changed("description") {
 				req.Description = &description
 			}
+			req.AllServers = allServers
+			if cmd.Flags().Changed("server") {
+				ids, err := resolveServerTargets(cliCtx.Background(), client, projectID, servers)
+				if err != nil {
+					return err
+				}
+				req.ServerIdentifiers = ids
+			}
 			f, err := client.UpdateConfigFile(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
 				return err
@@ -218,6 +264,8 @@ func newConfigFilesUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&path, "path", "", "File path")
 	cmd.Flags().StringVar(&body, "body", "", "File content")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
+	addServerFlag(cmd, &servers)
+	addAllServersFlag(cmd, &allServers)
 	return cmd
 }
 

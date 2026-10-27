@@ -108,6 +108,8 @@ func validateSSHTiming(timing string) error {
 
 func newSSHCommandsUpdateCmd() *cobra.Command {
 	var command, description, timing string
+	var servers []string
+	var allServers bool
 	cmd := &cobra.Command{
 		Use: "update <id>", Short: "Update an SSH command", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -122,9 +124,17 @@ func newSSHCommandsUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, err := client.UpdateSSHCommand(cliCtx.Background(), projectID, args[0], sdk.SSHCommandCreateRequest{
-				Command: command, Description: description, Timing: timing,
-			})
+			req := sdk.SSHCommandCreateRequest{
+				Command: command, Description: description, Timing: timing, AllServers: allServers,
+			}
+			if cmd.Flags().Changed("server") {
+				ids, err := resolveServerTargets(cliCtx.Background(), client, projectID, servers)
+				if err != nil {
+					return err
+				}
+				req.ServerIdentifiers = ids
+			}
+			c, err := client.UpdateSSHCommand(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
 				return err
 			}
@@ -135,6 +145,8 @@ func newSSHCommandsUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&command, "command", "", "SSH command")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
 	cmd.Flags().StringVar(&timing, "timing", "", "Timing: all, first, or after_first")
+	addServerFlag(cmd, &servers)
+	addAllServersFlag(cmd, &allServers)
 	return cmd
 }
 
@@ -199,8 +211,13 @@ func newSSHCommandsUnlinkGlobalCmd() *cobra.Command {
 
 func newSSHCommandsCreateCmd() *cobra.Command {
 	var command, description, timing string
+	var servers []string
 	cmd := &cobra.Command{
 		Use: "create", Short: "Create an SSH command",
+		Long: `Create a command DeployHQ runs over SSH during each deployment.
+
+The command runs on all servers in the project that support SSH (including
+servers added later) unless --server names specific servers or server groups.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if command == "" {
 				return &output.UserError{Message: "--command is required"}
@@ -216,18 +233,29 @@ func newSSHCommandsCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, err := client.CreateSSHCommand(cliCtx.Background(), projectID, sdk.SSHCommandCreateRequest{
+			req := sdk.SSHCommandCreateRequest{
 				Command: command, Description: description, Timing: timing,
-			})
+			}
+			if cmd.Flags().Changed("server") {
+				ids, err := resolveServerTargets(cliCtx.Background(), client, projectID, servers)
+				if err != nil {
+					return err
+				}
+				req.ServerIdentifiers = ids
+			} else {
+				req.AllServers = true
+			}
+			c, err := client.CreateSSHCommand(cliCtx.Background(), projectID, req)
 			if err != nil {
 				return err
 			}
-			cliCtx.Envelope.Status("Created SSH command: %s", c.Identifier)
+			cliCtx.Envelope.Status("Created SSH command: %s (%s)", c.Identifier, describeServerTargets(req.ServerIdentifiers))
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&command, "command", "", "SSH command (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
 	cmd.Flags().StringVar(&timing, "timing", "all", "Timing: all, first, or after_first")
+	addServerFlag(cmd, &servers)
 	return cmd
 }
