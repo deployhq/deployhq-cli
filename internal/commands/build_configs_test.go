@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +31,10 @@ type fakeBuildConfigAPI struct {
 	calls       []buildConfigCall
 	keptServers int // -1 = keep all
 	updateFail  bool
+	serversJSON string // overrides the server listing when set
 }
+
+const defaultServersJSON = `[{"identifier":"aaaaaaaa-1111-2222-3333-444444444444","name":"Production"},{"identifier":"bbbbbbbb-1111-2222-3333-444444444444","name":"Staging"}]`
 
 func (f *fakeBuildConfigAPI) install(t *testing.T) {
 	t.Helper()
@@ -57,7 +62,12 @@ func (f *fakeBuildConfigAPI) install(t *testing.T) {
 
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/servers"):
-			return respond(http.StatusOK, `[{"identifier":"aaaaaaaa-1111-2222-3333-444444444444","name":"Production"},{"identifier":"bbbbbbbb-1111-2222-3333-444444444444","name":"Staging"}]`)
+			if f.serversJSON != "" {
+				return respond(http.StatusOK, f.serversJSON)
+			}
+			return respond(http.StatusOK, defaultServersJSON)
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/server_groups"):
+			return respond(http.StatusOK, `[{"identifier":"dddddddd-1111-2222-3333-444444444444","name":"Web","servers":`+defaultServersJSON+`}]`)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/build_configurations"):
 			return respond(http.StatusCreated, `{"identifier":"override-1","packages":{},"default":false,"servers":[]}`)
 		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/build_configurations/"):
@@ -157,6 +167,8 @@ func TestBuildConfigsCreate_TargetingFailureNamesTheOverride(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "override-1")
 	assert.Contains(t, err.Error(), "already targeted")
+	assert.Contains(t, errorHint(t, err), "dhq build-configs delete override-1",
+		"retrying with the same server fails the same way, so the hint must offer removing the empty override")
 }
 
 func TestBuildConfigsUpdate_SendsServerIdentifiers(t *testing.T) {
@@ -164,7 +176,7 @@ func TestBuildConfigsUpdate_SendsServerIdentifiers(t *testing.T) {
 	api := &fakeBuildConfigAPI{keptServers: -1}
 	api.install(t)
 
-	// An identifier passes through without listing servers; a name is resolved.
+	// Identifiers are checked against the server list; names are resolved.
 	_, err := runBuildConfigsCmd(t, "build-configs", "update", "override-1",
 		"--server", "bbbbbbbb-1111-2222-3333-444444444444,Production", "--json")
 	require.NoError(t, err)
@@ -177,7 +189,7 @@ func TestBuildConfigsUpdate_SendsServerIdentifiers(t *testing.T) {
 		serverIdentifiersSent(t, api.calls[1]))
 }
 
-func TestBuildConfigsUpdate_IdentifiersOnlySkipServerLookup(t *testing.T) {
+func TestBuildConfigsUpdate_IdentifiersAreCheckedAgainstServers(t *testing.T) {
 	withResolvableContext(t)
 	api := &fakeBuildConfigAPI{keptServers: -1}
 	api.install(t)
@@ -185,19 +197,65 @@ func TestBuildConfigsUpdate_IdentifiersOnlySkipServerLookup(t *testing.T) {
 	_, err := runBuildConfigsCmd(t, "build-configs", "update", "override-1",
 		"--server", "bbbbbbbb-1111-2222-3333-444444444444")
 	require.NoError(t, err)
-	require.Len(t, api.calls, 1)
-	assert.Equal(t, http.MethodPut, api.calls[0].method)
+	require.Len(t, api.calls, 2, "expected one server list and one update")
+	assert.True(t, strings.HasSuffix(api.calls[0].path, "/servers"))
+	assert.Equal(t, http.MethodPut, api.calls[1].method)
 }
 
+// DeployHQ stores whatever identifiers it is sent, but an override only
+// applies to a server whose own identifier is in that list. A group or
+// unknown identifier would be saved and never match, so neither is sent.
+func TestBuildConfigsUpdate_RejectsIdentifiersThatAreNotServers(t *testing.T) {
+	tests := []struct {
+		name, server, wantMsg string
+	}{
+		{"server group identifier", "dddddddd-1111-2222-3333-444444444444", "server group"},
+		{"server group name", "Web", "server group"},
+		{"unknown identifier", "cccccccc-1111-2222-3333-444444444444", "No server matches"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withResolvableContext(t)
+			api := &fakeBuildConfigAPI{keptServers: -1}
+			api.install(t)
+
+			_, err := runBuildConfigsCmd(t, "build-configs", "update", "override-1", "--server", tt.server)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantMsg)
+			assert.Contains(t, errorHint(t, err), "Production (aaaaaaaa-1111-2222-3333-444444444444)")
+			for _, c := range api.calls {
+				assert.NotEqual(t, http.MethodPut, c.method, "must not update the override")
+			}
+		})
+	}
+}
+
+func TestBuildConfigsUpdate_SameNamedServersAreAmbiguous(t *testing.T) {
+	withResolvableContext(t)
+	api := &fakeBuildConfigAPI{keptServers: -1, serversJSON: `[{"identifier":"aaaaaaaa-1111-2222-3333-444444444444","name":"production"},{"identifier":"bbbbbbbb-1111-2222-3333-444444444444","name":"Production"}]`}
+	api.install(t)
+
+	_, err := runBuildConfigsCmd(t, "build-configs", "update", "override-1", "--server", "production")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "matches more than one server")
+	hint := errorHint(t, err)
+	assert.Contains(t, hint, "aaaaaaaa-1111-2222-3333-444444444444")
+	assert.Contains(t, hint, "bbbbbbbb-1111-2222-3333-444444444444")
+	require.Len(t, api.calls, 1, "must not update after an ambiguous name")
+}
+
+// A server deleted between the listing and the update is still dropped from
+// the response; the warning says so without claiming it was ignored.
 func TestBuildConfigsUpdate_WarnsWhenServersAreDropped(t *testing.T) {
 	withResolvableContext(t)
 	api := &fakeBuildConfigAPI{keptServers: 0}
 	api.install(t)
 
 	stderr, err := runBuildConfigsCmd(t, "build-configs", "update", "override-1",
-		"--server", "cccccccc-1111-2222-3333-444444444444")
+		"--server", "bbbbbbbb-1111-2222-3333-444444444444")
 	require.NoError(t, err)
 	assert.Contains(t, stderr, "targets 0 of the 1 servers")
+	assert.NotContains(t, stderr, "ignored")
 }
 
 func TestBuildConfigsUpdate_UnknownServerNameFailsWithChoices(t *testing.T) {
@@ -207,8 +265,10 @@ func TestBuildConfigsUpdate_UnknownServerNameFailsWithChoices(t *testing.T) {
 
 	_, err := runBuildConfigsCmd(t, "build-configs", "update", "override-1", "--server", "nope")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `No unique server matches "nope"`)
-	require.Len(t, api.calls, 1, "must not update after a failed lookup")
+	assert.Contains(t, err.Error(), `No server matches "nope"`)
+	for _, c := range api.calls {
+		assert.NotEqual(t, http.MethodPut, c.method, "must not update after a failed lookup")
+	}
 }
 
 func TestBuildConfigsUpdate_RequiresServerWithoutCallingAPI(t *testing.T) {
@@ -235,4 +295,11 @@ func TestBuildConfigs_PackagesFlagRejectedWithoutCallingAPI(t *testing.T) {
 			assert.False(t, *called)
 		})
 	}
+}
+
+func errorHint(t *testing.T, err error) string {
+	t.Helper()
+	var ue *output.UserError
+	require.True(t, errors.As(err, &ue), "expected a UserError, got %T: %v", err, err)
+	return ue.Hint
 }

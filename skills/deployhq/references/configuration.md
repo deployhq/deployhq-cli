@@ -129,6 +129,11 @@ overrides. An override applies **only to the servers it targets** — an overrid
 with no servers never applies to a deployment. A server can be targeted by at
 most one override.
 
+`--server` takes individual servers only, not server groups. Every value is
+checked against the project's servers before anything is sent: an unknown
+identifier, a server group, or a name shared by several servers fails with the
+available servers listed (use the identifier when names repeat).
+
 ### `dhq build-configs create`
 
 | Flag | Required | Description |

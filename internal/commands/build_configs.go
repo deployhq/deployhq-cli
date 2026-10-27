@@ -123,9 +123,11 @@ func packagesNotSupportedError() error {
 const buildConfigServerFlagUsage = "Server this override applies to (name or identifier; repeatable or comma-separated). Replaces the override's current servers"
 
 // resolveBuildConfigServers turns --server values into server identifiers.
-// Identifiers pass through without an API call; names are matched against the
-// project's servers. Only servers are accepted: a build configuration override
-// is matched against the individual servers in a deployment.
+// Only servers are accepted: an override applies to a server whose own
+// identifier it lists, and DeployHQ stores any identifier it is sent, so a
+// server-group or unknown identifier would be saved and never match. Every
+// value, identifier or name, is therefore checked against the project's
+// servers, and a name shared by several servers must be given as an identifier.
 func resolveBuildConfigServers(ctx context.Context, client *sdk.Client, projectID string, inputs []string) ([]string, error) {
 	var (
 		ids     []string
@@ -138,28 +140,23 @@ func resolveBuildConfigServers(ctx context.Context, client *sdk.Client, projectI
 		if in == "" {
 			continue
 		}
-		id := in
-		if !isUUID(in) {
-			if !loaded {
-				var err error
-				if servers, err = client.ListServers(ctx, projectID, nil); err != nil {
-					return nil, err
-				}
-				loaded = true
+		if !loaded {
+			var err error
+			if servers, err = client.ListServers(ctx, projectID, nil); err != nil {
+				return nil, err
 			}
-			var candidates []sdk.Server
-			id, candidates = resolveServerName(in, servers)
-			if id == "" {
-				names := make([]string, len(candidates))
-				for i, c := range candidates {
-					names[i] = fmt.Sprintf("%s (%s)", c.Name, c.Identifier)
-				}
-				hint := "No servers in this project — create one first with: dhq servers create"
-				if len(names) > 0 {
-					hint = "Available: " + strings.Join(names, ", ")
-				}
-				return nil, &output.UserError{Message: fmt.Sprintf("No unique server matches %q", in), Hint: hint}
+			loaded = true
+		}
+		id, _ := resolveServerName(in, servers)
+		switch {
+		case id != "":
+			if dups := sameNamedServers(in, servers); len(dups) > 1 {
+				return nil, ambiguousServerError(in, dups, nil)
 			}
+		case isListedIdentifier(in, servers, nil):
+			id = in
+		default:
+			return nil, unknownBuildConfigServerError(ctx, client, projectID, in, servers)
 		}
 		if !seen[id] {
 			seen[id] = true
@@ -175,15 +172,43 @@ func resolveBuildConfigServers(ctx context.Context, client *sdk.Client, projectI
 	return ids, nil
 }
 
-// targetBuildConfig points an override at servers and warns when DeployHQ
-// kept fewer servers than were sent (unknown identifiers are dropped).
+// unknownBuildConfigServerError explains a --server value that is not one of
+// the project's servers, naming it as a server group when it is one.
+func unknownBuildConfigServerError(ctx context.Context, client *sdk.Client, projectID, input string, servers []sdk.Server) error {
+	names := make([]string, len(servers))
+	for i, s := range servers {
+		names[i] = fmt.Sprintf("%s (%s)", s.Name, s.Identifier)
+	}
+	hint := "No servers in this project — create one first with: dhq servers create"
+	if len(names) > 0 {
+		hint = "Available servers: " + strings.Join(names, ", ")
+	}
+	// The group listing only improves the message, so a failure is ignored.
+	if groups, err := client.ListServerGroups(ctx, projectID, nil); err == nil {
+		groupID, _ := resolveGroupName(input, groups)
+		for _, g := range groups {
+			if g.Identifier == input || g.Identifier == groupID {
+				return &output.UserError{
+					Message: fmt.Sprintf("--server %q is a server group; a build configuration override can only target individual servers", input),
+					Hint:    hint,
+				}
+			}
+		}
+	}
+	return &output.UserError{Message: fmt.Sprintf("No server matches %q", input), Hint: hint}
+}
+
+// targetBuildConfig points an override at servers and warns when the response
+// lists fewer servers than were sent: DeployHQ keeps an identifier that no
+// longer matches a server (e.g. one deleted since it was resolved), but leaves
+// it out of the response, and the override never applies to it.
 func targetBuildConfig(client *sdk.Client, projectID, configID string, serverIDs []string) (*sdk.BuildConfig, error) {
 	config, err := client.UpdateBuildConfig(cliCtx.Background(), projectID, configID, sdk.BuildConfigCreateRequest{ServerIdentifiers: serverIDs})
 	if err != nil {
 		return nil, err
 	}
 	if len(config.Servers) < len(serverIDs) {
-		cliCtx.Envelope.Warn("Build config %s targets %d of the %d servers given; unknown server identifiers were ignored. Check with: dhq build-configs show %s", config.Identifier, len(config.Servers), len(serverIDs), config.Identifier)
+		cliCtx.Envelope.Warn("Build config %s targets %d of the %d servers given; the others match no server in this project. Check with: dhq build-configs show %s", config.Identifier, len(config.Servers), len(serverIDs), config.Identifier)
 	}
 	return config, nil
 }
@@ -228,7 +253,7 @@ Set language versions on the new override with "dhq build-languages set <languag
 				if err != nil {
 					return &output.UserError{
 						Message: fmt.Sprintf("Created build config %s but could not target it at servers: %v", config.Identifier, err),
-						Hint:    fmt.Sprintf("It will not apply until targeted. Retry with: dhq build-configs update %s --server <server>", config.Identifier),
+						Hint:    fmt.Sprintf("It will not apply until targeted. Target it with: dhq build-configs update %[1]s --server <server>, or remove it with: dhq build-configs delete %[1]s", config.Identifier),
 					}
 				}
 				config = targeted

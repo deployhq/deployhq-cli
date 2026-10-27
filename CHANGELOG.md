@@ -52,7 +52,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `create --server` creates the override and then targets it; `create` without
   `--server` now warns that the override will not apply and prints the
   `update --server` command to fix it. `update --server` replaces the
-  override's servers and warns if DeployHQ kept fewer servers than were given.
+  override's servers. Only the project's own servers are accepted: an unknown
+  identifier, a server group (an override never applies through one) or a
+  name shared by several servers fails before anything is sent.
 
 - **`dhq build-configs create` / `update`**: `--packages` is now rejected with a
   hint to use `dhq build-languages set --build-config`. DeployHQ never applied
