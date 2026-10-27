@@ -95,6 +95,14 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Fixed
 
+- **Suspended accounts in `dhq auth status` and `dhq launch --dry-run`**: when
+  the account is suspended (trial ended, payment outstanding, or suspended by
+  DeployHQ), `auth status` now reports `status: "account_suspended"` with the
+  cause and the page that resolves it, instead of `unconfirmed` and "re-run".
+  `launch --dry-run` now fails the way the real launch does for a suspended
+  account or a plan without API access, instead of reporting a successful
+  preview.
+
 - **`dhq launch --dry-run`** no longer reports a successful preview for an
   account whose email isn't verified; it fails with the
   `email_verification_required` reason, like the real run.

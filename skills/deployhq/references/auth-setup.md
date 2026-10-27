@@ -49,6 +49,7 @@ account fills gaps.
 | `email_verification_required` | Signed in, but DeployHQ refuses every request until the account's email is verified | Ask the person to open the verification link DeployHQ emailed them, then re-run `dhq auth status` |
 | `invalid_credentials` | DeployHQ rejected the API key (wrong or revoked), or has no such account | Stored login: ask the person to run `dhq auth login` again in a separate terminal. Env/flags/config: fix the values there |
 | `api_access_restricted` | Credentials work, but the account's plan has no API access | Upgrade the plan |
+| `account_suspended` | Credentials work, but the account is suspended (trial ended, payment outstanding, or suspended by DeployHQ) | Stop and tell the person: `next_step` has the page that resolves it (plans and billing, or support). Re-running will not help |
 | `unconfirmed` | Network or server error while checking | Check connectivity and retry |
 
 `--json` returns `account`, `email`, `source` (`env`, `flag`, `file`, `stored`

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"github.com/deployhq/deployhq-cli/internal/cli"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // suspendedHandler answers like the API does for a suspended account: every
@@ -62,4 +64,33 @@ func TestCheckAuthStatus_SuspendedAccount(t *testing.T) {
 			assert.NotContains(t, res.NextStep, "Re-run 'dhq auth status'")
 		})
 	}
+}
+
+func TestLaunchDryRunCaps_SuspendedAccount_NamesBlocker(t *testing.T) {
+	srv := httptest.NewServer(suspendedHandler(trialEndedBody))
+	defer srv.Close()
+
+	caps, err := launchDryRunCaps(t.Context(), newTestClient(t, srv))
+	require.Error(t, err, "the preview must not report that the launch would go ahead")
+	assert.Nil(t, caps)
+
+	// Reported exactly as the real launch reports it.
+	var acctErr *output.AccountError
+	require.True(t, errors.As(output.ExplainAccountError(err), &acctErr))
+	assert.Equal(t, output.CodeAccountSuspended, acctErr.Code)
+}
+
+func TestLaunchDryRunCaps_PlanWithoutAPIAccess_NamesBlocker(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"api_access_restricted","message":"Upgrade your plan to gain access to the API"}`))
+	}))
+	defer srv.Close()
+
+	caps, err := launchDryRunCaps(t.Context(), newTestClient(t, srv))
+	require.Error(t, err)
+	assert.Nil(t, caps)
+	var acctErr *output.AccountError
+	require.True(t, errors.As(output.ExplainAccountError(err), &acctErr))
+	assert.Equal(t, output.CodeAPIAccessRestricted, acctErr.Code)
 }

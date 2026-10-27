@@ -376,7 +376,11 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		// Fetch caps for the dry-run cost/warning display (read-only).
 		caps, capsErr := launchDryRunCaps(ctx, client)
 		if capsErr != nil {
-			return writeLaunchError(env, cfg, reasonEmailVerificationRequired, capsErr)
+			var le *launchError
+			if errors.As(capsErr, &le) {
+				return writeLaunchError(env, cfg, le.Reason, capsErr)
+			}
+			return capsErr
 		}
 		return launchDryRun(ctx, env, cfg, client, caps)
 	}
@@ -923,12 +927,18 @@ func launchPromptTarget(env *output.Envelope) (string, error) {
 
 // launchDryRunCaps fetches account capabilities for the dry-run preview.
 // Missing capability data only degrades the preview, but an unverified email
+// or an account-level refusal (suspended account, plan without API access)
 // blocks every real step, so it is returned as an error: the preview must name
 // the blocker instead of reporting that the launch would go ahead.
 func launchDryRunCaps(ctx context.Context, client *sdk.Client) (*sdk.AccountCapabilities, error) {
 	caps, err := client.GetAccountCapabilities(ctx)
 	if isEmailVerificationRequired(err) {
 		return nil, emailVerificationLaunchError()
+	}
+	// Returned as is, so the preview fails exactly as the real launch does.
+	var acctErr *output.AccountError
+	if errors.As(output.ExplainAccountError(err), &acctErr) {
+		return nil, err
 	}
 	if err != nil {
 		return &sdk.AccountCapabilities{}, nil
