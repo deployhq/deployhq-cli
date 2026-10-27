@@ -444,8 +444,8 @@
       "expected": {
         "command": "dhq auth status"
       },
-      "must_not_contain": ["launch"],
-      "notes": "First-time setup starts by checking sign-in, then asks the person where to deploy (their own server or DeployHQ hosting). It does not jump to the all-in-one dhq launch."
+      "must_not_contain": ["dhq launch --static", "dhq launch --vps", "dhq launch --non-interactive", "dhq launch --yes", "dhq launch --json"],
+      "notes": "First-time setup starts by checking sign-in, then asks the person where to deploy (their own server or DeployHQ hosting). It does not jump to the all-in-one dhq launch. Offering dhq launch as one of the choices is fine, so only invocations with flags are forbidden."
     },
     {
       "id": "avoid-interactive-envvar",
