@@ -1536,10 +1536,23 @@ func TestPaymentMethodLaunchError_NamesProjectCreatedThisRun(t *testing.T) {
 	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true)
 	require.NotNil(t, le)
 	assert.Contains(t, le.Message, `"my-app" was created during this run`)
-	assert.Contains(t, le.NextStep, "dhq launch --project my-app")
+	assert.Contains(t, le.NextStep, "re-run the same dhq launch command with --project my-app added")
 	assert.Contains(t, le.NextStep, "dhq projects delete my-app")
 	assert.Equal(t, "my-app", le.Details["project"])
 	assert.Equal(t, "true", le.Details["project_created"])
+}
+
+// A bare "dhq launch" re-run restores only the project/server saved in
+// .deployhq.toml and drops the flags of the refused run (--vps/--static,
+// --accept-cost, --region, ...), so the next step must say to re-run the same
+// command rather than spell out a bare one.
+func TestPaymentMethodLaunchError_SaysToRerunTheSameCommand(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", false)
+	require.NotNil(t, le)
+	assert.Contains(t, le.NextStep, "re-run the same dhq launch command")
+	assert.NotContains(t, le.NextStep, "re-run: dhq launch")
 }
 
 func TestPaymentMethodLaunchError_IgnoresOtherErrors(t *testing.T) {
