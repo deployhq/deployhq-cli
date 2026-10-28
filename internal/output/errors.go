@@ -19,14 +19,14 @@ import (
 
 // ExitCode constants for error classification.
 const (
-	ExitOK              = 0
-	ExitUserError       = 1 // bad input, missing args, validation
-	ExitInternalError   = 2 // unexpected failures, panics
-	ExitAuthError       = 3 // authentication/authorization failures
-	ExitNetworkError    = 4 // connectivity issues
-	ExitNotFoundError   = 5 // resource not found
-	ExitConflictError   = 6 // resource conflict (already exists, etc.)
-	ExitInterruptError  = 130 // SIGINT
+	ExitOK             = 0
+	ExitUserError      = 1   // bad input, missing args, validation
+	ExitInternalError  = 2   // unexpected failures, panics
+	ExitAuthError      = 3   // authentication/authorization failures
+	ExitNetworkError   = 4   // connectivity issues
+	ExitNotFoundError  = 5   // resource not found
+	ExitConflictError  = 6   // resource conflict (already exists, etc.)
+	ExitInterruptError = 130 // SIGINT
 )
 
 // UserError represents a user-caused error (bad input, missing config, etc.).
@@ -106,6 +106,52 @@ func (e *NetworkError) Error() string {
 
 func (e *NetworkError) Unwrap() error { return e.Cause }
 
+// Email-verification refusal copy. The API rejects every request made with an
+// account's API key until the account owner opens the verification link that
+// was emailed at sign-up, so the fix is never "log in again".
+const (
+	EmailNotVerifiedMessage = "Your DeployHQ email address isn't verified yet, so DeployHQ is refusing API requests"
+	EmailNotVerifiedHint    = "Open the verification link DeployHQ emailed you when the account was created (check your spam folder too), then retry. Run 'dhq auth status' to check."
+)
+
+// EmailNotVerifiedError is returned when the API refuses a request because the
+// account's email address has not been verified yet. It exits with the auth
+// exit code but, unlike AuthError, logging in again does not fix it.
+type EmailNotVerifiedError struct {
+	Cause error
+}
+
+func (e *EmailNotVerifiedError) Error() string {
+	return fmt.Sprintf("%s\n\nHint: %s", EmailNotVerifiedMessage, EmailNotVerifiedHint)
+}
+
+func (e *EmailNotVerifiedError) Unwrap() error { return e.Cause }
+
+// IsEmailVerificationRequired reports whether err, or any error it wraps, is the
+// API's "email not verified" refusal (a 403 with error
+// "email_verification_required"). A generic 403 returns false.
+func IsEmailVerificationRequired(err error) bool {
+	var apiErr *sdk.APIError
+	return errors.As(err, &apiErr) && apiErr.IsEmailVerificationRequired()
+}
+
+// RefineError replaces API errors that have a specific, known cause with a typed
+// error carrying an actionable message. Other errors are returned unchanged.
+// It is idempotent.
+func RefineError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var already *EmailNotVerifiedError
+	if errors.As(err, &already) {
+		return err
+	}
+	if IsEmailVerificationRequired(err) {
+		return &EmailNotVerifiedError{Cause: err}
+	}
+	return err
+}
+
 // IsNetworkErr reports whether err (or any error it wraps) is a connectivity
 // failure originating from the network/transport layer. It returns false for
 // successful HTTP exchanges that returned non-2xx status (those should be
@@ -154,7 +200,10 @@ func ClassifyError(err error) int {
 	if errors.As(err, &reported) {
 		return ClassifyError(reported.Err)
 	}
+	err = RefineError(err)
 	switch err.(type) {
+	case *EmailNotVerifiedError:
+		return ExitAuthError
 	case *UserError:
 		return ExitUserError
 	case *InternalError:

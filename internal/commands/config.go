@@ -38,13 +38,19 @@ func newConfigShowCmd() *cobra.Command {
 			cfg := cliCtx.Config
 
 			if env.JSONMode {
+				// Mask the API key like the table output does; scripts that
+				// need the key itself use `dhq auth token`.
+				shown := *cfg
+				if shown.APIKey != "" {
+					shown.APIKey = maskAPIKey(shown.APIKey)
+				}
 				if resolved {
 					return env.WriteJSON(map[string]interface{}{
-						"values":  cfg,
+						"values":  shown,
 						"sources": cfg.Sources,
 					})
 				}
-				return env.WriteJSON(cfg)
+				return env.WriteJSON(shown)
 			}
 
 			// Table output
