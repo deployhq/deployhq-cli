@@ -194,3 +194,23 @@ func TestAgentMetadata_Commands(t *testing.T) {
 	assert.True(t, m.SupportsJSON)
 	assert.True(t, m.SafeForAutomation)
 }
+
+// Commands that act on the person's behalf in ways an agent should not take
+// unprompted: deploy changes what is running on their servers, signup creates
+// an account.
+func TestAgentMetadata_DeployRequiresConfirmation(t *testing.T) {
+	m := lookupAgentMetadata("dhq deploy")
+	assert.True(t, m.RequiresConfirmation, "deploy changes what runs on the person's servers")
+}
+
+func TestAgentMetadata_SignupRequiresConfirmation(t *testing.T) {
+	m := lookupAgentMetadata("dhq signup")
+	assert.True(t, m.RequiresConfirmation, "signup creates an account")
+	assert.True(t, m.SupportsJSON)
+}
+
+func TestAgentMetadata_AuthTokenNotSafeForAutomation(t *testing.T) {
+	m := lookupAgentMetadata("dhq auth token")
+	assert.False(t, m.SafeForAutomation, "auth token prints the API key")
+	assert.True(t, m.Idempotent)
+}

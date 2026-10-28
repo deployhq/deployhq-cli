@@ -18,8 +18,11 @@ type AgentMetadata struct {
 var commandMetadataTable = map[string]AgentMetadata{
 	// Shortcuts
 	"dhq deploy": {
+		// Changes what is running on the person's servers, so agents should
+		// confirm before starting one.
 		Interactive: true, Destructive: false, Idempotent: false,
-		SupportsJSON: true, SafeForAutomation: true,
+		RequiresConfirmation: true,
+		SupportsJSON:         true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq rollback": {
@@ -173,7 +176,9 @@ var commandMetadataTable = map[string]AgentMetadata{
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 	},
 	"dhq auth token": {
-		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
+		// Prints the API key. Idempotent, but not safe to run unattended: the
+		// key would land in logs and transcripts.
+		Idempotent: true, SupportsJSON: false, SafeForAutomation: false,
 	},
 	"dhq init": {
 		Interactive:  true,
@@ -188,7 +193,8 @@ var commandMetadataTable = map[string]AgentMetadata{
 		SupportsJSON: false, SafeForAutomation: false,
 	},
 	"dhq signup": {
-		Interactive:  true,
+		// Creates a DeployHQ account, so agents should confirm before running.
+		Interactive: true, RequiresConfirmation: true,
 		SupportsJSON: true, SafeForAutomation: true,
 	},
 	"dhq mcp": {
