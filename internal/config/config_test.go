@@ -92,6 +92,26 @@ func TestFindProjectConfig(t *testing.T) {
 	defer func() { require.NoError(t, os.Chdir(origDir)) }()
 	require.NoError(t, os.Chdir(subDir))
 
-	found := findProjectConfig()
+	found := FindProjectConfig()
 	assert.Equal(t, configPath, found)
+}
+
+func TestGetStrict(t *testing.T) {
+	dir := t.TempDir()
+
+	val, err := GetStrict(filepath.Join(dir, "missing.toml"), "project")
+	require.NoError(t, err, "a missing file is not an error")
+	assert.Empty(t, val)
+
+	good := filepath.Join(dir, "good.toml")
+	require.NoError(t, os.WriteFile(good, []byte("project = 'my-app'\n"), 0o644))
+	val, err = GetStrict(good, "project")
+	require.NoError(t, err)
+	assert.Equal(t, "my-app", val)
+
+	broken := filepath.Join(dir, "broken.toml")
+	require.NoError(t, os.WriteFile(broken, []byte("project = 'my-app\n[[[\n"), 0o644))
+	_, err = GetStrict(broken, "project")
+	assert.Error(t, err, "an unparseable file is an error")
+	assert.Empty(t, Get(broken, "project"), "Get keeps its lenient behaviour")
 }

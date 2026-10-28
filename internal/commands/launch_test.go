@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -224,6 +225,37 @@ func TestLaunchApplyBuildCommand_ListErrorStillCreates(t *testing.T) {
 	assert.True(t, postCalled, "list error must not prevent the create attempt")
 }
 
+func TestLaunchApplyStaticExtras_ListErrorStillCreates(t *testing.T) {
+	// launch is best-effort for excluded files and build cache files too: a
+	// failed list must not stop the create attempts.
+	var mu sync.Mutex
+	posts := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		suffix := r.URL.Path[strings.LastIndex(r.URL.Path, "/"):]
+		switch {
+		case r.Method == http.MethodGet && (suffix == "/excluded_files" || suffix == "/build_cache_files"):
+			w.WriteHeader(http.StatusInternalServerError)
+		case r.Method == http.MethodPost && (suffix == "/excluded_files" || suffix == "/build_cache_files"):
+			mu.Lock()
+			posts[suffix]++
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"identifier":"new"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	env, _, _ := testLaunchEnvelope()
+	launchApplyStaticExtras(t.Context(), env, launchConfig{projectID: "p"}, newTestClient(t, srv),
+		detect.Result{ExcludedFiles: []string{"node_modules/"}, BuildCacheFiles: []string{".next/cache/"}})
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, map[string]int{"/excluded_files": 1, "/build_cache_files": 1}, posts)
+}
+
 func TestLaunchApplyBuildCommand_CreateErrorWarnsWithHint(t *testing.T) {
 	// A failed create is non-fatal but must surface a discoverable manual hint —
 	// otherwise the static site silently deploys unbuilt sources.
@@ -246,6 +278,43 @@ func TestLaunchApplyBuildCommand_CreateErrorWarnsWithHint(t *testing.T) {
 	warn := stderr.String()
 	assert.Contains(t, warn, "dhq build-commands create", "must point the user at the manual fix")
 	assert.Contains(t, warn, "npm run build")
+}
+
+func TestLaunchApplyBuildCommand_StopsAtFirstFailure(t *testing.T) {
+	// Build commands are an ordered pipeline: after a failed step, adding the
+	// later ones would build without (e.g.) installing dependencies. Launch
+	// stops and prints the manual commands for the failed step and the rest.
+	var mu sync.Mutex
+	posts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			_, _ = w.Write([]byte("[]"))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/build_commands"):
+			mu.Lock()
+			posts++
+			mu.Unlock()
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":"command is invalid"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	env, _, stderr := testLaunchEnvelope()
+	launchApplyBuildCommand(t.Context(), env, launchConfig{projectID: "my-app"}, newSpecValidatingClient(t, srv),
+		detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm ci"}, {Command: "npm run build"}}})
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, posts, "no build command may be added after one fails")
+	warn := stderr.String()
+	// Values are shell-quoted (single quotes, bare when safe) and launch's
+	// description, which defaults to the command, is carried over.
+	assert.Contains(t, warn, `dhq build-commands create -p my-app --command 'npm ci' --description 'npm ci'`)
+	assert.Contains(t, warn, `dhq build-commands create -p my-app --command 'npm run build' --description 'npm run build'`)
+	assert.Equal(t, 1, strings.Count(warn, `--command 'npm run build'`), "manual commands are printed once")
 }
 
 func TestLaunchApplyBuildCommand_TruncatesLongDescription(t *testing.T) {

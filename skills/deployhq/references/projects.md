@@ -26,10 +26,49 @@ Create a new project.
 | `--name` | yes | Project name |
 | `--zone` | no | Deployment zone (see `dhq zones list`) |
 | `--template` | no | Template identifier |
+| `--allow-duplicate` | no | Create it even if a project with the same name exists |
+| `--no-save` | no | Don't save the new project to `.deployhq.toml` |
 
 ```bash
 dhq projects create --name "My App" --json
 dhq projects create --name "My App" --zone us-east --json
+```
+
+**Duplicate names:** DeployHQ accepts several projects with the same name, so
+`create` checks first. If one exists, it lists it and fails in non-interactive
+mode (asks in interactive mode). Reuse the existing project
+(`dhq config set project <permalink>`) rather than passing `--allow-duplicate`,
+unless the user really wants a second one.
+
+**Directory link:** the new project is saved as `project` in `.deployhq.toml` in
+the current directory (only inside a git repository; elsewhere it prints
+`dhq config set project <permalink>` instead), together with the `account` it was created in, so a
+different account in `~/.deployhq/config.toml` can't take over (an existing link
+to a different project, or a file naming a different account, is left alone,
+with a warning). Later commands in that folder, including a fresh agent session,
+then use it without `--project`. Before creating a project, check
+`dhq config show` — if the folder already names a project, use it.
+
+### `dhq projects apply-suggestions [path]`
+Detect the framework of a local directory (default `.`) and add DeployHQ's
+suggested build settings to the project: build commands, excluded files (e.g.
+dependency folders) and build cache files. Works for any project, whatever
+servers it deploys to. See
+[configuration.md](configuration.md#suggested-build-settings).
+
+```bash
+dhq projects apply-suggestions -p my-app --dry-run --json
+dhq projects apply-suggestions -p my-app --json
+```
+
+### `dhq config init`
+Create `.deployhq.toml` in the current directory (or `--global` for
+`~/.deployhq/config.toml`). `--project`, `--account` and `--email` are written to
+the file. The API key never is — use `dhq auth login` or `DEPLOYHQ_API_KEY`.
+Fails if the file already exists; then use `dhq config set <key> <value>`.
+
+```bash
+dhq config init --project my-app --account my-company
 ```
 
 ### `dhq projects update [permalink]`

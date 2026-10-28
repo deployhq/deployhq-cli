@@ -24,6 +24,7 @@ Use these commands to create, list, configure, and delete projects. Once a proje
 		newProjectsListCmd(),
 		newProjectsShowCmd(),
 		newProjectsCreateCmd(),
+		newProjectsApplySuggestionsCmd(),
 		newProjectsUpdateCmd(),
 		newProjectsDeleteCmd(),
 		newProjectsStarCmd(),
@@ -180,10 +181,20 @@ func newProjectsShowCmd() *cobra.Command {
 
 func newProjectsCreateCmd() *cobra.Command {
 	var name, zone, template string
+	var allowDuplicate, noSave bool
 
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new project",
+		Long: `Create a new project.
+
+If a project with the same name already exists, dhq lists it and stops in
+non-interactive mode (asks in interactive mode) instead of creating a second
+one. Pass --allow-duplicate to create it anyway.
+
+The new project is saved to .deployhq.toml in the current directory (unless it
+already names another project, or --no-save is given), so later commands in
+this folder use it without --project.`,
 		Example: `  # Create a new project
   dhq projects create --name "My App"
 
@@ -202,13 +213,21 @@ func newProjectsCreateCmd() *cobra.Command {
 				return err
 			}
 
+			env := cliCtx.Envelope
+			if err := confirmNoDuplicateProject(cliCtx.Background(), env, client, name, allowDuplicate); err != nil {
+				return err
+			}
+
 			req := sdk.ProjectCreateRequest{Name: name, ZoneID: zone, TemplateID: template}
 			project, err := client.CreateProject(cliCtx.Background(), req)
 			if err != nil {
 				return err
 			}
 
-			env := cliCtx.Envelope
+			if !noSave {
+				linkProjectToDirectory(env, project.Permalink)
+			}
+
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(project,
 					fmt.Sprintf("Created project: %s", project.Name),
@@ -225,6 +244,8 @@ func newProjectsCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Project name (required)")
 	cmd.Flags().StringVar(&zone, "zone", "", "Zone ID")
 	cmd.Flags().StringVar(&template, "template", "", "Template ID")
+	cmd.Flags().BoolVar(&allowDuplicate, "allow-duplicate", false, "Create the project even if one with the same name already exists")
+	cmd.Flags().BoolVar(&noSave, "no-save", false, "Don't save the new project to .deployhq.toml in the current directory")
 	return cmd
 }
 

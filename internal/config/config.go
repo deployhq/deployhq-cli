@@ -8,7 +8,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +57,7 @@ func Load() (*Config, error) {
 	}
 
 	// Layer 3: Project config (.deployhq.toml)
-	if projectPath := findProjectConfig(); projectPath != "" {
+	if projectPath := FindProjectConfig(); projectPath != "" {
 		pv := viper.New()
 		pv.SetConfigFile(projectPath)
 		pv.SetConfigType("toml")
@@ -161,8 +163,10 @@ func ProjectConfigPath() string {
 	return ".deployhq.toml"
 }
 
-// findProjectConfig walks up from cwd to find .deployhq.toml.
-func findProjectConfig() string {
+// FindProjectConfig walks up from cwd to find the .deployhq.toml the loader
+// uses: the nearest one, in cwd or a parent directory. It returns "" when
+// there is none.
+func FindProjectConfig() string {
 	dir, err := os.Getwd()
 	if err != nil {
 		return ""
@@ -198,6 +202,35 @@ func Set(path, key, value string) error {
 	}
 
 	return v.WriteConfigAs(path)
+}
+
+// Get returns the string value of key in the specified config file, or "" when
+// the file or key does not exist.
+func Get(path, key string) string {
+	v := viper.New()
+	v.SetConfigFile(path)
+	v.SetConfigType("toml")
+	if err := v.ReadInConfig(); err != nil {
+		return ""
+	}
+	return v.GetString(key)
+}
+
+// GetStrict is Get for callers about to write the file: it returns "" (and no
+// error) when the file or key does not exist, but an error when the file
+// exists and cannot be read or parsed, so the caller doesn't mistake it for an
+// empty config and overwrite it.
+func GetStrict(path, key string) (string, error) {
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	v := viper.New()
+	v.SetConfigFile(path)
+	v.SetConfigType("toml")
+	if err := v.ReadInConfig(); err != nil {
+		return "", fmt.Errorf("config: read %s: %w", path, err)
+	}
+	return v.GetString(key), nil
 }
 
 // Unset removes a key from the specified config file.

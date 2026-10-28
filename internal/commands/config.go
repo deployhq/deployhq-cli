@@ -91,7 +91,7 @@ func newConfigInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create a config file",
-		Long:  "Create a .deployhq.toml in the current directory (or --global for ~/.deployhq/config.toml).",
+		Long:  "Create a .deployhq.toml in the current directory (or --global for ~/.deployhq/config.toml).\n\nValues passed with --project, --account and --email are written to the new file.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var path string
 			if global {
@@ -108,16 +108,36 @@ func newConfigInitCmd() *cobra.Command {
 				}
 			}
 
-			if err := config.Set(path, "project", ""); err != nil {
-				return &output.InternalError{Message: "create config file", Cause: err}
+			values := configInitValues(cmd)
+			if cmd.Flags().Changed("api-key") {
+				cliCtx.Envelope.Warn("--api-key is not written to config files; use 'dhq auth login' or the DEPLOYHQ_API_KEY environment variable")
+			}
+			if len(values) == 0 {
+				// Nothing given: create the file with an empty project entry.
+				values = [][2]string{{"project", ""}}
+			}
+			for _, kv := range values {
+				if err := config.Set(path, kv[0], kv[1]); err != nil {
+					return &output.InternalError{Message: "create config file", Cause: err}
+				}
 			}
 
 			cliCtx.Envelope.Status("Created %s", path)
+			for _, kv := range values {
+				if kv[1] != "" {
+					cliCtx.Envelope.Status("  %s = %s", kv[0], kv[1])
+				}
+			}
 			return nil
 		},
 	}
 
 	cmd.Flags().BoolVar(&global, "global", false, "Create global config instead of project config")
+	cmd.Example = `  # Link the current directory to a project and account
+  dhq config init --project my-app --account my-company
+
+  # Create the global config instead
+  dhq config init --global --account my-company`
 	return cmd
 }
 
@@ -194,6 +214,21 @@ func newConfigUnsetCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&global, "global", false, "Unset in global config")
 	return cmd
+}
+
+// configInitValues returns the config values explicitly passed as global
+// flags to 'dhq config init', in a stable order. The API key is deliberately
+// excluded: it belongs in the credential store, not a (possibly committed) file.
+func configInitValues(cmd *cobra.Command) [][2]string {
+	var values [][2]string
+	for _, key := range []string{"project", "account", "email", "host"} {
+		f := cmd.Flags().Lookup(key)
+		if f == nil || !f.Changed || f.Value.String() == "" {
+			continue
+		}
+		values = append(values, [2]string{key, f.Value.String()})
+	}
+	return values
 }
 
 func isValidKey(key string) bool {

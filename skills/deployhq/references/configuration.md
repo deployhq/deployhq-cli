@@ -92,6 +92,31 @@ dhq config-files update 12345 -p my-app --all-servers
 dhq config-files delete 12345 -p my-app
 ```
 
+## Suggested Build Settings
+
+DeployHQ can suggest build settings from a project's files, the same
+suggestions the web app's setup offers: build commands (e.g. install
+dependencies, then build), excluded files (e.g. `node_modules/`) and build cache
+files. `dhq launch` applies them for DeployHQ hosting; for any other project
+(including ones deploying to your own servers) use:
+
+```bash
+dhq projects apply-suggestions -p my-app --dry-run --json   # preview
+dhq projects apply-suggestions -p my-app --json             # apply
+```
+
+- Run it from the code directory, or pass the path: `dhq projects apply-suggestions ./app -p my-app`.
+- Only missing settings are added; excluded and cache paths already on the
+  project are left as they are, so re-running is safe.
+- Build commands are added only when the project has none. If it already has a
+  build pipeline, the suggestions are reported as `skipped` and nothing changes.
+- Each item in the JSON result has a `status`: `add` (dry run), `added`,
+  `exists`, `skipped`, `failed` or `not_attempted`.
+- Build commands stop at the first that fails; the later ones are
+  `not_attempted`. Add the failed and remaining ones with the
+  `dhq build-commands create` commands printed on stderr, in order (a re-run
+  skips build commands once the project has some).
+
 ## Build Commands
 
 ### `dhq build-commands list`

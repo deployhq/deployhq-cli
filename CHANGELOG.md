@@ -25,11 +25,19 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `ServerGroupUpdateRequest.TransferOrder` (`transfer_order`, `omitempty`).
   Purely additive.
 
+- **`dhq projects apply-suggestions [path]`**: adds DeployHQ's suggested build
+  settings (build commands, excluded files, build cache files) to any project,
+  not only DeployHQ hosting set up by `dhq launch`. Shows what it will add,
+  `--dry-run` previews, and re-runs only add what is missing. Build commands are
+  added only when the project has none, and stop at the first that fails, with
+  the commands to add the rest manually. Exits non-zero if any item could not
+  be added.
 - **SDK**: `APIError` now carries the structured fields some error responses
   include (`ErrorCode`, `Detail`, `UpgradeURL`, `SuspensionType`,
   `SuspensionReason`) and the `AccountURL` the request was sent to, with
   `IsAPIAccessRestricted`, `IsAccountSuspended`, `IsPaymentSuspension` and
   `IsPaymentMethodRequired` helpers. `Message` keeps its existing meaning.
+
 - **`--server`** on `excluded-files`, `config-files`, `ssh-commands` and
   `integrations` `create` and `update`: target specific servers or server
   groups by name or identifier (repeatable or comma-separated). An unknown or
@@ -55,6 +63,26 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   server in a group in parallel; it describes the group's transfer order
   instead.
 
+- **`dhq projects create`**: checks for a project with the same name first. In
+  non-interactive mode it lists the existing project and fails unless
+  `--allow-duplicate` is passed; interactively it asks. The new project is saved
+  to `.deployhq.toml` in the current directory (never replacing a different
+  project already there, a file it can't read, or creating one that would hide a parent folder's `.deployhq.toml`), so later runs in the folder reuse it; `--no-save`
+  opts out. The account it was created in is saved with it, so a project
+  created with `--account` isn't later looked up in the global config's
+  account; a file that names a different account is not linked, and a warning
+  gives the commands to link it. The folder is only linked inside a git
+  repository; elsewhere (for example the home folder) nothing is written and
+  the `dhq config set project` command to link it is printed instead.
+- **`dhq launch`**: saves a newly created project to `.deployhq.toml` right
+  away, so a re-run after a later failure reuses it instead of creating
+  another, and asks before creating a project whose name already exists. As
+  with `dhq projects create`, the account is saved with the project, and a
+  folder whose file names a different account is not linked, and nothing is
+  written outside a git repository.
+- **`dhq init`**: if a project with the entered name already exists, the
+  wizard lists it and creates another only when the same name is submitted
+  again.
 - **Agent skill guide**: first-time setup is now a series of small steps the
   person approves one at a time. The guide asks whether the person already has a
   DeployHQ account, has them sign in or sign up in their own terminal, asks where
@@ -152,6 +180,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   instead of `--packages`.
   `update` with no flags now fails locally instead of sending an empty request.
 
+
 - **`dhq excluded-files update`**: `--path` is now optional, so a rule can be
   re-targeted without restating its pattern.
 - **`dhq excluded-files list --json`** / **`show`** now include an empty
@@ -167,6 +196,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Fixed
 
+- **`dhq config init`**: now writes the `--project`, `--account` and `--email`
+  values it is given instead of an empty project entry. `--api-key` is never
+  written to a config file.
 - **`dhq launch` / `dhq init`**: connecting a private GitHub repository over SSH no
   longer fails on a first run. DeployHQ checks access with the project's deploy key
   as soon as the repository is connected, so the key is now added to the
@@ -251,6 +283,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   created the project, it also names the project, says to re-run with
   `--project` added, and how to delete it. The project is saved to
   `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
+
 
 - **Server targeting on create**: excluded files, config files, SSH commands
   and integrations created with dhq were stored with no target servers, so
