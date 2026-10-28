@@ -406,3 +406,17 @@ func TestSignup_JSON_OmitsAPIKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "secret-signup-key", stored.APIKey, "the key is saved, not printed")
 }
+
+func TestLaunchEnsureAuth_NonInteractive_HintNormalisesHostnameAccount(t *testing.T) {
+	isolateCredentialStore(t)
+	withTestCLIContext(t, true)
+	cliCtx.Config.Account = "acme.deployhq.com"
+
+	_, _, err := launchEnsureAuth(t.Context(), cliCtx.Envelope, launchConfig{})
+	require.Error(t, err)
+
+	var authErr *output.AuthError
+	require.True(t, errors.As(err, &authErr), "got %T", err)
+	assert.Contains(t, authErr.Hint, "https://acme.deployhq.com/security")
+	assert.NotContains(t, authErr.Hint, "deployhq.com.deployhq.com")
+}
