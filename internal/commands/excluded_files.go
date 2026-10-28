@@ -88,11 +88,26 @@ Patterns are evaluated against repository paths and apply per-project. Each excl
 
 func newExcludedFilesUpdateCmd() *cobra.Command {
 	var path string
+	var servers []string
+	var allServers bool
 	cmd := &cobra.Command{
 		Use: "update <id>", Short: "Update an excluded file pattern", Args: cobra.ExactArgs(1),
+		Example: `  # Change the pattern
+  dhq excluded-files update <id> --path "*.log" -p my-app
+
+  # Make an existing rule apply to every server
+  dhq excluded-files update <id> --all-servers -p my-app`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if path == "" {
-				return &output.UserError{Message: "--path is required"}
+			pathSet := cmd.Flags().Changed("path")
+			serversSet := cmd.Flags().Changed("server")
+			if !pathSet && !serversSet && !allServers {
+				return &output.UserError{
+					Message: "Nothing to update",
+					Hint:    "Pass --path, --server or --all-servers",
+				}
+			}
+			if pathSet && path == "" {
+				return &output.UserError{Message: "--path cannot be empty"}
 			}
 			projectID, err := cliCtx.RequireProject()
 			if err != nil {
@@ -102,7 +117,17 @@ func newExcludedFilesUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			f, err := client.UpdateExcludedFile(cliCtx.Background(), projectID, args[0], sdk.ExcludedFileCreateRequest{Path: path})
+			// Only send what the user asked to change: omitting both server
+			// fields leaves the rule's current targeting as it is.
+			req := sdk.ExcludedFileCreateRequest{Path: path, AllServers: allServers}
+			if serversSet {
+				ids, err := resolveServerTargets(cliCtx.Background(), client, projectID, servers)
+				if err != nil {
+					return err
+				}
+				req.ServerIdentifiers = ids
+			}
+			f, err := client.UpdateExcludedFile(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
 				return err
 			}
@@ -110,14 +135,26 @@ func newExcludedFilesUpdateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&path, "path", "", "File pattern (required)")
+	cmd.Flags().StringVar(&path, "path", "", "File pattern")
+	addServerFlag(cmd, &servers)
+	addAllServersFlag(cmd, &allServers)
 	return cmd
 }
 
 func newExcludedFilesCreateCmd() *cobra.Command {
 	var path string
+	var servers []string
 	cmd := &cobra.Command{
 		Use: "create", Short: "Create an excluded file pattern",
+		Long: `Create a pattern for files DeployHQ should not upload.
+
+The rule applies to all servers in the project (including servers added later)
+unless --server names specific servers or server groups.`,
+		Example: `  # Never upload deploy.sh, on any server
+  dhq excluded-files create --path deploy.sh -p my-app
+
+  # Only skip it on one server
+  dhq excluded-files create --path deploy.sh --server production -p my-app`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if path == "" {
 				return &output.UserError{Message: "--path is required"}
@@ -130,14 +167,25 @@ func newExcludedFilesCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			f, err := client.CreateExcludedFile(cliCtx.Background(), projectID, sdk.ExcludedFileCreateRequest{Path: path})
+			req := sdk.ExcludedFileCreateRequest{Path: path}
+			if cmd.Flags().Changed("server") {
+				ids, err := resolveServerTargets(cliCtx.Background(), client, projectID, servers)
+				if err != nil {
+					return err
+				}
+				req.ServerIdentifiers = ids
+			} else {
+				req.AllServers = true
+			}
+			f, err := client.CreateExcludedFile(cliCtx.Background(), projectID, req)
 			if err != nil {
 				return err
 			}
-			cliCtx.Envelope.Status("Created excluded file: %s", f.Path)
+			cliCtx.Envelope.Status("Created excluded file: %s (%s)", f.Path, describeServerTargets(req.ServerIdentifiers))
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&path, "path", "", "File pattern to exclude (required)")
+	addServerFlag(cmd, &servers)
 	return cmd
 }

@@ -1918,7 +1918,7 @@ func launchApplyStaticExtras(ctx context.Context, env *output.Envelope, cfg laun
 			if path == "" || existing[path] {
 				continue
 			}
-			if _, err := client.CreateExcludedFile(ctx, cfg.projectID, sdk.ExcludedFileCreateRequest{Path: path}); err != nil {
+			if _, err := client.CreateExcludedFile(ctx, cfg.projectID, sdk.ExcludedFileCreateRequest{Path: path, AllServers: true}); err != nil {
 				env.Logger.Write("could not add excluded file %q: %v", path, err)
 			}
 		}

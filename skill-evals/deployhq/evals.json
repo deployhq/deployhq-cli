@@ -657,10 +657,9 @@
       "prompt": "In a CI pipeline, deploy my-app to Production and make the job fail if the deployment doesn't succeed",
       "expected": {
         "command": "dhq deploy",
-        "flags": ["-p", "my-app", "watch", "show", "completed"]
+        "flags": ["-p", "my-app", "--wait", "completed"]
       },
-      "must_not_contain": ["--wait"],
-      "notes": "check_eval word-splits expected.flags and substring-matches each token, so single words are used: watch + show + completed together force the whole create -> watch -> assert sequence rather than any one step. --wait is inert outside a TTY: output auto-switches to JSON and the JSON path returns as soon as the deploy is queued, exiting 0."
+      "notes": "check_eval word-splits expected.flags and substring-matches each token. --wait blocks until a final status in every output mode and exits non-zero unless the deployment ends completed; the answer should still assert status == completed rather than trusting the exit code alone."
     },
     {
       "id": "cancelled-deploy-not-success",
@@ -670,7 +669,7 @@
         "command": "dhq deployments show",
         "flags": ["status"]
       },
-      "notes": "A cancelled deployment exits 0 from the watcher; only failed is non-zero. The status must be asserted explicitly."
+      "notes": "The status must be asserted explicitly: only completed means the code was deployed."
     },
     {
       "id": "post-deploy-reconcile-check",
@@ -681,7 +680,7 @@
         "flags": ["-p", "my-app", "--stage", "post_deploy", "--check-type", "ssh", "--servers", "srv-abc123"]
       },
       "must_not_contain": ["ssh-commands create"],
-      "notes": "ssh-commands create cannot set callback phase, targeting, timeout or halt-on-error; a post_deploy ssh deployment check can, and fails the deployment on non-zero exit."
+      "notes": "ssh-commands create cannot set callback phase, timeout or halt-on-error; a post_deploy ssh deployment check can, and fails the deployment on non-zero exit."
     }
   ]
 }

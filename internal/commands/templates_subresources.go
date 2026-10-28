@@ -173,7 +173,7 @@ func tcfCreateCmd() *cobra.Command {
 				return err
 			}
 			f, err := client.CreateTemplateConfigFile(cliCtx.Background(), permalink, sdk.ConfigFileCreateRequest{
-				Path: path, Body: body, Description: description,
+				Path: path, Body: body, Description: description, AllServers: true,
 			})
 			if err != nil {
 				return err
@@ -335,7 +335,7 @@ func tefCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			f, err := client.CreateTemplateExcludedFile(cliCtx.Background(), permalink, sdk.ExcludedFileCreateRequest{Path: path})
+			f, err := client.CreateTemplateExcludedFile(cliCtx.Background(), permalink, sdk.ExcludedFileCreateRequest{Path: path, AllServers: true})
 			if err != nil {
 				return err
 			}
@@ -483,7 +483,7 @@ func tintCreateCmd() *cobra.Command {
 				return err
 			}
 			in, err := client.CreateTemplateIntegration(cliCtx.Background(), permalink, sdk.IntegrationCreateRequest{
-				HookType: hookType, Name: name,
+				HookType: hookType, Name: name, AllServers: true,
 			})
 			if err != nil {
 				return err
@@ -648,7 +648,7 @@ func tcmdCreateCmd() *cobra.Command {
 				return err
 			}
 			cm, err := client.CreateTemplateCommand(cliCtx.Background(), permalink, sdk.SSHCommandCreateRequest{
-				Command: command, Description: description, Timing: timing,
+				Command: command, Description: description, Timing: timing, AllServers: true,
 			})
 			if err != nil {
 				return err
