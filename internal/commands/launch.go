@@ -470,7 +470,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// account that cannot provision the target is told so before anything is
 	// left behind. Only apply eligibility gates when we have real capability data.
 	if capsKnown {
-		if err := launchCheckPlanLimits(env, cfg, caps); err != nil {
+		if err := launchCheckPlanLimits(env, cfg, caps, accountSubdomain); err != nil {
 			return err
 		}
 	}
@@ -660,7 +660,7 @@ func launchGetCaps(ctx context.Context, env *output.Envelope, client *sdk.Client
 	if err != nil {
 		var apiErr *sdk.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-			env.Warn("Capability check unavailable — beta status unknown. Visit https://app.deployhq.com/beta_features to enable.")
+			env.Warn("Capability check unavailable — beta status unknown. Visit %s to enable.", accountPageURL(client.Account(), apiErr, "/beta_features"))
 			return &sdk.AccountCapabilities{}, false, nil
 		}
 		// The account's email isn't verified yet — handle it gracefully (wait and
@@ -872,8 +872,6 @@ func launchLogin(ctx context.Context, env *output.Envelope, reader *bufio.Reader
 // ── Beta enrollment ──────────────────────────────────────────────────────────
 
 func launchEnsureBetaEnrolled(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, accountSubdomain string) error {
-	betaURL := fmt.Sprintf("https://app.deployhq.com/%s/beta_features", accountSubdomain)
-
 	env.Status("")
 	env.Status("Managed-resources beta is not enabled on this account.")
 
@@ -900,7 +898,9 @@ func launchEnsureBetaEnrolled(ctx context.Context, env *output.Envelope, cfg lau
 	_, enrollErr := client.EnrollBeta(ctx, cfg.targetProtocol)
 	if enrollErr != nil {
 		var apiErr *sdk.APIError
-		if errors.As(enrollErr, &apiErr) && apiErr.StatusCode == http.StatusForbidden {
+		errors.As(enrollErr, &apiErr)
+		betaURL := accountPageURL(accountSubdomain, apiErr, "/beta_features")
+		if apiErr != nil && apiErr.StatusCode == http.StatusForbidden {
 			return &launchError{
 				Reason:   reasonBetaEnrollRequired,
 				Message:  "Beta enrollment requires an account admin",
@@ -909,7 +909,7 @@ func launchEnsureBetaEnrolled(ctx context.Context, env *output.Envelope, cfg lau
 			}
 		}
 		// 404 = endpoint doesn't exist yet (older backend / staging mismatch)
-		if errors.As(enrollErr, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		if apiErr != nil && apiErr.StatusCode == http.StatusNotFound {
 			env.Warn("Beta enrollment endpoint not available on this server. Visit %s to enable manually.", betaURL)
 			return nil
 		}
@@ -1378,13 +1378,13 @@ func projectNameFromRemote(remote string) string {
 
 // ── Plan / limit pre-flight ───────────────────────────────────────────────────
 
-func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities) error {
+func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.AccountCapabilities, accountSubdomain string) error {
 	if cfg.targetProtocol == detect.ProtocolStaticHosting && !caps.StaticHostingEligible {
 		// Not eligible = plan limit or billing wall
 		return &launchError{
 			Reason:   reasonPlanLimitReached,
 			Message:  "Your account cannot provision Static Hosting sites",
-			NextStep: "Check your plan or billing at https://app.deployhq.com/account/plan. Free plans support 1 site.",
+			NextStep: "Check your plan or billing at " + accountPageURL(accountSubdomain, nil, "/account/packages") + ". Free plans support 1 site.",
 			Details:  map[string]string{"target": detect.ProtocolStaticHosting},
 		}
 	}
@@ -1392,7 +1392,7 @@ func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.Acc
 		return &launchError{
 			Reason:   reasonPlanLimitReached,
 			Message:  "Your account cannot provision Managed VPS servers",
-			NextStep: "Ensure your billing details are set up at https://app.deployhq.com/account/billing",
+			NextStep: "Ensure your billing details are set up at " + accountPageURL(accountSubdomain, nil, "/account/payment_details"),
 			Details:  map[string]string{"target": detect.ProtocolManagedVPS},
 		}
 	}

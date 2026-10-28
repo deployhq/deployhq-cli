@@ -52,7 +52,6 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   to build commands and never uploaded to a server — previously the
   accidental result of every create, now an explicit choice.
 
-
 ### Changed
 
 - **`dhq templates server-groups create` / `update`**: `--transfer-order` help
@@ -67,9 +66,10 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   non-interactive mode it lists the existing project and fails unless
   `--allow-duplicate` is passed; interactively it asks. The new project is saved
   to `.deployhq.toml` in the current directory (never replacing a different
-  project already there, a file it can't read, or creating one that would hide a parent folder's `.deployhq.toml`), so later runs in the folder reuse it; `--no-save`
-  opts out. The account it was created in is saved with it, so a project
-  created with `--account` isn't later looked up in the global config's
+  project already there, a file it can't read, or creating one that would hide
+  a parent folder's `.deployhq.toml`), so later runs in the folder reuse it;
+  `--no-save` opts out. The account it was created in is saved with it, so a
+  project created with `--account` isn't later looked up in the global config's
   account; a file that names a different account is not linked, and a warning
   gives the commands to link it. The folder is only linked inside a git
   repository; elsewhere (for example the home folder) nothing is written and
@@ -180,13 +180,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   instead of `--packages`.
   `update` with no flags now fails locally instead of sending an empty request.
 
-
 - **`dhq excluded-files update`**: `--path` is now optional, so a rule can be
   re-targeted without restating its pattern.
 - **`dhq excluded-files list --json`** / **`show`** now include an empty
   `servers` list instead of omitting it, so a rule that applies to no server
   is visible.
-
 
 - **`dhq config show --json`** now masks the API key (e.g. `sekr****1234`), as
   the table output already did, with and without `--resolved`. Scripts that read
@@ -228,8 +226,6 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   subdomain is taken — instead of 2 (internal error). The same code appears as
   `exit_code` in `--json`. Command-argument and flag errors (wrong number of
   arguments, unknown flag, flag without a value) now exit 1 instead of 2.
-  Previously a second, generic error object followed it. Exit codes are
-  unchanged.
 - **Agent skill guide**: the configuration reference documented
   `dhq configure init|show|set|unset`, which run the interactive wizard and refuse
   inside an agent; it now documents the working `dhq config` subcommands. It also
@@ -273,8 +269,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `--json` output the error carries a distinct `code` (`api_access_restricted`,
   `account_suspended`, `payment_method_required`), `doc_url`, and a `recovery`
   step with a `url`; a plan restriction no longer suggests `dhq auth login`.
-  Exit codes are unchanged. Recovery breadcrumbs gain an optional `url` field,
-  and `cmd` is omitted when a step happens in the browser.
+  Exit codes are unchanged for commands other than `dhq launch` (see its entry
+  above). Recovery breadcrumbs gain an optional `url` field, and `cmd` is
+  omitted when a step happens in the browser.
 - **`dhq launch`**: the plan-eligibility check now runs before a project is
   created or a repository connected, so an ineligible account is stopped before
   anything is left behind. A provisioning refusal for a missing payment method
@@ -283,7 +280,6 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   created the project, it also names the project, says to re-run with
   `--project` added, and how to delete it. The project is saved to
   `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
-
 
 - **Server targeting on create**: excluded files, config files, SSH commands
   and integrations created with dhq were stored with no target servers, so
@@ -316,7 +312,18 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   ended silently with exit 0 under `deployments watch`; it is now this error.
 - Agent skill: deploy with `--wait` and confirm the final status is
   `completed` before reporting success.
-
+- **`dhq excluded-files create --json`** printed nothing on stdout; it now
+  writes the created rule, including its `servers`.
+- **Account links**: beta enrolment, plan and billing hints linked to
+  `app.deployhq.com`, which does not serve those pages. They now point at the
+  account's own pages (`https://<account>.deployhq.com/beta_features`,
+  `/account/packages` and `/account/payment_details`), on the configured host
+  when `--host` or `DEPLOYHQ_HOST` is set.
+- **Agent skill guide**: `dhq build-commands create` examples used a `--name`
+  flag that does not exist (the flag is `--description`); the setup steps now
+  run the first deploy with `--wait --json` and confirm a `completed` status;
+  the `servers create` example uses SSH keys and notes that DeployHQ's key must
+  be on the server.
 
 ## [0.21.0] - 2026-08-06
 

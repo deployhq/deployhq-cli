@@ -41,7 +41,7 @@ enroll in Static Hosting instead. Requires an account admin — non-admins recei
 			if err != nil {
 				var apiErr *sdk.APIError
 				if errors.As(err, &apiErr) {
-					betaURL := fmt.Sprintf("https://app.deployhq.com/%s/beta_features", client.Account())
+					betaURL := accountPageURL(client.Account(), apiErr, "/beta_features")
 					switch apiErr.StatusCode {
 					case http.StatusForbidden:
 						return &output.UserError{

@@ -255,10 +255,10 @@
     {
       "id": "add-build-command",
       "category": "configuration",
-      "prompt": "Add a build command called 'Install' that runs 'npm install' to my-app",
+      "prompt": "Add a build command described as 'Install' that runs 'npm install' to my-app",
       "expected": {
         "command": "dhq build-commands create",
-        "flags": ["-p", "my-app", "--name", "Install", "--command", "npm install", "--json"]
+        "flags": ["-p", "my-app", "--description", "Install", "--command", "npm install", "--json"]
       }
     },
     {
@@ -267,7 +267,7 @@
       "prompt": "Exclude node_modules from deployments on my-app",
       "expected": {
         "command": "dhq excluded-files create",
-        "flags": ["-p", "my-app", "--pattern", "node_modules", "--json"]
+        "flags": ["-p", "my-app", "--path", "node_modules", "--json"]
       }
     },
     {
