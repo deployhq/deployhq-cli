@@ -105,8 +105,8 @@ Small steps, each one something the person can approve on its own:
    - Own server: DeployHQ connects with the project's access key (`dhq projects show <project> --json=public_key`). Installing that key on the server changes who can log in to it, so the agent shows the key and asks before adding it, or the person adds it themselves. Then `dhq servers create ...` (see [servers.md](references/servers.md)). If the server only accepts a password, the person adds it in the DeployHQ web app so the password never passes through the chat.
    - DeployHQ hosting: `dhq beta enroll --protocol static_hosting` (needs an account admin) and `dhq servers create -p <project> --protocol-type static_hosting --subdomain <name> ...`, or a `managed_vps` server. Check with the person before each.
 7. **Configure** build commands, excluded files, env vars as the project needs (see "Configure deployment").
-8. **First deploy.** Summarise the project, branch and target, ask, then `dhq deploy -p <project> -s <server> --json`.
-9. **Confirm.** `dhq deployments watch <id> -p <project>` follows the deployment until it finishes (a new one may start as `queued`), then `dhq deployments show <id> -p <project> --json=status`; report success only for `completed`.
+8. **First deploy.** Summarise the project, branch and target, ask, then `dhq deploy -p <project> -s <server> --wait --json`, which waits for the deployment to finish (a new one may start as `queued`).
+9. **Confirm.** Report success only when the JSON shows `"status": "completed"`; a non-zero exit means the deployment failed or timed out. (`dhq deployments watch <id> -p <project>` is a live view for a person following along in their own terminal, not a step for the agent.)
 
 `dhq launch` does steps 4 to 9 for DeployHQ hosting in a single command. It is an option when the person has chosen DeployHQ hosting and wants it done in one go, not the default; see [launch.md](references/launch.md).
 
@@ -131,14 +131,14 @@ Same steps as "Set up DeployHQ for this project" above, checking with the person
 2. `dhq repos create -p <project> --scm-type git --url <repo-url> --json` — connect repo
    (SSH URL such as `git@github.com:...`: add the project's `public_key` to the repo as a deploy key FIRST, or the connect is rejected — see references/repos.md)
 3. `dhq projects apply-suggestions -p <project> --json` — add DeployHQ's suggested build commands and exclusions
-4. `dhq servers create -p <project> --name Production --protocol-type ssh --hostname <host> --username <user> --json` — add server
-5. `dhq deploy -p <project> --json` — first deployment, after the person says go
+4. `dhq servers create -p <project> --name Production --protocol-type ssh --hostname <host> --username <user> --use-ssh-keys --json` — add server with SSH key authentication (a password-only server is something the person adds themselves). DeployHQ's public key must be on the server; `--install-key` installs it using your own SSH access, so ask the person first
+5. `dhq deploy -p <project> --wait --json` — first deployment, after the person says go; report success only when the JSON shows `"status": "completed"`
 
 ### "Configure deployment"
 1. `dhq env-vars create -p <project> --name KEY --value val` — add env var
 2. `dhq config-files create -p <project> --path .env --body "..." --json` — add config file
 3. `dhq excluded-files create -p <project> --path "node_modules"` — add exclusion (all servers unless `--server`)
-4. `dhq build-commands create -p <project> --name "Install" --command "npm install" --json` — add build step
+4. `dhq build-commands create -p <project> --description "Install" --command "npm install" --json` — add build step
 5. `dhq deployment-checks create -p <project> --name "Health" --stage post_deploy --check-type http --http-url https://app.example.com/health --http-expected-status 200 --json` — gate the deploy
 
 ### "Escape hatch (any API endpoint)"

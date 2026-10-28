@@ -6,7 +6,7 @@
 # Required repository secrets:
 #   DEPLOYHQ_ACCOUNT  - Account subdomain (e.g. "mycompany")
 #   DEPLOYHQ_EMAIL    - API user email
-#   DEPLOYHQ_API_KEY  - API key (Profile > API Key in DeployHQ)
+#   DEPLOYHQ_API_KEY  - API key (Settings → Security → API Credentials in DeployHQ)
 
 name: Deploy
 

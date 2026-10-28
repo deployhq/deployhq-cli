@@ -128,18 +128,17 @@ dhq build-commands list -p my-app --json
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--name` | yes | Command name |
 | `--command` | yes | Shell command to execute |
 | `--description` | no | Description |
 
 ```bash
-dhq build-commands create -p my-app --name "Install" --command "npm install" --json
-dhq build-commands create -p my-app --name "Build" --command "npm run build" --json
+dhq build-commands create -p my-app --description "Install" --command "npm install" --json
+dhq build-commands create -p my-app --description "Build" --command "npm run build" --json
 ```
 
 ### `dhq build-commands update <id>`
 ```bash
-dhq build-commands update 12345 -p my-app --name "Install deps" --command "npm ci" --json
+dhq build-commands update 12345 -p my-app --description "Install deps" --command "npm ci" --json
 ```
 
 ## Build Configs
