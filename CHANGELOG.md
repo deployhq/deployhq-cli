@@ -37,8 +37,10 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `integrations` `create` and `update`: target specific servers or server
   groups by name or identifier (repeatable or comma-separated). An unknown or
   ambiguous name fails with the available choices instead of guessing, and so
-  does an identifier that matches no server or group in the project — it is
-  never passed through to save a resource that targets no server.
+  does an identifier that matches no server or group in the project, rather
+  than saving a resource that targets no server. If listing the project's
+  servers or groups fails, an identifier is confirmed with the project before
+  it is used.
 - **`--all-servers`** on the same `update` commands. Without either flag, an
   update leaves the existing targeting unchanged.
 - **`dhq config-files create --build-only`**: a file that is only available
