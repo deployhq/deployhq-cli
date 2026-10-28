@@ -29,11 +29,19 @@ DeployHQ is a deployment automation platform. The `dhq` CLI (binary name: `deplo
 
 Three methods (checked in order):
 
-1. **Environment variables** (CI/agents): `DEPLOYHQ_ACCOUNT` + `DEPLOYHQ_EMAIL` + `DEPLOYHQ_API_KEY`
+1. **Environment variables** (CI): `DEPLOYHQ_ACCOUNT` + `DEPLOYHQ_EMAIL` + `DEPLOYHQ_API_KEY`
 2. **Config files**: `~/.deployhq/config.toml` or `.deployhq.toml` in project directory
 3. **Interactive login**: `dhq auth login`
 
-Verify with: `dhq auth status`
+Verify with: `dhq auth status`. Its `status` must be `authenticated` before you
+continue; `email_verification_required` means the person has to open the
+verification link DeployHQ emailed them (every API request is refused until then).
+
+**Never ask the person for their API key or password, and never put one in a
+command.** If not logged in, ask the person to run `dhq auth login` (or
+`dhq signup` for a new account) themselves in a separate terminal window, then
+re-check `dhq auth status`. The API key is under Settings → Security → API
+Credentials in DeployHQ. See [auth-setup.md](references/auth-setup.md).
 
 ## Output Contract
 

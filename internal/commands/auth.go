@@ -2,12 +2,15 @@ package commands
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
+	"github.com/deployhq/deployhq-cli/internal/cli"
 	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -47,12 +50,22 @@ func newAuthLoginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Authenticate with DeployHQ",
-		Long:  "Login with your DeployHQ account credentials. Provide --account, --email, and --api-key flags, or enter them interactively.",
+		Long: `Login with your DeployHQ account credentials. Run it in your own terminal: it
+prompts for the account, email and API key (the key is typed hidden) and stores
+them in the OS keychain.
+
+The API key is under Settings → Security → API Credentials in DeployHQ
+(https://<your-account>.deployhq.com/security).
+
+AI agents: do not ask the person for their API key. Ask them to run
+'dhq auth login' themselves in a separate terminal window, never to paste the
+key into the chat. For CI, set DEPLOYHQ_ACCOUNT, DEPLOYHQ_EMAIL and
+DEPLOYHQ_API_KEY as secret environment variables instead of logging in.`,
 		Example: `  # Interactive login (prompts for any missing values)
   dhq auth login
 
-  # Non-interactive login with all credentials supplied
-  dhq auth login --account mycompany --email me@example.com --api-key '<key>'`,
+  # Pre-fill the account and email; the API key is still prompted for (hidden)
+  dhq auth login --account mycompany --email me@example.com`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.RunF != nil {
 				return opts.RunF(opts)
@@ -63,7 +76,7 @@ func newAuthLoginCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&opts.Account, "account", "", "Account subdomain (e.g. 'mycompany' for mycompany.deployhq.com)")
 	cmd.Flags().StringVar(&opts.Email, "email", "", "Login email address")
-	cmd.Flags().StringVar(&opts.APIKey, "api-key", "", "API key (from Profile > API Key in DeployHQ)")
+	cmd.Flags().StringVar(&opts.APIKey, "api-key", "", "API key (Settings → Security → API Credentials in DeployHQ). Prefer the hidden prompt; never paste a key into an AI chat")
 
 	return cmd
 }
@@ -78,31 +91,25 @@ func newAuthLoginCmd() *cobra.Command {
 // host is the configured DeployHQ host (defaults to "deployhq.com") so the
 // same logic works for staging/self-hosted setups.
 func normalizeAccount(input, host string) string {
-	s := strings.TrimSpace(input)
-	s = strings.TrimPrefix(s, "https://")
-	s = strings.TrimPrefix(s, "http://")
-	if i := strings.IndexAny(s, "/?#"); i >= 0 {
-		s = s[:i]
-	}
-	if host == "" {
-		host = "deployhq.com"
-	}
-	s = strings.TrimSuffix(s, "."+host)
-	return s
+	return cli.NormalizeAccount(input, host)
 }
 
 func runAuthLogin(opts *AuthLoginOptions) error {
 	env := cliCtx.Envelope
 	reader := bufio.NewReader(os.Stdin)
 
+	// Non-interactive (AI agents, pipes, CI): dhq can't prompt, and the API key
+	// must not be relayed through an agent. Point the person at signing in
+	// themselves rather than at passing the key as a flag.
+	if env.NonInteractive && (opts.Account == "" || opts.Email == "" || opts.APIKey == "") {
+		return &output.AuthError{
+			Message: "Signing in needs your DeployHQ API key, which dhq can't ask for in non-interactive mode",
+			Hint:    auth.SignInHint(normalizeAccount(opts.Account, cliCtx.Config.Host), cliCtx.Config.Host),
+		}
+	}
+
 	// Interactive prompts for missing values (two-tier: flag > prompt)
 	if opts.Account == "" {
-		if env.NonInteractive {
-			return &output.UserError{
-				Message: "Account is required in non-interactive mode",
-				Hint:    "Use --account flag",
-			}
-		}
 		fmt.Fprint(env.Stderr, "Account subdomain (e.g. 'mycompany' for mycompany.deployhq.com): ") //nolint:errcheck // best-effort stderr
 		input, _ := reader.ReadString('\n')
 		opts.Account = strings.TrimSpace(input)
@@ -110,24 +117,13 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 	opts.Account = normalizeAccount(opts.Account, cliCtx.Config.Host)
 
 	if opts.Email == "" {
-		if env.NonInteractive {
-			return &output.UserError{
-				Message: "Email is required in non-interactive mode",
-				Hint:    "Use --email flag",
-			}
-		}
 		fmt.Fprint(env.Stderr, "Email: ") //nolint:errcheck // best-effort stderr
 		input, _ := reader.ReadString('\n')
 		opts.Email = strings.TrimSpace(input)
 	}
 
 	if opts.APIKey == "" {
-		if env.NonInteractive {
-			return &output.UserError{
-				Message: "API key is required in non-interactive mode",
-				Hint:    "Use --api-key flag",
-			}
-		}
+		env.Status("Your API key is under %s.", auth.APIKeyLocation(opts.Account, cliCtx.Config.Host))
 		fmt.Fprint(env.Stderr, "API key: ") //nolint:errcheck // best-effort stderr
 		key, err := term.ReadPassword(int(os.Stdin.Fd()))
 		if err == nil && len(key) > 0 {
@@ -154,7 +150,8 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 	}
 
 	_, err = client.ListProjects(cliCtx.Background(), nil)
-	if err != nil {
+	emailUnverified := output.IsEmailVerificationRequired(err)
+	if err != nil && !emailUnverified {
 		// The credentials are fine but the account's plan or billing state
 		// refuses API access: say so rather than "access denied".
 		var acctErr *output.AccountError
@@ -164,7 +161,7 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 		if sdk.IsUnauthorized(err) {
 			return &output.AuthError{
 				Message: "Invalid credentials",
-				Hint:    "Check your email and API key at Profile > API Key in DeployHQ",
+				Hint:    "Check your email and API key. The API key is under " + auth.APIKeyLocation(opts.Account, cliCtx.Config.Host) + ".",
 			}
 		}
 		if sdk.IsForbidden(err) {
@@ -197,6 +194,12 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 		host = cliCtx.Config.Host
 	}
 	env.Status("Logged in as %s on %s.%s", opts.Email, opts.Account, host)
+	// The credentials are valid, but the API refuses every request until the
+	// account's email is verified: say so now rather than on the next command.
+	if emailUnverified {
+		env.Warn("%s.", output.EmailNotVerifiedMessage)
+		env.Status("%s", output.EmailNotVerifiedHint)
+	}
 	return nil
 }
 
@@ -273,31 +276,182 @@ func newAuthLogoutCmd() *cobra.Command {
 	return cmd
 }
 
+// Values of the auth status "status" field.
+const (
+	authStatusAuthenticated     = "authenticated"
+	authStatusEmailUnverified   = "email_verification_required"
+	authStatusInvalidCredential = "invalid_credentials"
+	authStatusAPIRestricted     = "api_access_restricted"
+	authStatusAccountSuspended  = output.CodeAccountSuspended
+	authStatusUnconfirmed       = "unconfirmed"
+)
+
+// authStatusResult is the --json shape of 'dhq auth status'.
+type authStatusResult struct {
+	Account string `json:"account"`
+	Email   string `json:"email"`
+	// Source says where the credentials came from: "env", "flag", "file",
+	// "stored" (a login saved by 'dhq auth login'), or "mixed".
+	Source string `json:"source"`
+	// Sources gives the source of each of account, email and api_key.
+	Sources  map[string]string `json:"sources,omitempty"`
+	Status   string            `json:"status"`
+	Message  string            `json:"message,omitempty"`
+	NextStep string            `json:"next_step,omitempty"`
+}
+
+// credentialSource summarises per-field sources into one value: the shared
+// source when all fields agree, otherwise "mixed".
+func credentialSource(sources map[string]string) string {
+	src := ""
+	for _, key := range []string{"account", "email", "api_key"} {
+		v := sources[key]
+		if v == "" {
+			v = "config"
+		}
+		if src == "" {
+			src = v
+		} else if src != v {
+			return "mixed"
+		}
+	}
+	return src
+}
+
+// describeCredentialSource is the human form of credentialSource.
+func describeCredentialSource(sources map[string]string) string {
+	names := map[string]string{
+		"env":                      "environment variables (DEPLOYHQ_*)",
+		"flag":                     "command-line flags",
+		"file":                     "config file",
+		cli.CredentialSourceStored: "stored login ('dhq auth login')",
+		"config":                   "configuration",
+	}
+	if src := credentialSource(sources); src != "mixed" {
+		return names[src]
+	}
+	parts := make([]string, 0, 3)
+	for _, key := range []string{"account", "email", "api_key"} {
+		v := sources[key]
+		if v == "" {
+			v = "config"
+		}
+		parts = append(parts, fmt.Sprintf("%s from %s", key, names[v]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// checkAuthStatus asks the API whether the credentials dhq would use actually
+// work. Having credentials is not enough: the API refuses every request until
+// the account's email is verified, and a key may have been revoked.
+func checkAuthStatus(ctx context.Context, client *sdk.Client, creds *cli.ResolvedCredentials, host string) authStatusResult {
+	res := authStatusResult{
+		Account: creds.Account, Email: creds.Email,
+		Source: credentialSource(creds.Sources), Sources: creds.Sources,
+	}
+	// Same /profile request launch uses; it decodes only a few fields, so it
+	// does not depend on the full profile shape.
+	_, err := client.GetAccountCapabilities(ctx)
+	var apiErr *sdk.APIError
+	isAPIErr := errors.As(err, &apiErr)
+	var acctErr *output.AccountError
+	switch {
+	case err == nil:
+		res.Status = authStatusAuthenticated
+	case output.IsEmailVerificationRequired(err):
+		res.Status = authStatusEmailUnverified
+		res.Message = output.EmailNotVerifiedMessage
+		res.NextStep = output.EmailNotVerifiedHint
+	case isAPIErr && apiErr.StatusCode == http.StatusForbidden && apiErr.Message == "api_access_restricted":
+		// The key is valid, but the account's plan does not include API access.
+		res.Status = authStatusAPIRestricted
+		res.Message = "DeployHQ accepted the credentials, but this account's plan does not include API access"
+		h := host
+		if h == "" {
+			h = "deployhq.com"
+		}
+		res.NextStep = fmt.Sprintf("Upgrade the account's plan (https://%s.%s/account/packages), then re-run 'dhq auth status'.", creds.Account, h)
+	case isAPIErr && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden):
+		// A wrong or revoked API key gets a 403 AccessDenied (401 on some paths).
+		res.Status = authStatusInvalidCredential
+		res.Message = fmt.Sprintf("DeployHQ rejected the API key for account %q (wrong, or revoked)", creds.Account)
+		res.NextStep = invalidCredentialsNextStep(creds, host)
+	case isAPIErr && apiErr.StatusCode == http.StatusNotFound:
+		// An unknown account subdomain answers 404.
+		res.Status = authStatusInvalidCredential
+		res.Message = fmt.Sprintf("DeployHQ has no account %q", creds.Account)
+		res.NextStep = invalidCredentialsNextStep(creds, host)
+	case errors.As(output.ExplainAccountError(err), &acctErr) && acctErr.Code == output.CodeAccountSuspended:
+		// The key is valid, but the account is suspended (trial ended, payment
+		// outstanding, or suspended by DeployHQ). Re-running will not help.
+		res.Status = authStatusAccountSuspended
+		res.Message = acctErr.Message
+		res.NextStep = acctErr.Hint
+	case output.IsNetworkErr(err) || (isAPIErr && apiErr.StatusCode >= 500):
+		res.Status = authStatusUnconfirmed
+		res.Message = fmt.Sprintf("The credentials could not be checked with DeployHQ: %v", err)
+		res.NextStep = "Check your connection and re-run 'dhq auth status'."
+	default:
+		res.Status = authStatusUnconfirmed
+		res.Message = fmt.Sprintf("The credentials could not be checked with DeployHQ: %v", err)
+		res.NextStep = "Re-run 'dhq auth status'."
+	}
+	return res
+}
+
+// invalidCredentialsNextStep says how to fix rejected credentials, which
+// depends on where they came from: a stored login is replaced by signing in
+// again; configured values have to be corrected where they are set.
+func invalidCredentialsNextStep(creds *cli.ResolvedCredentials, host string) string {
+	keyAt := "The API key is under " + auth.APIKeyLocation(creds.Account, host) + "."
+	switch creds.Sources["api_key"] {
+	case "env":
+		return "Check DEPLOYHQ_ACCOUNT and DEPLOYHQ_API_KEY in the environment. " + keyAt
+	case "flag":
+		return "Check the --account and --api-key values. " + keyAt
+	case "file":
+		return "Check the account and api_key in the dhq config file ('dhq configure show'). " + keyAt
+	}
+	return "Ask the person to sign in again by running 'dhq auth login' in a separate terminal window. " + keyAt
+}
+
 func newAuthStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show authentication status",
+		Long: `Show which account dhq is signed in to, and check with DeployHQ that the
+credentials work. Credentials are resolved exactly as for API commands: flags,
+DEPLOYHQ_* environment variables and config files win, and the stored login
+fills any gaps. The output says where they came from.
+
+The status is one of:
+  authenticated                 credentials work
+  email_verification_required   signed in, but DeployHQ refuses requests until the
+                                account's email address is verified
+  invalid_credentials           DeployHQ rejected the API key, or has no such account
+  api_access_restricted         the credentials work, but the plan has no API access
+  account_suspended             the credentials work, but the account is suspended
+                                (trial ended, payment outstanding, or by DeployHQ)
+  unconfirmed                   DeployHQ could not be reached to check`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
-			// Try configured account first, fall back to any stored credentials
-			account := cliCtx.Config.Account
-			creds, err := auth.LoadByAccount(account)
-			if err != nil && account != "" {
-				// Configured account not found — try default profile
-				creds, err = auth.LoadByAccount("")
-			}
+			// Resolve credentials exactly as API commands do, so status checks
+			// and reports the account those commands would use.
+			creds, err := cliCtx.ResolveCredentials()
 			if err != nil {
 				env.Status("Not logged in")
 				return nil
 			}
 
+			client, err := cliCtx.NewClient(creds.Account, creds.Email, creds.APIKey)
+			if err != nil {
+				return &output.UserError{Message: err.Error()}
+			}
+			res := checkAuthStatus(cliCtx.Background(), client, creds, cliCtx.Config.Host)
+
 			if cliCtx.Envelope.JSONMode {
-				return env.WriteJSON(map[string]string{
-					"account": creds.Account,
-					"email":   creds.Email,
-					"status":  "authenticated",
-				})
+				return env.WriteJSON(res)
 			}
 
 			host := "deployhq.com"
@@ -306,7 +460,15 @@ func newAuthStatusCmd() *cobra.Command {
 			}
 			env.Status("Account: %s.%s", creds.Account, host)
 			env.Status("Email:   %s", creds.Email)
-			env.Status("Status:  authenticated")
+			env.Status("Source:  %s", describeCredentialSource(creds.Sources))
+			env.Status("Status:  %s", res.Status)
+			if res.Message != "" {
+				env.Status("")
+				env.Status("%s.", strings.TrimSuffix(res.Message, "."))
+			}
+			if res.NextStep != "" {
+				env.Status("Next: %s", res.NextStep)
+			}
 			return nil
 		},
 	}

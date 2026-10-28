@@ -334,12 +334,12 @@
       }
     },
     {
-      "id": "login-noninteractive",
+      "id": "login-prefilled",
       "category": "auth",
-      "prompt": "Login to the 'mycompany' account with email user@example.com and API key abc123",
+      "prompt": "Log me in to the 'mycompany' account with email user@example.com",
       "expected": {
         "command": "dhq auth login",
-        "flags": ["--account", "mycompany", "--email", "user@example.com", "--api-key", "abc123"]
+        "flags": ["--account", "mycompany", "--email", "user@example.com"]
       }
     },
     {

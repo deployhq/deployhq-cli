@@ -17,6 +17,9 @@ func main() {
 	err := cmd.Execute()
 	commands.SendTelemetry(err)
 	if err != nil {
+		// Give API refusals with a known cause (e.g. unverified email) a
+		// specific, actionable message instead of the raw status line.
+		err = output.RefineError(err)
 		// Name plan/billing refusals (no API access on the plan, account
 		// suspended or trial ended, no payment method) and link to the page
 		// that resolves them, instead of printing the raw API response.
