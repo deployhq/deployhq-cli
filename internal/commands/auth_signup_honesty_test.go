@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -471,4 +473,56 @@ func TestAuthStatus_PipedOutputIsJSON_Authenticated(t *testing.T) {
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &res), "piped output must be JSON, got %q", stdout.String())
 	assert.Equal(t, authStatusAuthenticated, res["status"])
 	assert.Equal(t, "acme", res["account"])
+}
+
+// runJSONSignup runs 'dhq signup --json' against a stubbed sign-up API and
+// returns the response's data.
+func runJSONSignup(t *testing.T, stdout *bytes.Buffer) map[string]any {
+	t.Helper()
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Body: io.NopCloser(strings.NewReader(`{"account":{"subdomain":"acme","name":"Acme"},` +
+				`"api_key":"secret-signup-key","email_verified":false}`)),
+			Header:  http.Header{"Content-Type": []string{"application/json"}},
+			Request: r,
+		}, nil
+	})
+
+	cmd := newSignupCmd()
+	cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--account-name", "acme", "--accept-terms"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.NoError(t, cmd.Execute())
+
+	assert.NotContains(t, stdout.String(), "secret-signup-key")
+	var resp struct {
+		Data map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp), "got %q", stdout.String())
+	return resp.Data
+}
+
+func TestSignup_JSON_ReportsCredentialsSaved(t *testing.T) {
+	isolateCredentialStore(t)
+	data := runJSONSignup(t, withJSONCLIContext(t))
+	assert.Equal(t, true, data["credentials_saved"])
+	assert.NotContains(t, data["next_step"], "dhq auth login")
+}
+
+func TestSignup_JSON_ReportsCredentialSaveFailure(t *testing.T) {
+	// No keyring, and a home directory that is a file, so neither store works.
+	keyring.MockInitWithError(errors.New("keyring unavailable"))
+	home := filepath.Join(t.TempDir(), "home")
+	require.NoError(t, os.WriteFile(home, nil, 0o600))
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	data := runJSONSignup(t, withJSONCLIContext(t))
+	assert.Equal(t, false, data["credentials_saved"])
+	assert.Contains(t, data["next_step"], "could not be saved")
+	assert.Contains(t, data["next_step"], "dhq auth login")
+	assert.Contains(t, data["next_step"], "verification link", "the verify-email notice still applies")
 }
