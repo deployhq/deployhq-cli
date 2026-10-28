@@ -25,6 +25,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `ServerGroupUpdateRequest.TransferOrder` (`transfer_order`, `omitempty`).
   Purely additive.
 
+- **SDK**: `APIError` now carries the structured fields some error responses
+  include (`ErrorCode`, `Detail`, `UpgradeURL`, `SuspensionType`,
+  `SuspensionReason`) and the `AccountURL` the request was sent to, with
+  `IsAPIAccessRestricted`, `IsAccountSuspended`, `IsPaymentSuspension` and
+  `IsPaymentMethodRequired` helpers. `Message` keeps its existing meaning.
 - **`--server`** on `excluded-files`, `config-files`, `ssh-commands` and
   `integrations` `create` and `update`: target specific servers or server
   groups by name or identifier (repeatable or comma-separated). An unknown or
@@ -38,6 +43,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq config-files create --build-only`**: a file that is only available
   to build commands and never uploaded to a server — previously the
   accidental result of every create, now an explicit choice.
+
 
 ### Changed
 
@@ -60,6 +66,24 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq servers create`** help leads with the key-based SSH example; the
   password example moves to the end, uses `--password-stdin`, and warns that a
   password typed into a command ends up in shell history.
+- **`dhq build-configs create` / `update`**: `--server` (name or identifier,
+  repeatable or comma-separated) chooses which servers a build configuration
+  override applies to. Previously there was no way to target an override from
+  the CLI, and an override with no servers never applies to a deployment.
+  `create --server` creates the override and then targets it; `create` without
+  `--server` now warns that the override will not apply and prints the
+  `update --server` command to fix it. `update --server` replaces the
+  override's servers. Only the project's own servers are accepted: an unknown
+  identifier, a server group (an override never applies through one) or a
+  name shared by several servers fails before anything is sent.
+
+- **`dhq build-configs create` / `update`**: `--packages` is now rejected with a
+  hint to use `dhq build-languages set --build-config`. DeployHQ never applied
+  language versions sent this way, so the flag silently did nothing. The
+  `dhq language-versions list` tip now points at `dhq build-languages set`
+  instead of `--packages`.
+  `update` with no flags now fails locally instead of sending an empty request.
+
 - **`dhq excluded-files update`**: `--path` is now optional, so a rule can be
   re-targeted without restating its pattern.
 - **`dhq excluded-files list --json`** / **`show`** now include an empty
@@ -83,6 +107,25 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   a one-line command to install it, for the project's key as well as a global
   key. The command ends `ssh`'s options with `--`, so the destination is never
   read as one.
+- **Plan and billing refusals are explained**: when the account's plan has no
+  API access, its trial has ended, it is suspended, or it has no payment method
+  for the hosting requested, every command now says which of these it is and links to the
+  page that resolves it (plans, payment details, or support), instead of a
+  technical error such as `403 api_access_restricted` or a raw JSON body. In
+  `--json` output the error carries a distinct `code` (`api_access_restricted`,
+  `account_suspended`, `payment_method_required`), `doc_url`, and a `recovery`
+  step with a `url`; a plan restriction no longer suggests `dhq auth login`.
+  Exit codes are unchanged. Recovery breadcrumbs gain an optional `url` field,
+  and `cmd` is omitted when a step happens in the browser.
+- **`dhq launch`**: the plan-eligibility check now runs before a project is
+  created or a repository connected, so an ineligible account is stopped before
+  anything is left behind. A provisioning refusal for a missing payment method
+  now fails with reason `payment_method_required`, a link to the account's
+  Payment Details page, and a prompt to re-run the same command; when this run
+  created the project, it also names the project, says to re-run with
+  `--project` added, and how to delete it. The project is saved to
+  `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
+
 - **Server targeting on create**: excluded files, config files, SSH commands
   and integrations created with dhq were stored with no target servers, so
   they silently did nothing — an "excluded" file was still uploaded, a config

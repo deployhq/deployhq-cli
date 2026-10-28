@@ -116,7 +116,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 
 - Always use `--json` for machine-readable output when scripting or in agent context
 - Use `--non-interactive` to guarantee no prompts (auto-enabled for agents and piped output)
-- JSON responses include `breadcrumbs` with `action` and `cmd` fields; deploy commands also include `resource` and `id`
+- JSON responses include `breadcrumbs` with `action` and `cmd` fields (or `url` instead of `cmd` for a step done in the browser, such as adding a payment method); deploy commands also include `resource` and `id`
 - Error responses include `retryable`, `exit_code`, and `recovery` actions when applicable
 - Exit codes: 0 = success, 1 = user error, 2 = internal, 3 = auth, 4 = network, 5 = not found, 6 = conflict
 - Empty results return exit 0 with empty `data` array (not an error)

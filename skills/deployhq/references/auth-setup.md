@@ -50,6 +50,19 @@ export DEPLOYHQ_API_KEY=abc123
 
 No login needed when these are set.
 
+### When the account itself refuses API access
+
+Some refusals are not credential problems, so `dhq auth login` will not fix them. Every command (including `auth login` and `hello`) reports them with a message naming the cause and the page that resolves it; in `--json` output, `data.code` identifies the case and `data.recovery[0].url` (also `data.doc_url`) is the page to send a person to:
+
+| `code` | Cause | What resolves it |
+|--------|-------|------------------|
+| `api_access_restricted` | The account's plan does not include API access (exit code 3) | Upgrade the plan at `https://<account>.deployhq.com/account/packages` |
+| `account_suspended` | The trial has ended, or a payment is outstanding (exit code 1) | Choose a plan or settle billing at `https://<account>.deployhq.com/account/packages` |
+| `account_suspended` (recovery action `contact_support`) | Suspended for another reason | Contact DeployHQ support |
+| `payment_method_required` | The account has no payment method on file for the hosting requested; a Managed VPS always needs one (exit code 1) | Add a card under Payment Details at `https://<account>.deployhq.com/account/payment_details` |
+
+These need a person with access to the account's billing; an agent should stop, report the cause and link, and not retry.
+
 ## Signup
 
 ### `dhq signup`

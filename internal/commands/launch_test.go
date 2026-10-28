@@ -1227,7 +1227,7 @@ func TestLaunchEnsureProject_RepoConnectFailure_IsTerminal(t *testing.T) {
 		branch:         "main",
 	}
 
-	_, err := launchEnsureProject(t.Context(), env, cfg, client, "git@github.com:acme/my-app.git")
+	_, _, err := launchEnsureProject(t.Context(), env, cfg, client, "git@github.com:acme/my-app.git")
 	require.Error(t, err)
 
 	var le *launchError
@@ -1323,7 +1323,7 @@ func TestLaunchEnsureProject_StaleConfigProjectFallsThrough(t *testing.T) {
 	env, _, stderr := testLaunchEnvelope() // NonInteractive
 
 	cfg := launchConfig{projectID: "gone", projectFromConfig: true, targetProtocol: "static_hosting"}
-	_, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
+	_, _, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
 
 	require.Error(t, err)
 	assert.Contains(t, stderr.String(), "no longer exists", "must warn about the stale saved project")
@@ -1348,7 +1348,7 @@ func TestLaunchEnsureProject_StaleFlagProjectErrorsClearly(t *testing.T) {
 	env, _, _ := testLaunchEnvelope()
 
 	cfg := launchConfig{projectID: "typo", projectFromConfig: false} // came from --project
-	_, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
+	_, _, err := launchEnsureProject(t.Context(), env, cfg, client, "git@git.example.com:acme/app.git")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
@@ -1436,3 +1436,144 @@ func TestLaunchGetCaps_GenericForbidden_Propagates(t *testing.T) {
 // real log file. We define a Logger inline since output.Logger has exported
 // fields but the constructor creates a file.
 var _ io.Writer = (*bytes.Buffer)(nil) // compile-time check
+
+// ── Payment method required on provisioning ───────────────────────────────────
+
+const paymentRequiredMsg = "A payment method is required before you can provision a hosted resource. " +
+	"Add a card in your account's Billing settings, under Payment Details, then try again."
+
+// createServerErr returns the error CreateServer yields for a 422 with body.
+func createServerErr(t *testing.T, body string) error {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	_, err := newTestClient(t, srv).CreateServer(t.Context(), "my-app",
+		sdk.ServerCreateRequest{Name: "vps", ProtocolType: "managed_vps"})
+	require.Error(t, err)
+	return err
+}
+
+// testClient builds a real sdk.Client for account "acme", so links built from
+// the client's normalised account can be asserted.
+func testClient(t *testing.T) *sdk.Client {
+	t.Helper()
+	c, err := sdk.NewPublic("acme")
+	require.NoError(t, err)
+	return c
+}
+
+func TestPaymentMethodLaunchError_LinksToPaymentDetails(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", false)
+	require.NotNil(t, le)
+	assert.Equal(t, reasonPaymentMethodRequired, le.Reason)
+	assert.Equal(t, "A payment method is required before this account can provision a Managed VPS.", le.Message)
+	assert.False(t, le.Retryable)
+	// The link is on the host the request went to (staging, local), not always deployhq.com.
+	want := accountURLOf(t, err) + "/account/payment_details"
+	assert.Contains(t, le.NextStep, want)
+	assert.Equal(t, want, le.Details["payment_url"])
+	// An existing project is not described as left behind.
+	assert.NotContains(t, le.Message, "created during this run")
+	assert.Empty(t, le.Details["project"])
+}
+
+// The refusal names the hosting that was requested: Static Hosting must not be
+// described as a Managed VPS.
+func TestPaymentMethodLaunchError_NamesRequestedHosting(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	static := paymentMethodLaunchError(err, testClient(t), detect.ProtocolStaticHosting, "my-app", false)
+	require.NotNil(t, static)
+	assert.Equal(t, "A payment method is required before this account can provision Static Hosting.", static.Message)
+	assert.NotContains(t, static.Message, "Managed VPS")
+
+	vps := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", false)
+	require.NotNil(t, vps)
+	assert.Equal(t, "A payment method is required before this account can provision a Managed VPS.", vps.Message)
+}
+
+// A missing payment method is an expected refusal, not a CLI fault: it must
+// exit 1 (user error), as the raw 422 did before launch explained it, and the
+// launch-specific message must survive main's account-error explanation.
+func TestPaymentMethodLaunchError_ExitsAsUserError(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true)
+	require.NotNil(t, le)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(le))
+	assert.Equal(t, error(le), output.ExplainAccountError(le))
+}
+
+// accountURLOf returns the account URL the SDK recorded on an API error.
+func accountURLOf(t *testing.T, err error) string {
+	t.Helper()
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr)
+	require.NotEmpty(t, apiErr.AccountURL)
+	return apiErr.AccountURL
+}
+
+func TestPaymentMethodLaunchError_FallsBackToDeployHQHost(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr)
+	apiErr.AccountURL = ""
+
+	le := paymentMethodLaunchError(apiErr, testClient(t), detect.ProtocolManagedVPS, "my-app", false)
+	require.NotNil(t, le)
+	assert.Equal(t, "https://acme.deployhq.com/account/payment_details", le.Details["payment_url"])
+}
+
+func TestPaymentMethodLaunchError_NamesProjectCreatedThisRun(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true)
+	require.NotNil(t, le)
+	assert.Contains(t, le.Message, `"my-app" was created during this run`)
+	assert.Contains(t, le.NextStep, "re-run the same dhq launch command with --project my-app added")
+	assert.Contains(t, le.NextStep, "dhq projects delete my-app")
+	assert.Equal(t, "my-app", le.Details["project"])
+	assert.Equal(t, "true", le.Details["project_created"])
+}
+
+// A bare "dhq launch" re-run restores only the project/server saved in
+// .deployhq.toml and drops the flags of the refused run (--vps/--static,
+// --accept-cost, --region, ...), so the next step must say to re-run the same
+// command rather than spell out a bare one.
+func TestPaymentMethodLaunchError_SaysToRerunTheSameCommand(t *testing.T) {
+	err := createServerErr(t, `{"base":["`+paymentRequiredMsg+`"]}`)
+
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", false)
+	require.NotNil(t, le)
+	assert.Contains(t, le.NextStep, "re-run the same dhq launch command")
+	assert.NotContains(t, le.NextStep, "re-run: dhq launch")
+}
+
+func TestPaymentMethodLaunchError_IgnoresOtherErrors(t *testing.T) {
+	err := createServerErr(t, `{"base":["Subdomain has already been taken"]}`)
+	assert.Nil(t, paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true))
+	assert.Nil(t, paymentMethodLaunchError(errors.New("boom"), testClient(t), detect.ProtocolManagedVPS, "my-app", true))
+}
+
+func TestPaymentMethodLaunchError_JSONCarriesReason(t *testing.T) {
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	err := createServerErr(t, `{"error":"`+paymentRequiredMsg+`"}`)
+	le := paymentMethodLaunchError(err, testClient(t), detect.ProtocolManagedVPS, "my-app", true)
+	require.NotNil(t, le)
+
+	_ = writeLaunchError(env, launchConfig{}, reasonPaymentMethodRequired, le)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	assert.Equal(t, reasonPaymentMethodRequired, data["reason"])
+	assert.Equal(t, false, data["retryable"])
+	details := data["details"].(map[string]any)
+	assert.Equal(t, accountURLOf(t, err)+"/account/payment_details", details["payment_url"])
+	assert.Equal(t, "my-app", details["project"])
+}
