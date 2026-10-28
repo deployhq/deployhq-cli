@@ -6,8 +6,34 @@ own infrastructure — **Static Hosting** (Cloudflare-backed) or a **Managed VPS
 → beta enrollment (if needed) → repo check → target selection → project/server
 creation → provisioning → deploy → prints the live URL → saves `.deployhq.toml`.
 
-Use `dhq launch` for first-time setup of a managed target. Use `dhq deploy` for
+`dhq launch` is one option for first-time setup, for when the person has chosen
+DeployHQ hosting and wants it done in one go. It is not the default way to set up
+DeployHQ, and it does not apply to the person's own servers. Use `dhq deploy` for
 subsequent deploys once `.deployhq.toml` exists (launch writes it).
+
+## Before running it
+
+A single `dhq launch` run can, in order:
+
+1. enroll the account in the managed-resources beta,
+2. create a DeployHQ project,
+3. connect the repository (for a private repository, this gives DeployHQ read access to the code),
+4. create the hosting (a Static Hosting site, or a Managed VPS that is billed once the beta ends),
+5. deploy and publish the site at a public URL.
+
+Each of these is hard to undo, so the person agrees to all of them before the
+agent runs `dhq launch`. A good sequence:
+
+- Run `dhq launch --static --dry-run --json` (or `--vps`) and show the person what it would do.
+- Offer the choice: run `dhq launch`, or go step by step (`dhq projects create`,
+  `dhq repos create`, `dhq beta enroll`, `dhq servers create --protocol-type static_hosting`,
+  `dhq deploy`), approving each action on its own. See "Set up DeployHQ for this
+  project" in [SKILL.md](../SKILL.md).
+
+Some agent permission checks stop commands that bundle several hard-to-undo
+actions, and may refuse `dhq launch`. When that happens, the step-by-step
+commands are the way forward; the person can also run `dhq launch` in their own
+terminal.
 
 ## Usage
 
@@ -52,6 +78,7 @@ dhq launch --vps --dry-run --json
 - **`--dry-run`** emits `{would, requires, warning}` and makes no changes — use it to preview cost and confirm before provisioning a Managed VPS.
 - **Success (`--json`)** emits one object: `{status, target, url, project, server, deployment}`. In plain mode the final stdout line is the live URL.
 - **Idempotent:** re-running reads `.deployhq.toml` and resolves the existing project/server instead of double-provisioning.
+- **Eligibility is checked before anything is created:** the `plan_limit_reached` check runs before a project is created or a repository connected. Whether the account has a payment method on file cannot be checked in advance, so that refusal only arrives at provisioning time, as `payment_method_required`.
 
 ### Structured error reasons
 
@@ -65,6 +92,7 @@ On failure the error carries a stable `reason`, a `retryable` boolean, a `next_s
 | `accept_cost_required` | 1 | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
 | `repo_unreachable` | 1 | No git remote DeployHQ can deploy from, or DeployHQ rejected the repository (for SSH URLs usually a missing deploy key; `next_step` has the key and how to resume). A network or server failure while connecting keeps its own code (4 or 2) |
 | `plan_limit_reached` | 1 | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
+| `payment_method_required` | 1 | Provisioning was refused because the account has no accepted payment method for the hosting requested (a Managed VPS always needs one). A person must add a card at `details.payment_url` (the account's Payment Details page); an agent cannot do this. If `details.project_created` is `true`, the project named in `details.project` was created by this run and has no server: re-run the same `dhq launch` command with `--project <permalink>` added once the card is in place (the project is also saved to `.deployhq.toml`), or remove it with `dhq projects delete <permalink>`. `launch` never deletes it automatically |
 | `subdomain_taken` | 6 | Static Hosting subdomain already in use — choose another `--subdomain` |
 | `rate_limited` | 1 | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
 | `provision_failed` | 2 | The server failed to provision — check the named resource; retry. 2 is for a server-side or unknown failure; a network failure keeps its own code (4), and a refused API call keeps its own (1 for a 422, 3 for 401/403, 5 for 404) |
@@ -73,7 +101,7 @@ On failure the error carries a stable `reason`, a `retryable` boolean, a `next_s
 ## Notes
 
 - Static Hosting deploys are git-based (a connected repo + DeployHQ's build pipeline). `launch` connects the repo for you; it does not yet upload a local build directory.
-- **SSH repositories (`git@...`): deploy key first.** DeployHQ checks access with the project's deploy key as soon as the repo is connected, so `launch` adds the key before connecting: through the `gh` CLI for GitHub when it is installed and signed in, otherwise by showing the key (and, for GitHub, `https://github.com/<owner>/<repo>/settings/keys/new`) and waiting in interactive mode. If the repository is still rejected, `launch` stops with `repo_unreachable`; `next_step` holds the public key, where to add it, and how to resume (re-run the same `dhq launch` command with `--project <permalink>` added), and nothing is provisioned for a project with no repository.
+- **SSH repositories (`git@...`): deploy key first.** DeployHQ checks access with the project's deploy key as soon as the repo is connected, so `launch` adds the key before connecting: through the `gh` CLI for GitHub when it is installed and signed in, otherwise by showing the key (and, for GitHub, `https://github.com/<owner>/<repo>/settings/keys/new`) and waiting in interactive mode. A key `gh` finds already on the GitHub repository (say from an earlier run) is not added again, and no key or instructions are shown. If the repository is still rejected, `launch` stops with `repo_unreachable`; `next_step` holds the public key, where to add it, and how to resume (re-run the same `dhq launch` command with `--project <permalink>` added), and nothing is provisioned for a project with no repository.
 - **Rollback:** both targets roll back the same way — `dhq rollback <deployment>` redeploys the previous revision through the same pipeline (`dhq deployments list` shows history). There's no separate static-vs-VPS rollback command.
 - Managed VPS and Static Hosting require the **managed-resources beta**. `launch` enrolls the account automatically when an admin runs it (the enrollment endpoint is idempotent and admin-gated); non-admins get `beta_enroll_required`.
 - **Pricing during beta:** Managed VPS and Static Hosting are free for early customers while in beta; the listed monthly rate applies once the beta ends. The CLI's runtime copy is gated by a single switch (`meteredResourcesInBeta` in `internal/commands/metered.go`) — flip it when the resources go GA, and update this beta wording in the same change.

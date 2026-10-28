@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -908,6 +909,9 @@ func (m *initModel) createServer() tea.Msg {
 
 func (m *initModel) addDeployKeyViaGH() tea.Msg {
 	err := installDeployKeyViaGH(m.repoURL, m.project.PublicKey, fmt.Sprintf("DeployHQ - %s", m.project.Name))
+	if errors.Is(err, errDeployKeyInUse) {
+		err = nil // already on GitHub, e.g. from an earlier run
+	}
 	return createResultMsg{err: err, step: stepDeployKeyAuto}
 }
 

@@ -194,3 +194,24 @@ func TestClassifyError_ExitCoder(t *testing.T) {
 	data := ErrorResponseFromErr(err).Data.(ErrorData)
 	assert.Equal(t, ExitConflictError, data.ExitCode)
 }
+
+func TestRefineError_EmailVerificationRequired(t *testing.T) {
+	apiErr := &sdk.APIError{StatusCode: 403, Message: "email_verification_required"}
+
+	refined := RefineError(fmt.Errorf("list projects: %w", apiErr))
+	var evErr *EmailNotVerifiedError
+	assert.True(t, errors.As(refined, &evErr))
+	assert.Contains(t, refined.Error(), "isn't verified")
+	assert.Contains(t, refined.Error(), "verification link")
+	assert.Equal(t, ExitAuthError, ClassifyError(refined))
+	assert.Equal(t, ExitAuthError, ClassifyError(&InternalError{Message: "x", Cause: apiErr}))
+	assert.Same(t, refined, RefineError(refined), "refining twice is a no-op")
+}
+
+func TestRefineError_OtherErrorsUnchanged(t *testing.T) {
+	generic := &sdk.APIError{StatusCode: 403, Message: "AccessDenied"}
+	assert.Same(t, error(generic), RefineError(generic))
+	assert.False(t, IsEmailVerificationRequired(generic))
+	assert.False(t, IsEmailVerificationRequired(&sdk.APIError{StatusCode: 404, Message: "email_verification_required"}))
+	assert.Nil(t, RefineError(nil))
+}

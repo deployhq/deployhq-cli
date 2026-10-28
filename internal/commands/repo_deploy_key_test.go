@@ -56,6 +56,9 @@ func repoServer(t *testing.T, onCreate http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/projects":
+			// No project with this name yet (launch may check before creating).
+			_, _ = w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/projects":
 			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
 				"name": "my-app", "permalink": "my-app", "public_key": testDeployPubKey,
@@ -108,8 +111,8 @@ func TestLaunchEnsureRepo_GitHubSSH_AddsDeployKeyBeforeConnecting(t *testing.T) 
 	assert.Contains(t, string(args), "--repo acme/my-app")
 }
 
-// If gh fails (for example the key is already on the repository from an
-// earlier run), connecting is still attempted and can succeed.
+// If gh fails (for example it is not authenticated or lacks access to the
+// repository), connecting is still attempted and can succeed.
 func TestLaunchEnsureRepo_GHFails_StillConnects(t *testing.T) {
 	fakeGH(t, 1)
 	created := false
@@ -197,7 +200,7 @@ func TestLaunchEnsureProject_ExistingProject_RepoRejected_NoDoubleWrap(t *testin
 
 	env, _, _ := testLaunchEnvelope()
 	cfg := launchConfig{targetProtocol: "static_hosting", branch: "main", projectID: "my-app"}
-	_, err := launchEnsureProject(t.Context(), env, cfg, newTestClient(t, srv), "git@github.com:acme/my-app.git")
+	_, _, err := launchEnsureProject(t.Context(), env, cfg, newTestClient(t, srv), "git@github.com:acme/my-app.git")
 	require.Error(t, err)
 
 	var le *launchError
@@ -740,4 +743,145 @@ func TestInitWizard_ChangedRepoURL_ForgetsAddedDeployKey(t *testing.T) {
 	same.input = "git@github.com:acme/my-app.git"
 	same.submitTextStep()
 	assert.True(t, same.deployKeyAdded, "re-entering the same URL keeps the added key")
+}
+
+// ghReply is what the stub gh prints and exits with for one kind of call.
+type ghReply struct {
+	stdout, stderr string
+	exit           int
+}
+
+// ghDuplicateKeyStderr is what gh prints when the key is already on GitHub.
+const ghDuplicateKeyStderr = "HTTP 422: Validation Failed (https://api.github.com/repos/acme/my-app/keys)\nkey is already in use\n"
+
+// The project's deploy key as GitHub lists it: comment and whitespace dropped.
+const testDeployPubKeyListed = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItestkey"
+
+// fakeGHKeys is fakeGH with separate answers for listing the repository's
+// deploy keys (`gh api`) and adding one (`gh repo deploy-key add`).
+func fakeGHKeys(t *testing.T, list, add ghReply) string {
+	t.Helper()
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "gh.log")
+	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	reply := func(r ghReply) string {
+		return "printf '%s' " + q(r.stdout) + "; printf '%s' " + q(r.stderr) + " >&2; exit " + strconv.Itoa(r.exit)
+	}
+	script := "#!/bin/sh\necho \"$@\" >> \"" + logFile + "\"\ncase \"$1\" in\n" +
+		"api) " + reply(list) + " ;;\n" +
+		"repo) " + reply(add) + " ;;\n" +
+		"esac\nexit 99\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755)) //nolint:gosec // test stub must be executable
+	t.Setenv("PATH", dir)
+	return logFile
+}
+
+func ghLog(t *testing.T, logFile string) string {
+	t.Helper()
+	b, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	return string(b)
+}
+
+// launchGitHubSSH runs launchEnsureRepo for a GitHub SSH remote against a
+// server that accepts the repository, returning stderr and whether the
+// repository was connected.
+func launchGitHubSSH(t *testing.T) (string, bool) {
+	t.Helper()
+	created := false
+	srv := repoServer(t, func(w http.ResponseWriter, r *http.Request) {
+		created = true
+		acceptRepo(w, r)
+	})
+	env, _, stderr := testLaunchEnvelope()
+	cfg := launchConfig{targetProtocol: "static_hosting", branch: "main"}
+	err := launchEnsureRepo(t.Context(), env, cfg, newTestClient(t, srv), "my-app", "git@github.com:acme/my-app.git")
+	require.NoError(t, err)
+	return stderr.String(), created
+}
+
+// Re-running launch after gh already added the key must not add it again or
+// ask for it to be added by hand: the key is found on the repository.
+func TestLaunchEnsureRepo_GitHubSSH_KeyAlreadyOnRepo_SkipsAdd(t *testing.T) {
+	cases := map[string]string{
+		"single page": `[{"id":1,"key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIother","title":"ci"},{"id":2,"key":"` + testDeployPubKeyListed + `","title":"DeployHQ - my-app"}]`,
+		// gh --paginate prints one JSON array per page, back to back.
+		"later page": `[{"id":1,"key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIother","title":"ci"}]` + `[{"id":2,"key":"` + testDeployPubKeyListed + `","title":"DeployHQ - my-app"}]`,
+	}
+	for name, listed := range cases {
+		t.Run(name, func(t *testing.T) {
+			logFile := fakeGHKeys(t, ghReply{stdout: listed}, ghReply{exit: 1, stderr: "unexpected add"})
+			stderr, created := launchGitHubSSH(t)
+			assert.True(t, created, "the repository is connected")
+
+			calls := ghLog(t, logFile)
+			assert.Contains(t, calls, "api repos/acme/my-app/keys --paginate")
+			assert.NotContains(t, calls, "deploy-key add", "a key already on the repository is not added again")
+			assert.Contains(t, stderr, "Deploy key already on the repository.")
+			assert.NotContains(t, stderr, "Deploy key for this project", "no manual key instructions")
+		})
+	}
+}
+
+// GitHub lists keys without their comment; the project's key carries one.
+// Only the type and the key itself are compared.
+func TestDeployKeyMatches(t *testing.T) {
+	assert.True(t, deployKeyMatches(testDeployPubKeyListed, testDeployPubKey))
+	assert.True(t, deployKeyMatches(testDeployPubKeyListed+"\n", "  "+testDeployPubKey+"\n"))
+	assert.True(t, deployKeyMatches(testDeployPubKey, testDeployPubKeyListed))
+	assert.False(t, deployKeyMatches("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIother", testDeployPubKey))
+	assert.False(t, deployKeyMatches("ssh-rsa AAAAC3NzaC1lZDI1NTE5AAAAItestkey", testDeployPubKey))
+	assert.False(t, deployKeyMatches("ssh-ed25519", "ssh-ed25519"))
+	assert.False(t, deployKeyMatches("", ""))
+}
+
+// When the keys cannot be listed but gh reports the key is already in use,
+// the key is on GitHub: no manual instructions, and the repository connects.
+func TestLaunchEnsureRepo_GitHubSSH_ListFails_AddReportsDuplicate(t *testing.T) {
+	logFile := fakeGHKeys(t, ghReply{exit: 1, stderr: "HTTP 404: Not Found"}, ghReply{exit: 1, stderr: ghDuplicateKeyStderr})
+	stderr, created := launchGitHubSSH(t)
+	assert.True(t, created)
+	assert.Contains(t, ghLog(t, logFile), "repo deploy-key add")
+	assert.Contains(t, stderr, "gh reports this key is already on GitHub; continuing.")
+	assert.NotContains(t, stderr, "Deploy key for this project", "no manual key instructions")
+	assert.NotContains(t, stderr, "Private repo?", "no warning to add the key")
+}
+
+// Any other gh failure still falls back to showing the key.
+func TestLaunchEnsureRepo_GitHubSSH_ListFails_AddFails_ShowsKey(t *testing.T) {
+	fakeGHKeys(t, ghReply{stdout: "not json"}, ghReply{exit: 1, stderr: "HTTP 403: Resource not accessible by integration"})
+	stderr, created := launchGitHubSSH(t)
+	assert.True(t, created)
+	assert.Contains(t, stderr, "Deploy key for this project")
+	assert.Contains(t, stderr, testDeployPubKey)
+}
+
+// A key that is not on the repository yet is added as before.
+func TestLaunchEnsureRepo_GitHubSSH_KeyNotListed_Adds(t *testing.T) {
+	logFile := fakeGHKeys(t, ghReply{stdout: `[{"id":1,"key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIother","title":"ci"}]`}, ghReply{})
+	stderr, created := launchGitHubSSH(t)
+	assert.True(t, created)
+	assert.Contains(t, ghLog(t, logFile), "repo deploy-key add")
+	assert.Contains(t, stderr, "Added the project's deploy key to GitHub via the gh CLI.")
+}
+
+// init adds the key with gh too: a duplicate there means the key is on
+// GitHub, so the wizard goes on to connect the repository.
+func TestInitWizard_GHReportsDuplicateKey_Connects(t *testing.T) {
+	fakeGHKeys(t, ghReply{}, ghReply{exit: 1, stderr: ghDuplicateKeyStderr})
+	m := &initModel{
+		step:        stepDeployKeyAuto,
+		repoURL:     "git@github.com:acme/my-app.git",
+		scmType:     "git",
+		ghAvailable: true,
+		project:     &sdk.Project{Name: "my-app", Permalink: "my-app", PublicKey: testDeployPubKey},
+	}
+	msg := m.addDeployKeyViaGH()
+	res, ok := msg.(createResultMsg)
+	require.True(t, ok)
+	require.NoError(t, res.err, "a duplicate key counts as added")
+
+	_, cmd := m.Update(msg)
+	assert.NotNil(t, cmd, "the repository is connected next")
+	assert.True(t, m.deployKeyAdded)
 }

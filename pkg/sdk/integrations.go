@@ -32,6 +32,14 @@ type IntegrationCreateRequest struct {
 	SendOnStart      *bool  `json:"send_on_start,omitempty"`
 	SendOnCompletion *bool  `json:"send_on_completion,omitempty"`
 	SendOnFailure    *bool  `json:"send_on_failure,omitempty"`
+
+	// Server targeting: AllServers fires the integration for deployments to
+	// any server in the project; ServerIdentifiers limits it to specific
+	// servers or server groups. On create, leaving both unset stores an
+	// integration that never fires. On update, leaving both unset keeps the
+	// existing targeting. Never set both: AllServers wins server-side.
+	AllServers        bool     `json:"all_servers,omitempty"`
+	ServerIdentifiers []string `json:"server_identifiers,omitempty"`
 }
 
 func (c *Client) ListIntegrations(ctx context.Context, projectID string, opts *ListOptions) ([]Integration, error) {
