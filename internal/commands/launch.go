@@ -214,6 +214,34 @@ func paymentMethodLaunchError(err error, client *sdk.Client, target, projectID s
 	return le
 }
 
+// accountLaunchError converts an account-level refusal that stops every API
+// request (a suspended account, a plan without API access) into a launchError
+// whose reason is the account error's code and whose next step is its hint.
+// The exit code stays the one the account error has. payment_method_required
+// is left to paymentMethodLaunchError, which adds launch-specific context.
+// Returns nil for any other error.
+func accountLaunchError(err error) *launchError {
+	var acctErr *output.AccountError
+	if !errors.As(output.ExplainAccountError(err), &acctErr) {
+		return nil
+	}
+	if acctErr.Code != output.CodeAccountSuspended && acctErr.Code != output.CodeAPIAccessRestricted {
+		return nil
+	}
+	details := map[string]string{}
+	if acctErr.URL != "" {
+		details["url"] = acctErr.URL
+	}
+	return &launchError{
+		Reason:   acctErr.Code,
+		Message:  acctErr.Message,
+		NextStep: acctErr.Hint,
+		Details:  details,
+		Cause:    acctErr,
+		exitCode: output.ClassifyError(acctErr),
+	}
+}
+
 // rateLimitLaunchError converts a 429 provisioning-rate-limit API error into a
 // structured, retryable launchError carrying the Retry-After backoff hint. It
 // returns nil when err is not a 429, so callers can fall through to their
@@ -676,6 +704,9 @@ func launchGetCaps(ctx context.Context, env *output.Envelope, client *sdk.Client
 			}
 			return caps, true, nil
 		}
+		if le := accountLaunchError(err); le != nil {
+			return nil, false, le
+		}
 		return nil, false, err
 	}
 	return caps, true, nil
@@ -964,7 +995,10 @@ func launchDryRunCaps(ctx context.Context, client *sdk.Client) (*sdk.AccountCapa
 	if isEmailVerificationRequired(err) {
 		return nil, emailVerificationLaunchError()
 	}
-	// Returned as is, so the preview fails exactly as the real launch does.
+	// Reported as the real launch reports it, so the preview fails the same way.
+	if le := accountLaunchError(err); le != nil {
+		return nil, le
+	}
 	var acctErr *output.AccountError
 	if errors.As(output.ExplainAccountError(err), &acctErr) {
 		return nil, err
