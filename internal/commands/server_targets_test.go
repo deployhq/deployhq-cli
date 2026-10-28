@@ -195,6 +195,19 @@ func TestExcludedFilesCreate_UnknownServerFailsWithoutWriting(t *testing.T) {
 	assert.Equal(t, 0, api.writeCount(), "an unresolved server must not create a rule")
 }
 
+func TestExcludedFilesCreate_UnlistedIdentifierFailsWithoutWriting(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, excludedFileJSON)
+	const unlisted = "8e1c7a52-9999-4c3e-9a0b-000000000009"
+
+	err := runServersCmd(t, "excluded-files", "create", "--path", "deploy.sh", "--server", unlisted)
+	require.Error(t, err)
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Contains(t, userErr.Message, `"`+unlisted+`"`)
+	assert.Equal(t, 0, api.writeCount(), "an identifier not in the project must not create a rule")
+}
+
 func TestExcludedFilesUpdate_PathOnlyLeavesTargetingUntouched(t *testing.T) {
 	withResolvableContext(t)
 	api := installTargetingAPI(t, excludedFileJSON)
@@ -547,13 +560,30 @@ func TestResolveServerTargets_ListedIdentifiersResolveToThemselves(t *testing.T)
 	assert.Equal(t, []string{otherServerUUID, targetGroupUUID}, ids)
 }
 
-func TestResolveServerTargets_UnlistedIdentifierPassesThrough(t *testing.T) {
+// Both listings are complete, so an identifier missing from both is not in the
+// project. Passing it through would save a resource that targets no server.
+func TestResolveServerTargets_UnlistedIdentifierIsRejected(t *testing.T) {
 	const unlisted = "8e1c7a52-9999-4c3e-9a0b-000000000009"
 	srv := longNamesServer(t, http.StatusOK)
 
 	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlisted})
-	require.NoError(t, err)
-	assert.Equal(t, []string{unlisted}, ids)
+	require.Error(t, err)
+	assert.Nil(t, ids)
+
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Contains(t, userErr.Message, `"`+unlisted+`"`)
+	assert.Contains(t, userErr.Hint, otherServerUUID, "the error lists the available servers")
+	assert.Contains(t, userErr.Hint, targetGroupUUID, "the error lists the available groups")
+}
+
+func TestResolveServerTargets_EmptyValuesHintCoversCreateAndUpdate(t *testing.T) {
+	_, err := resolveServerTargets(context.Background(), nil, "my-app", []string{"", "  "})
+
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Equal(t, "To target every server, omit --server when creating, or use --all-servers when updating.", userErr.Hint)
 }
 
 func TestResolveServerTargets_IdentifierPassesThroughWhenGroupListFails(t *testing.T) {

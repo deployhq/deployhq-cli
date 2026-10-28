@@ -35,12 +35,14 @@ func addAllServersFlag(cmd *cobra.Command, all *bool) {
 // resolveServerTargets turns --server values into server or server-group
 // identifiers. Names are matched against the project's servers first and then
 // its server groups; only a value that matches no name is taken as an
-// identifier — one the listings show, or one that looks like an identifier
-// (isUUID), since a long name with a dash can look like one too. If a listing
-// failed, only a canonical UUID is taken that way, so a name the failed listing
-// would have resolved reports the listing error instead. The listings
-// are fetched once, on the first value. It never prompts: an unknown or
-// ambiguous name fails with the available choices so agents can retry.
+// identifier, and only one the listings show, since a long name with a dash can
+// look like one too. Both listings are complete, so a value missing from both is
+// not in the project and fails: the API would drop it and save a resource that
+// targets no server. If a listing failed, a canonical UUID is passed through
+// unchecked; any other value reports the listing error, since the failed
+// listing might have resolved it. The listings are fetched once, on the first
+// value. It never prompts: an unknown or ambiguous value fails with the
+// available choices so agents can retry.
 func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID string, inputs []string) ([]string, error) {
 	var (
 		ids        []string
@@ -82,15 +84,10 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 			ids = append(ids, in)
 			continue
 		}
-		// With both listings in hand, an unlisted value that looks like an
-		// identifier is passed through. If either failed, the value may be a
-		// name the failed listing would have resolved — a long dashed name
-		// passes isUUID — so only a canonical UUID is trusted then.
-		looksLikeID := isUUID(in)
-		if serversErr != nil || groupsErr != nil {
-			looksLikeID = isCanonicalUUID(in)
-		}
-		if looksLikeID {
+		// With both listings in hand, an unlisted value is not in the project.
+		// If either failed, the value may be a name or identifier the failed
+		// listing would have shown, so only a canonical UUID is trusted then.
+		if (serversErr != nil || groupsErr != nil) && isCanonicalUUID(in) {
 			ids = append(ids, in)
 			continue
 		}
@@ -106,7 +103,7 @@ func resolveServerTargets(ctx context.Context, client *sdk.Client, projectID str
 	if len(ids) == 0 {
 		return nil, &output.UserError{
 			Message: "--server needs at least one server name or identifier",
-			Hint:    "Omit --server to apply to all servers",
+			Hint:    "To target every server, omit --server when creating, or use --all-servers when updating.",
 		}
 	}
 	return ids, nil
