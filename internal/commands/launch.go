@@ -172,7 +172,7 @@ func paymentMethodLaunchError(err error, client *sdk.Client, target, projectID s
 	le := &launchError{
 		Reason:   reasonPaymentMethodRequired,
 		Message:  "A payment method is required before this account can provision " + hostingName(target) + ".",
-		NextStep: "Add a card under Payment Details at " + url + ", then re-run: dhq launch",
+		NextStep: "Add a card under Payment Details at " + url + ", then re-run the same dhq launch command",
 		Details:  map[string]string{"payment_url": url},
 		// The account-level explanation, not the raw 422: it still classifies
 		// as a user error (exit 1), and because it is already explained, main's
@@ -181,8 +181,8 @@ func paymentMethodLaunchError(err error, client *sdk.Client, target, projectID s
 	}
 	if projectCreated && projectID != "" {
 		le.Message += fmt.Sprintf(" The project %q was created during this run and has no server yet.", projectID)
-		le.NextStep = fmt.Sprintf("Add a card under Payment Details at %s, then re-run: dhq launch --project %s "+
-			"(or remove the project with: dhq projects delete %s)", url, projectID, projectID)
+		le.NextStep = fmt.Sprintf("Add a card under Payment Details at %s, then re-run the same dhq launch command "+
+			"with --project %s added (or remove the project with: dhq projects delete %s)", url, projectID, projectID)
 		le.Details["project"] = projectID
 		le.Details["project_created"] = "true"
 	}

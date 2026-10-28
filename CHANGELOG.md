@@ -124,9 +124,10 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   created or a repository connected, so an ineligible account is stopped before
   anything is left behind. A provisioning refusal for a missing payment method
   now fails with reason `payment_method_required`, a link to the account's
-  Payment Details page, and — when this run created the project — its name,
-  the re-run command (`--project`), and how to delete it. The project is saved
-  to `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
+  Payment Details page, and a prompt to re-run the same command; when this run
+  created the project, it also names the project, says to re-run with
+  `--project` added, and how to delete it. The project is saved to
+  `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
 
 ## [0.21.0] - 2026-08-06
 
