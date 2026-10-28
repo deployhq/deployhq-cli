@@ -80,8 +80,8 @@ See [launch.md](references/launch.md). After `launch` writes `.deployhq.toml`, u
 ### "Deploy code"
 1. `dhq projects list --json` — find project permalink
 2. `dhq servers list -p <project> --json` — find server identifier
-3. `dhq deploy -p <project> -s <server> --json` — create deployment
-4. `dhq deployments watch <id> -p <project>` — monitor progress
+3. `dhq deploy -p <project> -s <server> --wait --json` — create the deployment and wait for its final status
+4. Report success only if the JSON shows `"status": "completed"` (a non-zero exit means it failed or timed out)
 
 ### "Check what's deployed"
 1. `dhq deployments list -p <project> --json` — recent deployments
@@ -101,7 +101,7 @@ See [launch.md](references/launch.md). After `launch` writes `.deployhq.toml`, u
 ### "Configure deployment"
 1. `dhq env-vars create -p <project> --name KEY --value val` — add env var
 2. `dhq config-files create -p <project> --path .env --body "..." --json` — add config file
-3. `dhq excluded-files create -p <project> --pattern "node_modules" --json` — add exclusion
+3. `dhq excluded-files create -p <project> --path "node_modules"` — add exclusion (all servers unless `--server`)
 4. `dhq build-commands create -p <project> --name "Install" --command "npm install" --json` — add build step
 5. `dhq deployment-checks create -p <project> --name "Health" --stage post_deploy --check-type http --http-url https://app.example.com/health --http-expected-status 200 --json` — gate the deploy
 
@@ -131,7 +131,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - Some API fields return strings OR numbers inconsistently (handled internally by `FlexString`)
 - `dhq deploy` auto-fetches latest revision if `--revision` is omitted
 - `dhq deploy` is **incremental by default** — it picks up from the server's last successful deploy. Use `--full` for a full-branch deploy or `--start-revision <sha>` to pin a specific start commit
-- `dhq deploy --wait` blocks **only in an interactive terminal**. Output auto-switches to JSON whenever stdout is not a TTY, and the JSON path returns as soon as the deployment is queued — so in any pipe, CI job or agent, `--wait` does nothing and the command exits 0 immediately. In automation use create → `dhq deployments watch <id>` → `dhq deployments show <id> --json=status` and require `completed` (see [deployments.md](references/deployments.md))
+- Without `--wait`, `dhq deploy` returns as soon as the deployment is **queued** — that is not success. Use `--wait` (blocks in every output mode; exits non-zero on failure or `--timeout`) and confirm the final status is `completed` before reporting the deploy as done (see [deployments.md](references/deployments.md))
 - Deployment `watch` uses TUI in TTY mode, append-only in pipes
 - `dhq env-vars create` prompts for value if `--value` is omitted (not agent-friendly — always pass `--value`)
 - `dhq servers create` / `dhq servers update` configure deployment behaviour with `--branch` (preferred branch), `--auto-deploy` (DeployHQ's native auto-deployment), `--atomic`, `--atomic-strategy` and `--atomic-retention`. On `update`, only flags you explicitly pass are sent — omitted flags never disturb existing settings

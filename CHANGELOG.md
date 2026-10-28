@@ -25,6 +25,20 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `ServerGroupUpdateRequest.TransferOrder` (`transfer_order`, `omitempty`).
   Purely additive.
 
+- **`--server`** on `excluded-files`, `config-files`, `ssh-commands` and
+  `integrations` `create` and `update`: target specific servers or server
+  groups by name or identifier (repeatable or comma-separated). An unknown or
+  ambiguous name fails with the available choices instead of guessing, and so
+  does an identifier that matches no server or group in the project, rather
+  than saving a resource that targets no server. If listing the project's
+  servers or groups fails, an identifier is confirmed with the project before
+  it is used.
+- **`--all-servers`** on the same `update` commands. Without either flag, an
+  update leaves the existing targeting unchanged.
+- **`dhq config-files create --build-only`**: a file that is only available
+  to build commands and never uploaded to a server — previously the
+  accidental result of every create, now an explicit choice.
+
 ### Changed
 
 - **`dhq templates server-groups create` / `update`**: `--transfer-order` help
@@ -46,6 +60,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq servers create`** help leads with the key-based SSH example; the
   password example moves to the end, uses `--password-stdin`, and warns that a
   password typed into a command ends up in shell history.
+- **`dhq excluded-files update`**: `--path` is now optional, so a rule can be
+  re-targeted without restating its pattern.
+- **`dhq excluded-files list --json`** / **`show`** now include an empty
+  `servers` list instead of omitting it, so a rule that applies to no server
+  is visible.
 
 ### Fixed
 
@@ -64,6 +83,38 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   a one-line command to install it, for the project's key as well as a global
   key. The command ends `ssh`'s options with `--`, so the destination is never
   read as one.
+- **Server targeting on create**: excluded files, config files, SSH commands
+  and integrations created with dhq were stored with no target servers, so
+  they silently did nothing — an "excluded" file was still uploaded, a config
+  file never reached a server, an SSH command never ran, an integration never
+  fired. `dhq excluded-files create`, `dhq config-files create`,
+  `dhq ssh-commands create`, `dhq integrations create`, the matching
+  `dhq templates ... create` commands and the suggested exclusions added by
+  `dhq launch` now apply to all servers by default (including servers added
+  later). Items created by earlier versions are not changed; re-target them
+  with `update <id> --all-servers`.
+- **`dhq deploy --wait`** now waits in every output mode. Previously, whenever
+  output was JSON (pipes, CI jobs, AI agents, or `--json`), it returned the
+  queued deployment and exited 0 before the deployment had run. It now polls
+  until the deployment finishes, prints plain progress lines to stderr, and
+  writes the **final** deployment to stdout, so `data.status` is `completed`
+  and the summary reads `Deployment <id> completed`. A failed deployment, or
+  reaching `--timeout`, exits non-zero with the final (or last known) status in
+  the error message.
+- **`dhq deployments watch`** outside a terminal exits non-zero for any final
+  status other than `completed` (previously a `cancelled` status exited 0).
+- **Following a deployment survives a failed status check**: `deploy --wait`,
+  `deployments watch`, `launch` and `init` retry a check that failed with a
+  network error, a server error (5xx) or rate limiting (429), up to three
+  times with backoff, instead of stopping at the first one. If it still fails,
+  they exit non-zero with "Could not check deployment ... The deployment may
+  still be running." and the command to check it. Other refusals (wrong key,
+  suspended account, deleted deployment) are not retried. In the live terminal
+  view a failed check was reported as `finished with status "running"`, or
+  ended silently with exit 0 under `deployments watch`; it is now this error.
+- Agent skill: deploy with `--wait` and confirm the final status is
+  `completed` before reporting success.
+
 
 ## [0.21.0] - 2026-08-06
 
