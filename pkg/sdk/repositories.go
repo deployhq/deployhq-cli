@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"net/http"
 )
 
 // GetRepository returns the repository configuration for a project.
@@ -20,7 +21,8 @@ func (c *Client) CreateRepository(ctx context.Context, projectID string, req Rep
 		Repository RepositoryCreateRequest `json:"repository"`
 	}{Repository: req}
 	var repo Repository
-	if err := c.post(ctx, fmt.Sprintf("/projects/%s/repository", projectID), body, &repo); err != nil {
+	// DeployHQ checks it can reach the repository before answering.
+	if err := c.doSlow(ctx, http.MethodPost, fmt.Sprintf("/projects/%s/repository", projectID), body, &repo); err != nil {
 		return nil, err
 	}
 	return &repo, nil
@@ -32,7 +34,8 @@ func (c *Client) UpdateRepository(ctx context.Context, projectID string, req Rep
 		Repository RepositoryCreateRequest `json:"repository"`
 	}{Repository: req}
 	var repo Repository
-	if err := c.put(ctx, fmt.Sprintf("/projects/%s/repository", projectID), body, &repo); err != nil {
+	// DeployHQ checks it can reach the repository before answering.
+	if err := c.doSlow(ctx, http.MethodPut, fmt.Sprintf("/projects/%s/repository", projectID), body, &repo); err != nil {
 		return nil, err
 	}
 	return &repo, nil

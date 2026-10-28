@@ -88,6 +88,8 @@ On failure the error carries a stable `reason`, a `retryable` boolean, a `next_s
 |--------|------|---------------------|
 | `auth_required` | 3 | No credentials in non-interactive mode — set `DEPLOYHQ_*` env vars (signup is interactive-only) |
 | `email_verification_required` | 3 | The account's email isn't verified yet — open the verification link that was emailed, then re-run (`retryable: true`) |
+| `account_suspended` | 1 | The account is suspended, so every API request is refused. For a trial that has ended or an outstanding payment, a person chooses a plan or settles the payment at `details.url` (the account's plan page); for any other suspension `details.url` is DeployHQ support. An agent cannot resolve this; re-run once the account is active |
+| `api_access_restricted` | 3 | The account's plan does not include API access. A person upgrades the plan at `details.url`; logging in again will not help |
 | `beta_enroll_required` | 1 | Managed-resources beta not enabled and the user isn't an admin — `details.admin_required=true`; an admin enables it (or use your own server via `dhq init`) |
 | `accept_cost_required` | 1 | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
 | `repo_unreachable` | 1 | No git remote DeployHQ can deploy from, or DeployHQ rejected the repository (for SSH URLs usually a missing deploy key; `next_step` has the key and how to resume). A failure while connecting keeps its own code: 4 for a network failure, 2 for a server error, 3 for 401/403, 5 for 404 |

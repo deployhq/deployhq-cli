@@ -54,6 +54,14 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Changed
 
+- **`dhq commands --json`**: every command that starts a deployment
+  (`deploy`, `rollback`, `retry`, `deployments create`, `deployments retry`,
+  `deployments rollback`) and `signup` now carry `requires_confirmation: true`
+  (the former change what runs on your servers, the latter creates an
+  account). `safe_for_automation` now means deterministic in non-interactive
+  mode and fine to run without a person watching, so `auth token` is no
+  longer marked safe, because it prints the API key.
+
 - **`dhq templates server-groups create` / `update`**: `--transfer-order` help
   now names the two accepted values, matching the project-level command.
   Behaviour is unchanged.
@@ -193,6 +201,19 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   is already in the script's hands).
 
 ### Fixed
+
+- **SDK / `dhq repos create`, `dhq servers create`, `dhq launch`**: connecting
+  a repository (`CreateRepository`, `UpdateRepository`) and creating a server
+  (`CreateServer`) now wait up to 60s instead of 30s, since DeployHQ checks the
+  connection before answering. Every other request keeps the 30s default, a
+  shorter deadline on the caller's context still applies, and a client passed
+  with `WithHTTPClient` keeps its own timeout. Purely additive.
+
+- **`dhq launch --json`**: a suspended account or a plan without API access now
+  fails with `reason: account_suspended` or `reason: api_access_restricted`,
+  a `next_step`, and the page that resolves it in `details.url`, like every
+  other launch failure, instead of the generic error shape. Exit codes are
+  unchanged (1 and 3). `--dry-run` reports them the same way.
 
 - **`dhq config init`**: now writes the `--project`, `--account` and `--email`
   values it is given instead of an empty project entry. `--api-key` is never

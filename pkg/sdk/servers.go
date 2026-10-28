@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"net/http"
 )
 
 // ListServers returns all servers for a project.
@@ -48,7 +49,8 @@ func (c *Client) CreateServer(ctx context.Context, projectID string, req ServerC
 		body["key_pair_identifier"] = req.KeyPairIdentifier
 	}
 	var server Server
-	if err := c.post(ctx, fmt.Sprintf("/projects/%s/servers", projectID), body, &server); err != nil {
+	// DeployHQ may test the connection to the server before answering.
+	if err := c.doSlow(ctx, http.MethodPost, fmt.Sprintf("/projects/%s/servers", projectID), body, &server); err != nil {
 		return nil, err
 	}
 	return &server, nil

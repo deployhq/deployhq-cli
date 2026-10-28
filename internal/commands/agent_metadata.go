@@ -8,7 +8,7 @@ type AgentMetadata struct {
 	Idempotent           bool     `json:"idempotent"`                      // safe to retry
 	RequiresConfirmation bool     `json:"requires_confirmation,omitempty"` // agent should confirm before running
 	SupportsJSON         bool     `json:"supports_json"`                   // honours --json
-	SafeForAutomation    bool     `json:"safe_for_automation"`             // deterministic in non-interactive mode
+	SafeForAutomation    bool     `json:"safe_for_automation"`             // deterministic in non-interactive mode and fine to run without a person watching (false for commands that print secrets)
 	ResourceTypes        []string `json:"resource_types,omitempty"`        // e.g. ["deployment", "server"]
 }
 
@@ -18,18 +18,27 @@ type AgentMetadata struct {
 var commandMetadataTable = map[string]AgentMetadata{
 	// Shortcuts
 	"dhq deploy": {
+		// Changes what is running on the person's servers, so agents should
+		// confirm before starting one.
 		Interactive: true, Destructive: false, Idempotent: false,
-		SupportsJSON: true, SafeForAutomation: true,
+		RequiresConfirmation: true,
+		SupportsJSON:         true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq rollback": {
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
 		Destructive: false, Idempotent: false,
-		SupportsJSON: true, SafeForAutomation: true,
+		RequiresConfirmation: true,
+		SupportsJSON:         true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq retry": {
-		Idempotent:   false,
-		SupportsJSON: true, SafeForAutomation: true,
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
+		Idempotent:           false,
+		RequiresConfirmation: true,
+		SupportsJSON:         true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq launch": {
@@ -108,7 +117,24 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq deployments create": {
-		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
+		Idempotent: false, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment"},
+	},
+	"dhq deployments retry": {
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
+		Idempotent: false, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment"},
+	},
+	"dhq deployments rollback": {
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
+		Idempotent: false, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq deployments abort": {
@@ -173,7 +199,9 @@ var commandMetadataTable = map[string]AgentMetadata{
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 	},
 	"dhq auth token": {
-		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
+		// Prints the API key. Idempotent, but not safe to run unattended: the
+		// key would land in logs and transcripts.
+		Idempotent: true, SupportsJSON: false, SafeForAutomation: false,
 	},
 	"dhq init": {
 		Interactive:  true,
@@ -188,7 +216,8 @@ var commandMetadataTable = map[string]AgentMetadata{
 		SupportsJSON: false, SafeForAutomation: false,
 	},
 	"dhq signup": {
-		Interactive:  true,
+		// Creates a DeployHQ account, so agents should confirm before running.
+		Interactive: true, RequiresConfirmation: true,
 		SupportsJSON: true, SafeForAutomation: true,
 	},
 	"dhq mcp": {
