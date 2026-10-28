@@ -37,12 +37,12 @@ DeployHQ deploys the person's code to places they care about, so the person make
 
 ## Authentication
 
-Check first: `dhq auth status`. If it reports a signed-in account, setup can continue.
+Check first: `dhq auth status --json`. If it reports a signed-in account, setup can continue.
 
 If not, the first question is **"Do you already have a DeployHQ account?"**
 
-- **Yes:** the person signs in by running `dhq auth login` in a separate terminal window of their own (not through the agent). It prompts for the account name, the login email and an API key, and hides the key as it is typed. When they say they are done, the agent runs `dhq auth status` to confirm.
-- **No:** with the person's OK, they create an account either on the DeployHQ website or by running `dhq signup` in their own terminal (it prompts for the email and password, hiding the password, and saves the new credentials). DeployHQ then sends a verification email; the person verifies before anything else will work. Signing up on the website does not sign in the CLI, so after verifying, that person also runs `dhq auth login` in their own terminal. The agent runs `dhq auth status` afterwards.
+- **Yes:** the person signs in by running `dhq auth login` in a separate terminal window of their own (not through the agent). It prompts for the account name, the login email and an API key, and hides the key as it is typed. When they say they are done, the agent runs `dhq auth status --json` to confirm.
+- **No:** with the person's OK, they create an account either on the DeployHQ website or by running `dhq signup` in their own terminal (it prompts for the email and password, hiding the password, and saves the new credentials). DeployHQ then sends a verification email; the person verifies before anything else will work. Signing up on the website does not sign in the CLI, so after verifying, that person also runs `dhq auth login` in their own terminal. The agent runs `dhq auth status --json` afterwards.
 
 `dhq auth login` and `dhq signup` cannot prompt inside an agent (non-interactive mode), so run there they would need the key or password on the command line. That is why the person runs them.
 
@@ -88,7 +88,7 @@ In non-interactive mode, any ambiguity (e.g. multiple servers, missing required 
 
 ### "Set up DeployHQ for this project" (first time)
 Small steps, each one something the person can approve on its own:
-1. **Account.** `dhq auth status`. If not signed in, follow Authentication above (ask whether they have an account; they sign in or sign up in their own terminal).
+1. **Account.** `dhq auth status --json`. If not signed in, follow Authentication above (ask whether they have an account; they sign in or sign up in their own terminal).
 2. **Existing project?** `dhq projects list --json`, and check for a `.deployhq.toml` in the folder. If a matching project exists, ask whether to reuse it rather than creating a second one.
 3. **Where to deploy.** Ask, and wait for the answer. The usual options:
    - **Their own server** (SSH/SFTP, FTP, S3 and others): most DeployHQ customers deploy this way.
