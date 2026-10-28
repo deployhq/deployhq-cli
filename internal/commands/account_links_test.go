@@ -97,3 +97,28 @@ func TestLaunchCheckPlanLimits_LinksToAccountPages(t *testing.T) {
 		})
 	}
 }
+
+func TestLaunchCheckPlanLimits_UsesConfiguredHost(t *testing.T) {
+	withTestCLIContext(t, true)
+	cliCtx.Config.Host = "deployhq.dev"
+
+	env, _, _ := testLaunchEnvelope()
+	err := launchCheckPlanLimits(env, launchConfig{targetProtocol: "static_hosting"}, &sdk.AccountCapabilities{}, "acme")
+	var le *launchError
+	require.True(t, isLaunchErr(err, &le))
+	assert.Contains(t, le.NextStep, "https://acme.deployhq.dev/account/packages")
+	assert.NotContains(t, le.NextStep, "deployhq.com")
+}
+
+func TestAccountPageURL_HostPrecedence(t *testing.T) {
+	withTestCLIContext(t, true)
+
+	assert.Equal(t, "https://acme.deployhq.com/account/packages", accountPageURL("acme", nil, "/account/packages"))
+
+	cliCtx.Config.Host = "deployhq.dev"
+	assert.Equal(t, "https://acme.deployhq.dev/account/packages", accountPageURL("acme", nil, "/account/packages"))
+	assert.Equal(t, "https://acme.deployhq.dev/account/packages", accountPageURL("acme.deployhq.dev", &sdk.APIError{}, "/account/packages"))
+
+	apiErr := &sdk.APIError{AccountURL: "https://acme.example.test"}
+	assert.Equal(t, "https://acme.example.test/beta_features", accountPageURL("acme", apiErr, "/beta_features"))
+}
