@@ -680,7 +680,7 @@
         "flags": ["-p", "my-app", "--stage", "post_deploy", "--check-type", "ssh", "--servers", "srv-abc123"]
       },
       "must_not_contain": ["ssh-commands create"],
-      "notes": "ssh-commands create cannot set callback phase, targeting, timeout or halt-on-error; a post_deploy ssh deployment check can, and fails the deployment on non-zero exit."
+      "notes": "ssh-commands create cannot set callback phase, timeout or halt-on-error; a post_deploy ssh deployment check can, and fails the deployment on non-zero exit."
     }
   ]
 }

@@ -70,14 +70,21 @@ dhq config-files show 12345 -p my-app --json
 | `--path` | yes | File path on server |
 | `--body` | yes | File content |
 | `--description` | no | Description |
+| `--server` | no | Upload only to these servers or server groups (name or identifier; repeatable or comma-separated). Default: all servers |
+| `--build-only` | no | Only make the file available to build commands; never upload it to a server |
 
 ```bash
 dhq config-files create -p my-app --path ".env" --body "APP_ENV=production" --json
+dhq config-files create -p my-app --path ".env" --body "APP_ENV=production" --server Production --json
 ```
 
 ### `dhq config-files update <id>`
+Only the flags you pass change. `--server` / `--all-servers` re-target the
+file; without them its targeting is left as it is.
+
 ```bash
 dhq config-files update 12345 -p my-app --body "APP_ENV=staging" --json
+dhq config-files update 12345 -p my-app --all-servers
 ```
 
 ### `dhq config-files delete <id>`
@@ -140,14 +147,28 @@ dhq excluded-files list -p my-app --json
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--pattern` | yes | File/directory pattern to exclude |
-| `--description` | no | Description |
+| `--path` | yes | File/directory pattern to exclude |
+| `--server` | no | Exclude only on these servers or server groups (name or identifier; repeatable or comma-separated). Default: all servers, including servers added later |
 
 ```bash
-dhq excluded-files create -p my-app --pattern "node_modules" --json
-dhq excluded-files create -p my-app --pattern ".git" --json
-dhq excluded-files create -p my-app --pattern "*.log" --json
+dhq excluded-files create -p my-app --path "node_modules"
+dhq excluded-files create -p my-app --path "*.log"
+dhq excluded-files create -p my-app --path deploy.sh --server Production
 ```
+
+DeployHQ never uploads `.git`, so it needs no rule.
+
+### `dhq excluded-files update <id>`
+Change the pattern (`--path`) or the targeting (`--server` / `--all-servers`).
+Without a targeting flag the rule keeps its current servers.
+
+```bash
+dhq excluded-files update <id> -p my-app --all-servers
+```
+
+A rule whose `servers` list is empty (`dhq excluded-files list --json`) applies
+to no server: the file is still uploaded. Rules created by older dhq versions
+can be in this state; fix them with `--all-servers`.
 
 ## SSH Commands
 
@@ -163,14 +184,15 @@ dhq ssh-commands list -p my-app --json
 | `--command` | yes | SSH command to execute |
 | `--description` | no | Description shown in the UI |
 | `--timing` | no | When the command runs: `all` (default), `first`, or `after_first` |
+| `--server` | no | Run only on these servers or server groups (name or identifier; repeatable or comma-separated). Default: all servers |
 
 ```bash
 dhq ssh-commands create -p my-app --command "sudo systemctl restart app" --description "Restart" --json
 ```
 
 > **Limitation — `ssh-commands create` cannot express a complete SSH command.**
-> The CLI sends only `command`, `description` and `timing`. It cannot set the
-> callback phase, server targeting, timeout, or halt-on-error, and the backend
+> The CLI sends only `command`, `description`, `timing` and server targeting. It
+> cannot set the callback phase, timeout, or halt-on-error, and the backend
 > requires a valid timeout and description while defaulting the callback to
 > `before_changes` and halt-on-error to `false`. So a command created this way
 > runs **before changes are uploaded, on every server, and does not fail the

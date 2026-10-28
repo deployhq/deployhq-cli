@@ -7,14 +7,25 @@ import (
 
 // ExcludedFile represents an excluded file pattern.
 type ExcludedFile struct {
-	Identifier string        `json:"identifier"`
-	Path       string        `json:"path"`
-	Servers    []interface{} `json:"servers,omitempty"`
+	Identifier string `json:"identifier"`
+	Path       string `json:"path"`
+	// Servers is the list of servers the rule applies to. It is deliberately
+	// not omitempty: an empty list means the rule applies to no server, and
+	// hiding that would make a no-op rule look like a working one.
+	Servers []interface{} `json:"servers"`
 }
 
 // ExcludedFileCreateRequest is the payload for creating/updating an excluded file.
+//
+// Server targeting: set AllServers to apply the rule to every server in the
+// project (including servers added later), or ServerIdentifiers to target
+// specific servers or server groups. On create, leaving both unset stores a
+// rule that applies to no server. On update, leaving both unset keeps the
+// existing targeting. Never set both: AllServers wins server-side.
 type ExcludedFileCreateRequest struct {
-	Path string `json:"path"`
+	Path              string   `json:"path,omitempty"`
+	AllServers        bool     `json:"all_servers,omitempty"`
+	ServerIdentifiers []string `json:"server_identifiers,omitempty"`
 }
 
 func (c *Client) ListExcludedFiles(ctx context.Context, projectID string, opts *ListOptions) ([]ExcludedFile, error) {
