@@ -42,7 +42,7 @@ Check first: `dhq auth status --json`. If it reports a signed-in account, setup 
 If not, the first question is **"Do you already have a DeployHQ account?"**
 
 - **Yes:** the person signs in by running `dhq auth login` in a separate terminal window of their own (not through the agent). It prompts for the account name, the login email and an API key, and hides the key as it is typed. When they say they are done, the agent runs `dhq auth status --json` to confirm.
-- **No:** with the person's OK, they create an account either on the DeployHQ website or by running `dhq signup` in their own terminal (it prompts for the email and password, hiding the password, and saves the new credentials). DeployHQ then sends a verification email; the person verifies before anything else will work. Signing up on the website does not sign in the CLI, so after verifying, that person also runs `dhq auth login` in their own terminal. The agent runs `dhq auth status --json` afterwards.
+- **No:** with the person's OK, they create an account either on the DeployHQ website or by running `dhq signup` in their own terminal (it prompts for the email and password, hiding the password, asks them to accept the Terms of Service, and saves the new credentials). DeployHQ then sends a verification email; the person verifies before anything else will work. Signing up on the website does not sign in the CLI, so after verifying, that person also runs `dhq auth login` in their own terminal. The agent runs `dhq auth status --json` afterwards.
 
 `dhq auth login` and `dhq signup` cannot prompt inside an agent (non-interactive mode), so run there they would need the key or password on the command line. That is why the person runs them.
 
@@ -51,6 +51,12 @@ Other ways credentials are picked up (checked in this order):
 1. **Environment variables** (CI): `DEPLOYHQ_ACCOUNT` + `DEPLOYHQ_EMAIL` + `DEPLOYHQ_API_KEY`
 2. **Config files**: `~/.deployhq/config.toml` or `.deployhq.toml` in project directory
 3. **Stored login** from `dhq auth login` / `dhq signup`
+
+`dhq auth status --json` checks the credentials with DeployHQ. Its `status`
+must be `authenticated` before you continue; `email_verification_required` means the
+person has to open the verification link DeployHQ emailed them (every API
+request is refused until then). The API key is under Settings → Security → API
+Credentials in DeployHQ. See [auth-setup.md](references/auth-setup.md).
 
 ## Output Contract
 
@@ -107,9 +113,8 @@ Small steps, each one something the person can approve on its own:
 ### "Deploy code"
 1. `dhq projects list --json` — find project permalink
 2. `dhq servers list -p <project> --json` — find server identifier
-3. `dhq deploy -p <project> -s <server> --json` — create deployment (check with the person first)
-4. `dhq deployments watch <id> -p <project>` — monitor progress
-5. `dhq deployments show <id> -p <project> --json=status` — the deploy succeeded only if this is `completed`
+3. `dhq deploy -p <project> -s <server> --wait --json` — create the deployment (check with the person first) and wait for its final status
+4. Report success only if the JSON shows `"status": "completed"` (a non-zero exit means it failed or timed out)
 
 ### "Check what's deployed"
 1. `dhq deployments list -p <project> --json` — recent deployments
@@ -130,7 +135,7 @@ Same steps as "Set up DeployHQ for this project" above, checking with the person
 ### "Configure deployment"
 1. `dhq env-vars create -p <project> --name KEY --value val` — add env var
 2. `dhq config-files create -p <project> --path .env --body "..." --json` — add config file
-3. `dhq excluded-files create -p <project> --pattern "node_modules" --json` — add exclusion
+3. `dhq excluded-files create -p <project> --path "node_modules"` — add exclusion (all servers unless `--server`)
 4. `dhq build-commands create -p <project> --name "Install" --command "npm install" --json` — add build step
 5. `dhq deployment-checks create -p <project> --name "Health" --stage post_deploy --check-type http --http-url https://app.example.com/health --http-expected-status 200 --json` — gate the deploy
 
@@ -145,7 +150,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 
 - Always use `--json` for machine-readable output when scripting or in agent context
 - Use `--non-interactive` to guarantee no prompts (auto-enabled for agents and piped output)
-- JSON responses include `breadcrumbs` with `action` and `cmd` fields; deploy commands also include `resource` and `id`
+- JSON responses include `breadcrumbs` with `action` and `cmd` fields (or `url` instead of `cmd` for a step done in the browser, such as adding a payment method); deploy commands also include `resource` and `id`
 - Error responses include `retryable`, `exit_code`, and `recovery` actions when applicable
 - Exit codes: 0 = success, 1 = user error, 2 = internal, 3 = auth, 4 = network, 5 = not found, 6 = conflict
 - Empty results return exit 0 with empty `data` array (not an error)
@@ -160,7 +165,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - Some API fields return strings OR numbers inconsistently (handled internally by `FlexString`)
 - `dhq deploy` auto-fetches latest revision if `--revision` is omitted
 - `dhq deploy` is **incremental by default** — it picks up from the server's last successful deploy. Use `--full` for a full-branch deploy or `--start-revision <sha>` to pin a specific start commit
-- `dhq deploy --wait` blocks **only in an interactive terminal**. Output auto-switches to JSON whenever stdout is not a TTY, and the JSON path returns as soon as the deployment is queued — so in any pipe, CI job or agent, `--wait` does nothing and the command exits 0 immediately. In automation use create → `dhq deployments watch <id>` → `dhq deployments show <id> --json=status` and require `completed` (see [deployments.md](references/deployments.md))
+- Without `--wait`, `dhq deploy` returns as soon as the deployment is **queued** — that is not success. Use `--wait` (blocks in every output mode; exits non-zero on failure or `--timeout`) and confirm the final status is `completed` before reporting the deploy as done (see [deployments.md](references/deployments.md))
 - Deployment `watch` uses TUI in TTY mode, append-only in pipes
 - `dhq env-vars create` prompts for value if `--value` is omitted (not agent-friendly — always pass `--value`)
 - `dhq servers create` / `dhq servers update` configure deployment behaviour with `--branch` (preferred branch), `--auto-deploy` (DeployHQ's native auto-deployment), `--atomic`, `--atomic-strategy` and `--atomic-retention`. On `update`, only flags you explicitly pass are sent — omitted flags never disturb existing settings

@@ -22,6 +22,9 @@ func TestClassifyHelloValidateErr(t *testing.T) {
 		{"401 invalid credentials", &sdk.APIError{StatusCode: 401, Message: "Unauthorized"}, false, "auth"},
 		{"403 access denied", &sdk.APIError{StatusCode: 403, Message: "AccessDenied"}, false, "auth"},
 		{"403 api_access_restricted", &sdk.APIError{StatusCode: 403, Message: "api_access_restricted"}, false, "auth"},
+		{"403 plan without API access names the plan", &sdk.APIError{StatusCode: 403, Message: "api_access_restricted",
+			ErrorCode: "api_access_restricted", Detail: "Upgrade your plan to gain access to the API"}, false, "account"},
+		{"402 trial ended or suspended", &sdk.APIError{StatusCode: 402, Message: "account suspended", SuspensionType: "lapsed"}, false, "account"},
 		{"404 not found", &sdk.APIError{StatusCode: 404, Message: "Not found"}, false, "user"},
 		{"500 server error returns nil so caller passes through", &sdk.APIError{StatusCode: 500, Message: "boom"}, true, ""},
 		{"422 validation returns nil so caller passes through", &sdk.APIError{StatusCode: 422, Message: "bad"}, true, ""},
@@ -31,7 +34,7 @@ func TestClassifyHelloValidateErr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classifyHelloValidateErr(tt.in)
+			got := classifyHelloValidateErr(tt.in, "acct")
 			if tt.wantNil {
 				if got != nil {
 					t.Fatalf("expected nil, got %T %v", got, got)
@@ -50,6 +53,10 @@ func TestClassifyHelloValidateErr(t *testing.T) {
 			case "network":
 				if _, ok := got.(*output.NetworkError); !ok {
 					t.Errorf("expected *NetworkError, got %T %v", got, got)
+				}
+			case "account":
+				if _, ok := got.(*output.AccountError); !ok {
+					t.Errorf("expected *AccountError, got %T %v", got, got)
 				}
 			}
 		})
@@ -89,7 +96,7 @@ func TestValidateHelloLoginInputs(t *testing.T) {
 			name:    "empty api key",
 			account: "acct", email: "u@e.com", apiKey: "",
 			wantErr: true, wantHeadline: "API key is required",
-			wantHintSubstr: "Profile → API Key",
+			wantHintSubstr: "Settings → Security → API Credentials",
 		},
 		{
 			// First failure wins so users fix one thing at a time.
