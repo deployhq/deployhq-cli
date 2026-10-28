@@ -317,7 +317,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **Account links**: beta enrolment, plan and billing hints linked to
   `app.deployhq.com`, which does not serve those pages. They now point at the
   account's own pages (`https://<account>.deployhq.com/beta_features`,
-  `/account/packages` and `/account/payment_details`).
+  `/account/packages` and `/account/payment_details`), on the configured host
+  when `--host` or `DEPLOYHQ_HOST` is set.
 - **Agent skill guide**: `dhq build-commands create` examples used a `--name`
   flag that does not exist (the flag is `--description`); the setup steps now
   run the first deploy with `--wait --json` and confirm a `completed` status;
