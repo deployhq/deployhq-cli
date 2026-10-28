@@ -117,7 +117,9 @@ func TestLaunchAuthRequired_JSONReason(t *testing.T) {
 	authErr := &output.AuthError{Message: "Not authenticated"}
 
 	result := writeLaunchError(env, launchConfig{}, reasonAuthRequired, authErr)
-	assert.Equal(t, authErr, result, "must return the original error for exit-code purposes")
+	assert.ErrorIs(t, result, authErr, "must wrap the original error for exit-code purposes")
+	assert.Equal(t, output.ClassifyError(authErr), output.ClassifyError(result), "exit code unchanged")
+	assert.True(t, output.IsReported(result), "JSON already written: main must not write a second object")
 
 	var resp map[string]interface{}
 	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
@@ -125,6 +127,8 @@ func TestLaunchAuthRequired_JSONReason(t *testing.T) {
 	data := resp["data"].(map[string]interface{})
 	assert.Equal(t, reasonAuthRequired, data["reason"])
 	assert.Contains(t, data["error"].(string), "Not authenticated")
+	assert.Equal(t, float64(output.ExitAuthError), data["exit_code"])
+	assert.Contains(t, fmt.Sprint(data["recovery"]), "dhq auth login")
 }
 
 // ── Build command application (static) ───────────────────────────────────────
@@ -710,6 +714,7 @@ func TestLaunchVPS_AcceptCostPresent_ProvisionsCalled(t *testing.T) {
 func TestLaunchError_RepoUnreachable(t *testing.T) {
 	// writeLaunchError with reason=repo_unreachable must surface the reason.
 	env, _, stderr := testLaunchEnvelope()
+	env.IsTTY = true // plain (table) mode; a non-TTY envelope auto-selects JSON
 	err := &output.UserError{
 		Message: "No git remote found in this directory",
 		Hint:    "Run: git remote add origin <url>",
@@ -955,6 +960,17 @@ func TestLaunchCheckPlanLimits_StaticIneligible(t *testing.T) {
 	var le *launchError
 	require.True(t, isLaunchErr(err, &le))
 	assert.Equal(t, reasonPlanLimitReached, le.Reason)
+
+	// --json: the single error object keeps exit_code and recovery.
+	jsonEnv, stdout, _ := testLaunchEnvelopeJSON()
+	result := writeLaunchError(jsonEnv, cfg, le.Reason, err)
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
+	data := resp["data"].(map[string]interface{})
+	assert.Equal(t, reasonPlanLimitReached, data["reason"])
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(result), "a plan limit is a user error, not an internal one")
+	assert.Equal(t, float64(output.ExitUserError), data["exit_code"])
+	assert.Contains(t, data, "recovery")
 }
 
 func TestLaunchCheckPlanLimits_VPSIneligible(t *testing.T) {
@@ -1015,6 +1031,7 @@ func TestPollProvisioningState_AlreadyActive_NoRequests(t *testing.T) {
 
 func TestWriteLaunchError_PlainMode_PassesThroughError(t *testing.T) {
 	env, _, _ := testLaunchEnvelope() // NonInteractive, NOT json
+	env.IsTTY = true                  // a non-TTY envelope auto-selects JSON
 	orig := &output.UserError{Message: "something bad"}
 	result := writeLaunchError(env, launchConfig{}, reasonRepoUnreachable, orig)
 	assert.Equal(t, orig, result, "plain mode must return the original error unchanged")
@@ -1029,7 +1046,8 @@ func TestWriteLaunchError_JSONMode_EmitsStructuredPayload(t *testing.T) {
 		Details:  map[string]string{"server": "srv-123"},
 	}
 	result := writeLaunchError(env, launchConfig{}, reasonDeployFailed, le)
-	assert.Equal(t, le, result, "JSON mode must still return the original error for exit-code purposes")
+	assert.ErrorIs(t, result, le, "JSON mode must still carry the original error for exit-code purposes")
+	assert.True(t, output.IsReported(result))
 
 	var resp map[string]interface{}
 	require.NoError(t, json.NewDecoder(stdout).Decode(&resp))
