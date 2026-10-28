@@ -25,6 +25,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `ServerGroupUpdateRequest.TransferOrder` (`transfer_order`, `omitempty`).
   Purely additive.
 
+- **SDK**: `APIError` now carries the structured fields some error responses
+  include (`ErrorCode`, `Detail`, `UpgradeURL`, `SuspensionType`,
+  `SuspensionReason`) and the `AccountURL` the request was sent to, with
+  `IsAPIAccessRestricted`, `IsAccountSuspended`, `IsPaymentSuspension` and
+  `IsPaymentMethodRequired` helpers. `Message` keeps its existing meaning.
 - **`--server`** on `excluded-files`, `config-files`, `ssh-commands` and
   `integrations` `create` and `update`: target specific servers or server
   groups by name or identifier (repeatable or comma-separated). An unknown or
@@ -38,6 +43,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq config-files create --build-only`**: a file that is only available
   to build commands and never uploaded to a server — previously the
   accidental result of every create, now an explicit choice.
+
 
 ### Changed
 
@@ -75,6 +81,24 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Fixed
 
+- **Plan and billing refusals are explained**: when the account's plan has no
+  API access, its trial has ended, it is suspended, or it has no payment method
+  for the hosting requested, every command now says which of these it is and links to the
+  page that resolves it (plans, payment details, or support), instead of a
+  technical error such as `403 api_access_restricted` or a raw JSON body. In
+  `--json` output the error carries a distinct `code` (`api_access_restricted`,
+  `account_suspended`, `payment_method_required`), `doc_url`, and a `recovery`
+  step with a `url`; a plan restriction no longer suggests `dhq auth login`.
+  Exit codes are unchanged. Recovery breadcrumbs gain an optional `url` field,
+  and `cmd` is omitted when a step happens in the browser.
+- **`dhq launch`**: the plan-eligibility check now runs before a project is
+  created or a repository connected, so an ineligible account is stopped before
+  anything is left behind. A provisioning refusal for a missing payment method
+  now fails with reason `payment_method_required`, a link to the account's
+  Payment Details page, and a prompt to re-run the same command; when this run
+  created the project, it also names the project, says to re-run with
+  `--project` added, and how to delete it. The project is saved to
+  `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
 - **Server targeting on create**: excluded files, config files, SSH commands
   and integrations created with dhq were stored with no target servers, so
   they silently did nothing — an "excluded" file was still uploaded, a config
@@ -106,6 +130,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   ended silently with exit 0 under `deployments watch`; it is now this error.
 - Agent skill: deploy with `--wait` and confirm the final status is
   `completed` before reporting success.
+
 
 ## [0.21.0] - 2026-08-06
 

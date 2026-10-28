@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -154,6 +155,12 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 
 	_, err = client.ListProjects(cliCtx.Background(), nil)
 	if err != nil {
+		// The credentials are fine but the account's plan or billing state
+		// refuses API access: say so rather than "access denied".
+		var acctErr *output.AccountError
+		if errors.As(output.ExplainAccountError(err), &acctErr) {
+			return acctErr
+		}
 		if sdk.IsUnauthorized(err) {
 			return &output.AuthError{
 				Message: "Invalid credentials",
