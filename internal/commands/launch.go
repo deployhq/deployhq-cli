@@ -129,6 +129,30 @@ type launchError struct {
 	// Cause is the error this one explains, if any. It is reachable through
 	// Unwrap so output.ClassifyError picks the exit code from it.
 	Cause error
+	// exitCode, when set, overrides the code the Reason implies. It is used
+	// where a refusal reports another error whose code is already known (a
+	// network failure, a refused API call), so that code is kept.
+	exitCode int
+}
+
+// ExitCode is the process exit code for this refusal, also reported as
+// exit_code in --json. Refusals the person resolves by changing something exit
+// 1; only failures that point at the server or the CLI exit 2.
+func (e *launchError) ExitCode() int {
+	if e.exitCode != 0 {
+		return e.exitCode
+	}
+	switch e.Reason {
+	case reasonPlanLimitReached, reasonAcceptCostRequired, reasonBetaEnrollRequired,
+		reasonRepoUnreachable, reasonRateLimited, "payment_method_required":
+		return output.ExitUserError
+	case reasonAuthRequired, reasonEmailVerificationRequired:
+		return output.ExitAuthError
+	case reasonSubdomainTaken:
+		return output.ExitConflictError
+	default: // provision_failed, deploy_failed
+		return output.ExitInternalError
+	}
 }
 
 func (e *launchError) Unwrap() error { return e.Cause }
@@ -1835,6 +1859,7 @@ func pollProvisioningState(ctx context.Context, env *output.Envelope, client *sd
 						Reason:   reasonProvisionFailed,
 						Message:  fmt.Sprintf("Provisioning poll failed (status %d): %s", apiErr.StatusCode, apiErr.Error()),
 						NextStep: "Check your credentials and project access, then retry.",
+						exitCode: output.ClassifyError(apiErr),
 					}
 				}
 			}

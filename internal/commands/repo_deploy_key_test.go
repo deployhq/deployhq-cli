@@ -610,8 +610,8 @@ func TestWriteLaunchError_JSON_SingleObject(t *testing.T) {
 
 	// That one object must still carry what the standard error object did.
 	data := first["data"].(map[string]interface{})
-	assert.Equal(t, float64(output.ClassifyError(err)), data["exit_code"], "exit_code must match the process exit code")
-	assert.NotZero(t, data["exit_code"])
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Equal(t, float64(output.ExitUserError), data["exit_code"], "exit_code must match the process exit code")
 	assert.Contains(t, data, "recovery")
 
 	// Plain mode is untouched: nothing reported, main prints the error.

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
 
@@ -154,7 +155,9 @@ func deployKeyInstructions(repoURL, publicKey, rerun string) string {
 }
 
 // launchRepoFailure turns a repository-connection failure into the terminal
-// launch error, keeping one that launchEnsureRepo already built.
+// launch error, keeping one that launchEnsureRepo already built. The exit code
+// is that of the failure: a refused repository is a user error, a network or
+// server failure is not.
 func launchRepoFailure(err error) error {
 	var le *launchError
 	if errors.As(err, &le) {
@@ -164,6 +167,8 @@ func launchRepoFailure(err error) error {
 		Reason:   reasonRepoUnreachable,
 		Message:  "Could not connect repository to project: " + err.Error(),
 		NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
+		// A network or server failure keeps its own exit code.
+		exitCode: output.ClassifyError(err),
 	}
 }
 

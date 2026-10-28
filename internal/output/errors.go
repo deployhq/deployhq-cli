@@ -54,6 +54,13 @@ type ReportedError struct {
 func (e *ReportedError) Error() string { return e.Err.Error() }
 func (e *ReportedError) Unwrap() error { return e.Err }
 
+// ExitCoder is implemented by an error that chooses its own exit code, such as
+// a structured refusal whose kind (user error, auth, conflict) is decided where
+// it is built rather than by its Go type.
+type ExitCoder interface {
+	ExitCode() int
+}
+
 // IsReported reports whether err's JSON error response was already written.
 func IsReported(err error) bool {
 	var reported *ReportedError
@@ -188,7 +195,8 @@ func IsNetworkErr(err error) bool {
 
 // ClassifyError returns the appropriate exit code for an error.
 //
-// Precedence: typed errors (UserError, InternalError, etc.) the command code
+// Precedence: an error implementing ExitCoder (anywhere in the chain) decides
+// its own code. Otherwise typed errors (UserError, InternalError, etc.) the command code
 // chose explicitly always win. Raw *sdk.APIError values returned without
 // wrapping fall back to a status-code mapping so 4xx doesn't get reported as
 // an internal CLI bug.
@@ -199,6 +207,10 @@ func ClassifyError(err error) int {
 	var reported *ReportedError
 	if errors.As(err, &reported) {
 		return ClassifyError(reported.Err)
+	}
+	var coder ExitCoder
+	if errors.As(err, &coder) {
+		return coder.ExitCode()
 	}
 	err = RefineError(err)
 	switch err.(type) {

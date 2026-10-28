@@ -82,20 +82,21 @@ dhq launch --vps --dry-run --json
 
 ### Structured error reasons
 
-On failure the error carries a stable `reason`, a `retryable` boolean, and a `next_step` an agent can branch on:
+On failure the error carries a stable `reason`, a `retryable` boolean, a `next_step` an agent can branch on, and an `exit_code` equal to the process exit code:
 
-| Reason | Meaning / next step |
-|--------|---------------------|
-| `auth_required` | No credentials in non-interactive mode — set `DEPLOYHQ_*` env vars (signup is interactive-only) |
-| `beta_enroll_required` | Managed-resources beta not enabled and the user isn't an admin — `details.admin_required=true`; an admin enables it (or use your own server via `dhq init`) |
-| `accept_cost_required` | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
-| `repo_unreachable` | No git remote DeployHQ can deploy from, or DeployHQ rejected the repository (for SSH URLs usually a missing deploy key; `next_step` has the key and how to resume) |
-| `plan_limit_reached` | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
-| `payment_method_required` | Provisioning was refused because the account has no accepted payment method for the hosting requested (a Managed VPS always needs one). A person must add a card at `details.payment_url` (the account's Payment Details page); an agent cannot do this. If `details.project_created` is `true`, the project named in `details.project` was created by this run and has no server: re-run the same `dhq launch` command with `--project <permalink>` added once the card is in place (the project is also saved to `.deployhq.toml`), or remove it with `dhq projects delete <permalink>`. `launch` never deletes it automatically |
-| `subdomain_taken` | Static Hosting subdomain already in use — choose another `--subdomain` |
-| `rate_limited` | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
-| `provision_failed` | The server failed to provision — check the named resource; retry |
-| `deploy_failed` | Provisioning succeeded but the deploy failed — the managed-resource server is named with its teardown command; `--cleanup-on-failure` removes it automatically |
+| Reason | Exit | Meaning / next step |
+|--------|------|---------------------|
+| `auth_required` | 3 | No credentials in non-interactive mode — set `DEPLOYHQ_*` env vars (signup is interactive-only) |
+| `email_verification_required` | 3 | The account's email isn't verified yet — open the verification link that was emailed, then re-run (`retryable: true`) |
+| `beta_enroll_required` | 1 | Managed-resources beta not enabled and the user isn't an admin — `details.admin_required=true`; an admin enables it (or use your own server via `dhq init`) |
+| `accept_cost_required` | 1 | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
+| `repo_unreachable` | 1 | No git remote DeployHQ can deploy from, or DeployHQ rejected the repository (for SSH URLs usually a missing deploy key; `next_step` has the key and how to resume). A failure while connecting keeps its own code: 4 for a network failure, 2 for a server error, 3 for 401/403, 5 for 404 |
+| `plan_limit_reached` | 1 | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
+| `payment_method_required` | 1 | Provisioning was refused because the account has no accepted payment method for the hosting requested (a Managed VPS always needs one). A person must add a card at `details.payment_url` (the account's Payment Details page); an agent cannot do this. If `details.project_created` is `true`, the project named in `details.project` was created by this run and has no server: re-run the same `dhq launch` command with `--project <permalink>` added once the card is in place (the project is also saved to `.deployhq.toml`), or remove it with `dhq projects delete <permalink>`. `launch` never deletes it automatically |
+| `subdomain_taken` | 6 | Static Hosting subdomain already in use — choose another `--subdomain` |
+| `rate_limited` | 1 | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
+| `provision_failed` | 2 | The server failed to provision — check the named resource; retry. 2 is for a server-side or unknown failure; a network failure keeps its own code (4), and a refused API call keeps its own (1 for a 422, 3 for 401/403, 5 for 404) |
+| `deploy_failed` | 2 | Provisioning succeeded but the deploy failed — the managed-resource server is named with its teardown command; `--cleanup-on-failure` removes it automatically. A failure with a known kind (auth, network, not found) keeps its own code |
 
 ## Notes
 

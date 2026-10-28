@@ -188,6 +188,14 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq launch --json`**: a failed launch now writes exactly one JSON object to
   stdout (the structured error with `reason` / `next_step`, plus the
   `exit_code` and `recovery` fields the generic error object carried).
+  Previously a second, generic error object followed it.
+- **`dhq launch`**: a refusal now exits with the documented code for its kind —
+  1 for something the person must change (`plan_limit_reached`,
+  `accept_cost_required`, `beta_enroll_required`, `repo_unreachable`,
+  `rate_limited`), 3 for auth (`email_verification_required`), 6 when the
+  subdomain is taken — instead of 2 (internal error). The same code appears as
+  `exit_code` in `--json`. Command-argument and flag errors (wrong number of
+  arguments, unknown flag, flag without a value) now exit 1 instead of 2.
   Previously a second, generic error object followed it. Exit codes are
   unchanged.
 - **Agent skill guide**: the configuration reference documented
