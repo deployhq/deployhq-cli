@@ -7,15 +7,19 @@ import (
 
 // BuildConfig represents a build configuration/environment.
 type BuildConfig struct {
-	Identifier string                 `json:"identifier"`
-	Packages   map[string]string      `json:"packages,omitempty"`
-	Default    bool                   `json:"default"`
-	Servers    []interface{}          `json:"servers,omitempty"`
+	Identifier string            `json:"identifier"`
+	Packages   map[string]string `json:"packages,omitempty"`
+	Default    bool              `json:"default"`
+	Servers    []interface{}     `json:"servers,omitempty"`
 }
 
 // BuildConfigCreateRequest is the payload for creating/updating a build config.
+//
+// ServerIdentifiers sets which servers an override applies to (update only).
+// An override that targets no servers never applies to a deployment.
 type BuildConfigCreateRequest struct {
-	Packages map[string]string `json:"packages,omitempty"`
+	Packages          map[string]string `json:"packages,omitempty"`
+	ServerIdentifiers []string          `json:"server_identifiers,omitempty"`
 }
 
 func (c *Client) ListBuildConfigs(ctx context.Context, projectID string, opts *ListOptions) ([]BuildConfig, error) {
