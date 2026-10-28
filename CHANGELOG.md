@@ -55,6 +55,17 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   server in a group in parallel; it describes the group's transfer order
   instead.
 
+- **`dhq servers create`**: `--password-stdin` reads the server password from
+  stdin, or asks for it with hidden input in a terminal, so it never has to be
+  typed into the command. When a password is required (FTP/FTPS, or SSH without
+  `--use-ssh-keys`) and none is given, an interactive terminal now prompts for
+  it with hidden input; non-interactive runs fail before any request, with a
+  hint to add password-based servers from your own terminal or the DeployHQ
+  web app rather than handing the password to an AI agent.
+
+- **`dhq servers create`** help leads with the key-based SSH example; the
+  password example moves to the end, uses `--password-stdin`, and warns that a
+  password typed into a command ends up in shell history.
 - **`dhq build-configs create` / `update`**: `--server` (name or identifier,
   repeatable or comma-separated) chooses which servers a build configuration
   override applies to. Previously there was no way to target an override from
@@ -81,6 +92,21 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Fixed
 
+- **`dhq servers create --install-key`** now installs the project's own public
+  key (the default) as well as a `--global-key-pair-id` key. Previously it only
+  worked with a global key and otherwise silently did nothing. It now tries
+  once, says why when it cannot install, and is rejected up front without SSH
+  key authentication, without `--hostname`/`--username`, or with either one
+  starting with `-` (which `ssh` would read as an option). In non-interactive
+  mode it runs ssh with `BatchMode=yes`, so it fails fast instead of waiting
+  on a password prompt nobody can answer. Its `ssh-copy-id` step now passes
+  `-f`, without which `ssh-copy-id` refused to install a public key that has
+  no private key beside it.
+- **`dhq servers create`**: when DeployHQ cannot log in to an SSH/rsync server
+  because its key is not there yet, the error hint now shows the public key and
+  a one-line command to install it, for the project's key as well as a global
+  key. The command ends `ssh`'s options with `--`, so the destination is never
+  read as one.
 - **Plan and billing refusals are explained**: when the account's plan has no
   API access, its trial has ended, it is suspended, or it has no payment method
   for the hosting requested, every command now says which of these it is and links to the
@@ -99,6 +125,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   created the project, it also names the project, says to re-run with
   `--project` added, and how to delete it. The project is saved to
   `.deployhq.toml` so a re-run reuses it rather than creating a duplicate.
+
 - **Server targeting on create**: excluded files, config files, SSH commands
   and integrations created with dhq were stored with no target servers, so
   they silently did nothing — an "excluded" file was still uploaded, a config
