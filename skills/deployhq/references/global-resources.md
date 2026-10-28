@@ -209,7 +209,12 @@ dhq integrations create -p my-app --type google_chat --config '{"url":"https://c
 dhq integrations create -p my-app --type telegram --config '{"bot_token":"...","chat_id":"..."}' --json
 dhq integrations create -p my-app --type microsoft_teams --config '{"url":"...","team":"..."}' --json
 dhq integrations create -p my-app --type discord --json
+dhq integrations create -p my-app --type discord --server Production --json
 ```
+
+Integrations fire for deployments to any server unless `--server` names
+specific servers or server groups. `dhq integrations update <id> --server ...`
+or `--all-servers` re-targets an existing one.
 
 Available types: `slack_oauth`, `google_chat`, `telegram`, `microsoft_teams`, `discord`, `http_req`, `cloudflare`, `new_relic`, `rollbar`, `sentry`, `bugsnag`, `honeybadger`, `git_deployment_status`.
 

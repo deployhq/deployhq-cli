@@ -200,7 +200,7 @@ func TestLaunchEnsureProject_ExistingProject_RepoRejected_NoDoubleWrap(t *testin
 
 	env, _, _ := testLaunchEnvelope()
 	cfg := launchConfig{targetProtocol: "static_hosting", branch: "main", projectID: "my-app"}
-	_, err := launchEnsureProject(t.Context(), env, cfg, newTestClient(t, srv), "git@github.com:acme/my-app.git")
+	_, _, err := launchEnsureProject(t.Context(), env, cfg, newTestClient(t, srv), "git@github.com:acme/my-app.git")
 	require.Error(t, err)
 
 	var le *launchError

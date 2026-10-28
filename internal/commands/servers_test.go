@@ -440,7 +440,7 @@ func TestServersCreate_SendsDeploymentSettingsOnTheWire(t *testing.T) {
 
 	err := runServersCmd(t, "servers", "create",
 		"--name", "staging", "--protocol-type", "ssh",
-		"--hostname", "h", "--username", "u",
+		"--hostname", "h", "--username", "u", "--use-ssh-keys",
 		"--branch", "staging",
 		"--auto-deploy=false",
 		"--atomic",

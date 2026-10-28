@@ -6,8 +6,34 @@ own infrastructure — **Static Hosting** (Cloudflare-backed) or a **Managed VPS
 → beta enrollment (if needed) → repo check → target selection → project/server
 creation → provisioning → deploy → prints the live URL → saves `.deployhq.toml`.
 
-Use `dhq launch` for first-time setup of a managed target. Use `dhq deploy` for
+`dhq launch` is one option for first-time setup, for when the person has chosen
+DeployHQ hosting and wants it done in one go. It is not the default way to set up
+DeployHQ, and it does not apply to the person's own servers. Use `dhq deploy` for
 subsequent deploys once `.deployhq.toml` exists (launch writes it).
+
+## Before running it
+
+A single `dhq launch` run can, in order:
+
+1. enroll the account in the managed-resources beta,
+2. create a DeployHQ project,
+3. connect the repository (for a private repository, this gives DeployHQ read access to the code),
+4. create the hosting (a Static Hosting site, or a Managed VPS that is billed once the beta ends),
+5. deploy and publish the site at a public URL.
+
+Each of these is hard to undo, so the person agrees to all of them before the
+agent runs `dhq launch`. A good sequence:
+
+- Run `dhq launch --static --dry-run --json` (or `--vps`) and show the person what it would do.
+- Offer the choice: run `dhq launch`, or go step by step (`dhq projects create`,
+  `dhq repos create`, `dhq beta enroll`, `dhq servers create --protocol-type static_hosting`,
+  `dhq deploy`), approving each action on its own. See "Set up DeployHQ for this
+  project" in [SKILL.md](../SKILL.md).
+
+Some agent permission checks stop commands that bundle several hard-to-undo
+actions, and may refuse `dhq launch`. When that happens, the step-by-step
+commands are the way forward; the person can also run `dhq launch` in their own
+terminal.
 
 ## Usage
 
@@ -52,6 +78,7 @@ dhq launch --vps --dry-run --json
 - **`--dry-run`** emits `{would, requires, warning}` and makes no changes — use it to preview cost and confirm before provisioning a Managed VPS.
 - **Success (`--json`)** emits one object: `{status, target, url, project, server, deployment}`. In plain mode the final stdout line is the live URL.
 - **Idempotent:** re-running reads `.deployhq.toml` and resolves the existing project/server instead of double-provisioning.
+- **Eligibility is checked before anything is created:** the `plan_limit_reached` check runs before a project is created or a repository connected. Whether the account has a payment method on file cannot be checked in advance, so that refusal only arrives at provisioning time, as `payment_method_required`.
 
 ### Structured error reasons
 
@@ -64,6 +91,7 @@ On failure the error carries a stable `reason`, a `retryable` boolean, and a `ne
 | `accept_cost_required` | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
 | `repo_unreachable` | No git remote DeployHQ can deploy from, or DeployHQ rejected the repository (for SSH URLs usually a missing deploy key; `next_step` has the key and how to resume) |
 | `plan_limit_reached` | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
+| `payment_method_required` | Provisioning was refused because the account has no accepted payment method for the hosting requested (a Managed VPS always needs one). A person must add a card at `details.payment_url` (the account's Payment Details page); an agent cannot do this. If `details.project_created` is `true`, the project named in `details.project` was created by this run and has no server: re-run the same `dhq launch` command with `--project <permalink>` added once the card is in place (the project is also saved to `.deployhq.toml`), or remove it with `dhq projects delete <permalink>`. `launch` never deletes it automatically |
 | `subdomain_taken` | Static Hosting subdomain already in use — choose another `--subdomain` |
 | `rate_limited` | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
 | `provision_failed` | The server failed to provision — check the named resource; retry |

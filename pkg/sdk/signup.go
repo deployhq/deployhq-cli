@@ -29,8 +29,10 @@ type SignupRequest struct {
 }
 
 // SignupResponse is the response from creating a new account.
-// EmailVerified may be false for new signups — the account and api_key are still
-// valid and usable; verification is advisory only. A 422 error mentioning
+// EmailVerified may be false for new signups. The account and api_key are
+// created, but the API refuses requests made with the key (403
+// "email_verification_required") until the email address is verified, so tell
+// the user to open the verification link. A 422 error mentioning
 // "two-factor" signals an existing account with 2FA — use TwoFactorError to
 // distinguish this case and redirect the user to browser-based login.
 type SignupResponse struct {
@@ -40,7 +42,8 @@ type SignupResponse struct {
 	} `json:"account"`
 	APIKey string `json:"api_key"`
 	// EmailVerified is false when the signup email has not yet been confirmed.
-	// It is non-blocking: the api_key is returned regardless (signup_service.rb:262,346).
+	// The api_key is returned regardless, but API requests made with it are
+	// refused until the email address is verified (see APIError.IsEmailVerificationRequired).
 	EmailVerified bool `json:"email_verified"`
 	SSHPublicKey  struct {
 		PublicKey   string `json:"public_key"`
