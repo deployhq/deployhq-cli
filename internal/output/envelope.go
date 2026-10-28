@@ -160,11 +160,15 @@ func ColorStatus(status string) string {
 // WriteJSON writes data as JSON to stdout and optionally to the JSONL output file.
 // If JSONFields is set, only those fields are included.
 func (e *Envelope) WriteJSON(data interface{}) error {
-	output := data
 	if len(e.JSONFields) > 0 {
-		output = filterFields(data, e.JSONFields)
+		data = filterFields(data, e.JSONFields)
 	}
+	return e.WriteJSONUnfiltered(data)
+}
 
+// WriteJSONUnfiltered is WriteJSON without the --json field selection, for
+// payloads the selection was not written for (such as an error object).
+func (e *Envelope) WriteJSONUnfiltered(output interface{}) error {
 	enc := json.NewEncoder(e.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(output); err != nil {

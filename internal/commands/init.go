@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -334,6 +335,23 @@ func (m *initModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.creating = false
 		if msg.err != nil {
 			m.err = msg.err.Error()
+			// For an SSH repository a failed key install, or DeployHQ refusing
+			// access to the repository, lands on the manual deploy-key step,
+			// which shows the key and retries the connection on Enter.
+			keyProblem := msg.step == stepDeployKeyAuto ||
+				(msg.step == stepRepoURL && isRepoAccessRejected(msg.err))
+			switch {
+			case keyProblem && m.isPrivateRepo():
+				m.step = stepDeployKeyManual
+				m.cursor = 0
+			case msg.step == stepRepoURL:
+				// Any other connection failure has nothing to do with the
+				// key: go back to the branch step, where Enter retries and
+				// backspace returns to the repository URL.
+				m.step = stepBranch
+				m.input = m.branch
+				m.cursor = 0
+			}
 			return m, nil
 		}
 		switch msg.step {
@@ -342,19 +360,12 @@ func (m *initModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.step = stepSCMType
 		case stepRepoURL:
 			m.repoOK = msg.repoOK
-			if m.isPrivateRepo() {
-				if m.ghAvailable {
-					m.step = stepDeployKeyAuto
-					m.cursor = 0
-				} else {
-					m.step = stepDeployKeyManual
-				}
-			} else {
-				m.step = stepProtocol
-			}
-		case stepDeployKeyAuto:
-			m.deployKeyAdded = msg.err == nil
 			m.step = stepProtocol
+		case stepDeployKeyAuto:
+			// Key is on GitHub; now connect the repository.
+			m.deployKeyAdded = true
+			m.creating = true
+			return m, m.createRepo
 		case stepServerName:
 			m.server = msg.server
 			m.step = stepDeployConfirm
@@ -410,12 +421,25 @@ func (m *initModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "enter":
+			if m.creating {
+				return m, nil // already connecting
+			}
+			// gh already added the key and only the repository request
+			// failed: retry that, since running gh again would fail on the
+			// duplicate key.
+			if m.deployKeyAdded {
+				m.creating = true
+				return m, m.createRepo
+			}
 			if m.cursor == 0 {
 				m.creating = true
 				return m, m.addDeployKeyViaGH
 			}
 			m.step = stepDeployKeyManual
 		case "backspace", "left":
+			if m.creating {
+				return m, nil // wait for the connection result
+			}
 			m.step = stepBranch
 			m.cursor = 0
 		}
@@ -423,9 +447,15 @@ func (m *initModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case stepDeployKeyManual:
 		switch key {
 		case "enter":
-			m.step = stepProtocol
-			m.cursor = 0
+			if m.creating {
+				return m, nil // already connecting
+			}
+			m.creating = true
+			return m, m.createRepo
 		case "backspace", "left":
+			if m.creating {
+				return m, nil // wait for the connection result
+			}
 			m.step = stepBranch
 		}
 		return m, nil
@@ -612,6 +642,10 @@ func (m *initModel) submitTextStep() (tea.Model, tea.Cmd) {
 		m.creating = true
 		return m, m.createProject
 	case stepRepoURL:
+		if m.input != m.repoURL {
+			// A key added for the previous repository doesn't cover this one.
+			m.deployKeyAdded = false
+		}
 		m.repoURL = m.input
 		if m.repoURL == "" {
 			// Skip repo, go to server
@@ -624,6 +658,18 @@ func (m *initModel) submitTextStep() (tea.Model, tea.Cmd) {
 	case stepBranch:
 		if m.input != "" {
 			m.branch = m.input
+		}
+		// DeployHQ checks it can read an SSH repository with the project's
+		// deploy key as soon as it is connected, so add the key first.
+		if m.isPrivateRepo() {
+			m.input = ""
+			m.cursor = 0
+			if m.ghAvailable && isGitHubURL(m.repoURL) {
+				m.step = stepDeployKeyAuto
+			} else {
+				m.step = stepDeployKeyManual
+			}
+			return m, nil
 		}
 		m.creating = true
 		return m, m.createRepo
@@ -863,6 +909,9 @@ func (m *initModel) createServer() tea.Msg {
 
 func (m *initModel) addDeployKeyViaGH() tea.Msg {
 	err := installDeployKeyViaGH(m.repoURL, m.project.PublicKey, fmt.Sprintf("DeployHQ - %s", m.project.Name))
+	if errors.Is(err, errDeployKeyInUse) {
+		err = nil // already on GitHub, e.g. from an earlier run
+	}
 	return createResultMsg{err: err, step: stepDeployKeyAuto}
 }
 
@@ -918,31 +967,39 @@ func (m *initModel) View() string {
 		m.viewTextPrompt(&b, "Default branch", m.input)
 	case stepDeployKeyAuto:
 		m.viewCompleted(&b, "1/4", "Project", fmt.Sprintf("✅ %s", m.project.Name))
-		m.viewCompleted(&b, "2/4", "Repository", "✅ Connected")
+		m.viewCompleted(&b, "2/4", "Repository", "Not connected yet: add the deploy key first")
 		b.WriteString("\n")
-		b.WriteString(initHighlight.Render("  🔑 Deploy key required for private repo"))
+		b.WriteString(initHighlight.Render("  🔑 DeployHQ needs this deploy key on the repository before it can connect"))
 		b.WriteString("\n\n")
 		if m.deployKeyAdded {
 			b.WriteString(initSuccess.Render("  ✅ Deploy key added via GitHub CLI"))
 			b.WriteString("\n")
+			if !m.creating {
+				b.WriteString("\n  Press Enter to retry connecting the repository...")
+				b.WriteString("\n")
+			}
 		} else {
 			m.viewSelect(&b, "Add deploy key automatically?", []string{"Yes, add via GitHub CLI", "No, I'll add it manually"})
 		}
 	case stepDeployKeyManual:
 		m.viewCompleted(&b, "1/4", "Project", fmt.Sprintf("✅ %s", m.project.Name))
-		m.viewCompleted(&b, "2/4", "Repository", "✅ Connected")
+		m.viewCompleted(&b, "2/4", "Repository", "Not connected yet: add the deploy key first")
 		b.WriteString("\n")
-		b.WriteString(initHighlight.Render("  Add this deploy key to your repository:"))
+		b.WriteString(initHighlight.Render("  Add this deploy key to your repository (read-only is enough):"))
 		b.WriteString("\n\n")
 		fmt.Fprintf(&b, "  %s", m.project.PublicKey)
 		b.WriteString("\n\n")
+		if settings := githubDeployKeySettingsURL(m.repoURL); settings != "" {
+			fmt.Fprintf(&b, "  Paste it at: %s", settings)
+			b.WriteString("\n\n")
+		}
 		b.WriteString(initDim.Render("  GitHub:    repo → Settings → Deploy keys → Add deploy key"))
 		b.WriteString("\n")
 		b.WriteString(initDim.Render("  GitLab:    repo → Settings → Repository → Deploy keys"))
 		b.WriteString("\n")
 		b.WriteString(initDim.Render("  Bitbucket: repo → Settings → Access keys"))
 		b.WriteString("\n\n")
-		b.WriteString("  Press Enter once you've added the key...")
+		b.WriteString("  Press Enter once you've added the key to connect the repository...")
 		b.WriteString("\n")
 	case stepProtocol:
 		m.viewCompleted(&b, "1/4", "Project", fmt.Sprintf("✅ %s", m.project.Name))
@@ -1179,7 +1236,7 @@ func (m *initModel) viewCloudStep(b *strings.Builder, label string) {
 }
 
 func (m *initModel) isPrivateRepo() bool {
-	return strings.HasPrefix(m.repoURL, "git@") || strings.HasPrefix(m.repoURL, "ssh://")
+	return isSSHRepoURL(m.repoURL)
 }
 
 func detectGitRemote() string {

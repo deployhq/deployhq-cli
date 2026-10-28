@@ -167,6 +167,29 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Fixed
 
+- **`dhq launch` / `dhq init`**: connecting a private GitHub repository over SSH no
+  longer fails on a first run. DeployHQ checks access with the project's deploy key
+  as soon as the repository is connected, so the key is now added to the
+  repository first (via the `gh` CLI when available) and the repository connected
+  after. If the key can't be added automatically, the commands show the public key
+  and the GitHub page to paste it into (`/settings/keys/new`), and connect once it
+  is there.
+- **`dhq launch`**: a repository that can't be connected now stops launch with a
+  `repo_unreachable` error that includes the public deploy key, where to add it,
+  and how to resume (the same command with `--project <permalink>`), instead of warning
+  and carrying on to provisioning with a project that has no repository.
+- **`dhq launch` / `dhq init`**: re-running after the deploy key was already added
+  to GitHub (for example when only the repository request failed) no longer asks
+  you to add the key again. `launch` checks the repository's deploy keys with
+  `gh` first and skips adding a key that is already there, and both commands
+  treat gh's "key is already in use" as the key being in place.
+- **`dhq repos create`**: a rejected SSH repository's error now includes the
+  project's public deploy key, where to add it, and the command to re-run.
+- **`dhq launch --json`**: a failed launch now writes exactly one JSON object to
+  stdout (the structured error with `reason` / `next_step`, plus the
+  `exit_code` and `recovery` fields the generic error object carried).
+  Previously a second, generic error object followed it. Exit codes are
+  unchanged.
 - **Agent skill guide**: the configuration reference documented
   `dhq configure init|show|set|unset`, which run the interactive wizard and refuse
   inside an agent; it now documents the working `dhq config` subcommands. It also

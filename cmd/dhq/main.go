@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/deployhq/deployhq-cli/internal/commands"
@@ -31,13 +32,21 @@ func main() {
 
 		// In JSON mode, write structured error to stdout for agents
 		if commands.IsJSONMode() {
-			errResp := output.ErrorResponseFromErr(err)
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			_ = enc.Encode(errResp)
+			writeJSONError(os.Stdout, err)
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
 		os.Exit(exitCode)
 	}
+}
+
+// writeJSONError writes the structured error response for err, unless the
+// command already wrote its own — stdout then holds exactly one JSON object.
+func writeJSONError(w io.Writer, err error) {
+	if output.IsReported(err) {
+		return
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(output.ErrorResponseFromErr(err))
 }

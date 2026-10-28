@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -109,7 +111,7 @@ func newReposCreateCmd() *cobra.Command {
 			req := sdk.RepositoryCreateRequest{ScmType: scmType, URL: url, Branch: branch}
 			repo, err := client.CreateRepository(cliCtx.Background(), projectID, req)
 			if err != nil {
-				return err
+				return repoConnectError(cliCtx.Background(), client, projectID, scmType, url, branch, err)
 			}
 
 			// Fetch project to get deploy key
@@ -347,6 +349,44 @@ func newReposLatestRevisionCmd() *cobra.Command {
 	}
 }
 
+// repoConnectError adds deploy-key instructions to a failed repository
+// connection for an SSH URL. DeployHQ checks it can read an SSH repository with
+// the project's deploy key when it is connected, so when it refuses access the
+// cause is that the key has not been added to the git host yet. Other errors
+// pass through as-is.
+func repoConnectError(ctx context.Context, client *sdk.Client, projectID, scmType, url, branch string, err error) error {
+	if !isSSHRepoURL(url) || !isRepoAccessRejected(err) {
+		return err
+	}
+	project, projErr := client.GetProject(ctx, projectID)
+	if projErr != nil || project == nil || project.PublicKey == "" {
+		return err
+	}
+	rerun := fmt.Sprintf("dhq repos create -p %s --scm-type %s --url %s",
+		quoteRerunArg(projectID), quoteRerunArg(scmType), quoteRerunArg(url))
+	if branch != "" {
+		rerun += " --branch " + quoteRerunArg(branch)
+	}
+	return &output.UserError{
+		Message: err.Error(),
+		Hint:    deployKeyInstructions(url, project.PublicKey, rerun),
+	}
+}
+
+// rerunArgSafe matches values that can be pasted into a shell unquoted.
+var rerunArgSafe = regexp.MustCompile(`^[A-Za-z0-9@%+=:,./_-]+$`)
+
+// quoteRerunArg makes a value safe to paste into a suggested shell command:
+// left bare when it has no shell syntax, otherwise single-quoted with any
+// embedded ' written as '\''. A valid git branch such as release&hotfix would
+// otherwise run shell syntax when the command is copied.
+func quoteRerunArg(s string) string {
+	if rerunArgSafe.MatchString(s) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // deployKeyBreadcrumbs returns breadcrumbs with CLI commands for adding a deploy key.
 func deployKeyBreadcrumbs(repoURL, publicKey, projectID string) []output.Breadcrumb {
 	crumbs := []output.Breadcrumb{}
@@ -356,7 +396,7 @@ func deployKeyBreadcrumbs(repoURL, publicKey, projectID string) []output.Breadcr
 		if repo != "" {
 			crumbs = append(crumbs, output.Breadcrumb{
 				Action: "add deploy key via GitHub CLI",
-				Cmd:    fmt.Sprintf("echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -", publicKey, repo),
+				Cmd:    fmt.Sprintf("echo %s | gh repo deploy-key add -R %s --title DeployHQ -", quoteRerunArg(publicKey), repo),
 			})
 		}
 	} else if isGitLabURL(repoURL) {
@@ -386,7 +426,7 @@ func printDeployKeyHint(env *output.Envelope, repoURL, publicKey, projectID stri
 		if repo != "" {
 			env.Status("")
 			env.Status("Add it with the GitHub CLI:")
-			env.Status("  echo '%s' | gh repo deploy-key add -R %s --title DeployHQ -", publicKey, repo)
+			env.Status("  echo %s | gh repo deploy-key add -R %s --title DeployHQ -", quoteRerunArg(publicKey), repo)
 			return
 		}
 	}

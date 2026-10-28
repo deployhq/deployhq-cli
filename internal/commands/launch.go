@@ -454,6 +454,10 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	// ── Step 8: Project + repo ───────────────────────────────────────────────
 	projectID, projectCreated, err := launchEnsureProject(ctx, env, cfg, client, gitRemote)
 	if err != nil {
+		var le *launchError
+		if errors.As(err, &le) {
+			return writeLaunchError(env, cfg, le.Reason, err)
+		}
 		return err
 	}
 	cfg.projectID = projectID
@@ -1069,11 +1073,7 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 		env.Status("Using project: %s", cfg.projectID)
 		// Ensure a repo is connected — treat hard failures as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, cfg.projectID, gitRemote); err != nil {
-			return "", false, &launchError{
-				Reason:   reasonRepoUnreachable,
-				Message:  "Could not connect repository to project: " + err.Error(),
-				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
-			}
+			return "", false, launchRepoFailure(err)
 		}
 		return cfg.projectID, false, nil
 	}
@@ -1087,11 +1087,7 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 		env.Status("Auto-selected project: %s", projects[0].Name)
 		// Treat hard repo-connection failure as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, projects[0].Permalink, gitRemote); err != nil {
-			return "", false, &launchError{
-				Reason:   reasonRepoUnreachable,
-				Message:  "Could not connect repository to project: " + err.Error(),
-				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
-			}
+			return "", false, launchRepoFailure(err)
 		}
 		return projects[0].Permalink, false, nil
 	}
@@ -1128,11 +1124,7 @@ func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg 
 		env.Status("Using project: %s", p.Name)
 		// Treat hard repo-connection failure as terminal.
 		if err := launchEnsureRepo(ctx, env, cfg, client, p.Permalink, gitRemote); err != nil {
-			return "", false, &launchError{
-				Reason:   reasonRepoUnreachable,
-				Message:  "Could not connect repository to project: " + err.Error(),
-				NextStep: "Verify the repository URL is accessible and retry, or connect it manually in the DeployHQ dashboard.",
-			}
+			return "", false, launchRepoFailure(err)
 		}
 		return p.Permalink, false, nil
 	}
@@ -1184,9 +1176,10 @@ func launchCreateProject(ctx context.Context, env *output.Envelope, cfg launchCo
 	env.Status("Project %q created (%s)", proj.Name, proj.Permalink)
 
 	// Connect the git repository
+	// Stop here if the repository can't be connected: later steps would work on
+	// a project with no code to deploy.
 	if err := launchEnsureRepo(ctx, env, cfg, client, proj.Permalink, gitRemote); err != nil {
-		env.Warn("Could not connect repository automatically: %v", err)
-		env.Warn("You may need to connect it manually in the DeployHQ dashboard.")
+		return "", launchNewProjectRepoFailure(err, proj.Permalink)
 	}
 
 	return proj.Permalink, nil
@@ -1203,6 +1196,13 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 		return nil
 	}
 
+	// DeployHQ checks it can read an SSH repository with the project's deploy
+	// key as soon as it is connected, so the key must be on the git host first.
+	sshRepo := isSSHRepoURL(gitRemote)
+	if sshRepo {
+		launchSurfaceDeployKey(ctx, env, client, projectID, gitRemote, proj)
+	}
+
 	env.Status("Connecting repository %s...", gitRemote)
 	branch := cfg.branch
 	if branch == "" {
@@ -1217,20 +1217,25 @@ func launchEnsureRepo(ctx context.Context, env *output.Envelope, cfg launchConfi
 		Branch:  branch,
 	})
 	if err != nil {
+		if sshRepo {
+			return launchRepoKeyError(ctx, client, projectID, proj, gitRemote, err)
+		}
 		return err
 	}
 	env.Status("Repository connected.")
-	// Surface the project's public deploy key so a private repo can be granted
-	// read access before the first clone. proj was fetched above (may be nil if
-	// that lookup failed — the helper re-fetches in that case). For a GitHub repo
-	// with the gh CLI present, the helper installs the key automatically instead.
-	launchSurfaceDeployKey(ctx, env, client, projectID, gitRemote, proj)
+	if !sshRepo {
+		// Surface the project's public deploy key so a private repo can be granted
+		// read access before the first clone. proj was fetched above (may be nil if
+		// that lookup failed — the helper re-fetches in that case). For a GitHub repo
+		// with the gh CLI present, the helper installs the key automatically instead.
+		launchSurfaceDeployKey(ctx, env, client, projectID, gitRemote, proj)
+	}
 	return nil
 }
 
-// launchSurfaceDeployKey prints the project's PUBLIC deploy key after a
-// repository is connected, so the user can grant a private git host read access
-// before the first clone. The key shown is the project's public key (safe to
+// launchSurfaceDeployKey prints the project's PUBLIC deploy key so the user can
+// grant the git host read access. For an SSH repository it runs before the
+// repository is connected; otherwise after. The key shown is the project's public key (safe to
 // display); the matching private key never leaves the server. In interactive
 // mode it pauses so the user can install the key first; non-interactively it
 // prints a warning and continues (a private repo missing the key surfaces as a
@@ -1252,10 +1257,15 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 
 	// Path A: for a GitHub repo, try the local `gh` CLI to install the deploy
 	// key automatically. gh carries its own auth, so this needs no browser or
-	// prompt and works in both interactive and non-interactive mode. Any failure
-	// (not GitHub, gh missing/unauthenticated, no write access, duplicate key)
-	// falls through to surfacing the key for manual installation.
+	// prompt and works in both interactive and non-interactive mode. A key
+	// already on the repository (say from an earlier run) is not added again.
+	// Any other failure (not GitHub, gh missing/unauthenticated, no write
+	// access) falls through to surfacing the key for manual installation.
 	if isGitHubURL(gitRemote) && ghAvailable() {
+		if found, err := githubHasDeployKey(gitRemote, publicKey); err == nil && found {
+			output.ColorGreen.Fprintf(env.Stderr, "Deploy key already on the repository.\n") //nolint:errcheck
+			return
+		}
 		name := projectID
 		if proj != nil && proj.Name != "" {
 			name = proj.Name
@@ -1263,6 +1273,10 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 		err := installDeployKeyViaGH(gitRemote, publicKey, fmt.Sprintf("DeployHQ - %s", name))
 		if err == nil {
 			output.ColorGreen.Fprintf(env.Stderr, "Added the project's deploy key to GitHub via the gh CLI.\n") //nolint:errcheck
+			return
+		}
+		if errors.Is(err, errDeployKeyInUse) {
+			output.ColorGreen.Fprintf(env.Stderr, "gh reports this key is already on GitHub; continuing.\n") //nolint:errcheck
 			return
 		}
 		env.Logger.Write("gh deploy-key add failed; falling back to manual key: %v", err)
@@ -1273,6 +1287,10 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 	env.Status("")
 	env.Status("%s", publicKey)
 	env.Status("")
+	if settings := githubDeployKeySettingsURL(gitRemote); settings != "" {
+		env.Status("Add it at: %s", settings)
+		env.Status("")
+	}
 	env.Status("Add this public key as a deploy key on your repository host so DeployHQ can")
 	env.Status("clone the repo (required for private repositories; read access is enough).")
 	env.Status("DeployHQ does not add it automatically for repositories connected by URL.")
@@ -1283,7 +1301,7 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 	}
 
 	env.Status("")
-	fmt.Fprint(env.Stderr, "Press Enter once the key is added (or now, if the repo is public)... ") //nolint:errcheck
+	fmt.Fprint(env.Stderr, deployKeyPausePrompt(gitRemote)) //nolint:errcheck
 	reader := bufio.NewReader(os.Stdin)
 	_, _ = reader.ReadString('\n')
 }
@@ -2083,12 +2101,26 @@ func writeLaunchError(env *output.Envelope, cfg launchConfig, reason string, err
 		}
 	}
 
+	// This is the only JSON object written for the failure (main skips its
+	// standard one), so carry over the standard object's exit_code and
+	// recovery fields.
+	exitCode := 0
+	recovery := []output.Breadcrumb{}
+	if std, ok := output.ErrorResponseFromErr(err).Data.(output.ErrorData); ok {
+		exitCode = std.ExitCode
+		if std.Recovery != nil {
+			recovery = std.Recovery
+		}
+	}
+
 	type structuredErr struct {
-		Error     string            `json:"error"`
-		Reason    string            `json:"reason"`
-		Retryable bool              `json:"retryable"`
-		NextStep  string            `json:"next_step,omitempty"`
-		Details   map[string]string `json:"details,omitempty"`
+		Error     string              `json:"error"`
+		Reason    string              `json:"reason"`
+		ExitCode  int                 `json:"exit_code"`
+		Retryable bool                `json:"retryable"`
+		NextStep  string              `json:"next_step,omitempty"`
+		Details   map[string]string   `json:"details,omitempty"`
+		Recovery  []output.Breadcrumb `json:"recovery"`
 	}
 
 	resp := &output.Response{
@@ -2096,11 +2128,15 @@ func writeLaunchError(env *output.Envelope, cfg launchConfig, reason string, err
 		Data: structuredErr{
 			Error:     message,
 			Reason:    code,
+			ExitCode:  exitCode,
 			Retryable: retryable,
 			NextStep:  nextStep,
 			Details:   details,
+			Recovery:  recovery,
 		},
 	}
-	_ = env.WriteJSON(resp)
-	return err
+	// Unfiltered: --json=<fields> selects from the success payload, and
+	// filtering this object would drop the reason the caller needs.
+	_ = env.WriteJSONUnfiltered(resp)
+	return &output.ReportedError{Err: err}
 }

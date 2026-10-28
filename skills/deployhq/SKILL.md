@@ -129,6 +129,7 @@ Small steps, each one something the person can approve on its own:
 Same steps as "Set up DeployHQ for this project" above, checking with the person before each one:
 1. `dhq projects create --name "My App" --json` — create project
 2. `dhq repos create -p <project> --scm-type git --url <repo-url> --json` — connect repo
+   (SSH URL such as `git@github.com:...`: add the project's `public_key` to the repo as a deploy key FIRST, or the connect is rejected — see references/repos.md)
 3. `dhq servers create -p <project> --name Production --protocol-type ssh --hostname <host> --username <user> --json` — add server
 4. `dhq deploy -p <project> --json` — first deployment, after the person says go
 
