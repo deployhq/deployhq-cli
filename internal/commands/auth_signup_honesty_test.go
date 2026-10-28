@@ -5,8 +5,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,6 +20,7 @@ import (
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 )
 
 // emailUnverifiedHandler answers every request the way the API does for an
@@ -309,6 +313,55 @@ func TestInvalidCredentialsNextStep_BySource(t *testing.T) {
 	env := &cli.ResolvedCredentials{Account: "acme", Sources: map[string]string{"api_key": "env"}}
 	assert.Contains(t, invalidCredentialsNextStep(env, ""), "DEPLOYHQ_API_KEY")
 	assert.NotContains(t, invalidCredentialsNextStep(env, ""), "connection")
+
+	file := &cli.ResolvedCredentials{Account: "acme", Sources: map[string]string{"api_key": "file"}}
+	assert.Contains(t, invalidCredentialsNextStep(file, ""), "'dhq config show'")
+	assert.NotContains(t, invalidCredentialsNextStep(file, ""), "configure", "'dhq configure' is the interactive wizard")
+}
+
+// isolateCredentialStore keeps a test away from the developer's real logins:
+// an in-memory keyring and an empty home directory for the file fallback.
+// MockInit starts a fresh store each call, so no test sees another's logins.
+func isolateCredentialStore(t *testing.T) {
+	t.Helper()
+	keyring.MockInit()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	// os.UserHomeDir reads USERPROFILE on Windows.
+	t.Setenv("USERPROFILE", dir)
+}
+
+// withJSONCLIContext is withTestCLIContext for --json runs; it returns stdout.
+func withJSONCLIContext(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var stdout bytes.Buffer
+	orig := cliCtx
+	t.Cleanup(func() { cliCtx = orig })
+	cliCtx = &cli.Context{
+		Config: &config.Config{},
+		Envelope: &output.Envelope{
+			Stdout: &stdout, Stderr: io.Discard,
+			Logger: &output.Logger{}, NonInteractive: true, JSONMode: true,
+		},
+	}
+	return &stdout
+}
+
+func TestAuthStatus_JSON_NotLoggedIn(t *testing.T) {
+	isolateCredentialStore(t)
+	stdout := withJSONCLIContext(t)
+
+	cmd := newAuthStatusCmd()
+	require.NoError(t, cmd.RunE(cmd, nil), "not being signed in is a status, not a failure")
+
+	var res map[string]any
+	dec := json.NewDecoder(stdout)
+	require.NoError(t, dec.Decode(&res), "--json must write a JSON document, got %q", stdout.String())
+	assert.False(t, dec.More(), "exactly one JSON document")
+	assert.Equal(t, authStatusNotLoggedIn, res["status"])
+	assert.NotEmpty(t, res["message"])
+	assert.Contains(t, res["next_step"], "dhq auth login")
+	assert.Contains(t, res["next_step"], "separate terminal window")
 }
 
 func TestCheckAuthStatus_NetworkFailureIsUnconfirmed(t *testing.T) {
@@ -319,4 +372,179 @@ func TestCheckAuthStatus_NetworkFailureIsUnconfirmed(t *testing.T) {
 	res := checkAuthStatus(t.Context(), client, &cli.ResolvedCredentials{Account: "acme"}, "")
 	assert.Equal(t, authStatusUnconfirmed, res.Status)
 	assert.Contains(t, res.NextStep, "connection")
+}
+
+func TestSignup_JSON_OmitsAPIKey(t *testing.T) {
+	isolateCredentialStore(t)
+	stdout := withJSONCLIContext(t)
+
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Body: io.NopCloser(strings.NewReader(`{"account":{"subdomain":"acme","name":"Acme"},` +
+				`"api_key":"secret-signup-key","email_verified":false,` +
+				`"ssh_public_key":{"public_key":"ssh-ed25519 AAAA","fingerprint":"SHA256:x"}}`)),
+			Header:  http.Header{"Content-Type": []string{"application/json"}},
+			Request: r,
+		}, nil
+	})
+
+	cmd := newSignupCmd()
+	cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--account-name", "acme", "--accept-terms"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.NoError(t, cmd.Execute())
+
+	assert.NotContains(t, stdout.String(), "secret-signup-key")
+	var resp struct {
+		Data map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp), "got %q", stdout.String())
+	assert.NotContains(t, resp.Data, "api_key")
+	assert.Contains(t, resp.Data, "account")
+	assert.Contains(t, resp.Data, "email_verified")
+	assert.Contains(t, resp.Data, "ssh_public_key")
+
+	stored, err := auth.LoadByAccount("acme")
+	require.NoError(t, err)
+	assert.Equal(t, "secret-signup-key", stored.APIKey, "the key is saved, not printed")
+}
+
+func TestLaunchEnsureAuth_NonInteractive_HintNormalisesHostnameAccount(t *testing.T) {
+	isolateCredentialStore(t)
+	withTestCLIContext(t, true)
+	cliCtx.Config.Account = "acme.deployhq.com"
+
+	_, _, err := launchEnsureAuth(t.Context(), cliCtx.Envelope, launchConfig{})
+	require.Error(t, err)
+
+	var authErr *output.AuthError
+	require.True(t, errors.As(err, &authErr), "got %T", err)
+	assert.Contains(t, authErr.Hint, "https://acme.deployhq.com/security")
+	assert.NotContains(t, authErr.Hint, "deployhq.com.deployhq.com")
+}
+
+// withPipedCLIContext is a run with stdout piped and no output flag: JSONMode
+// is false, but the envelope switches to JSON automatically, as it does for
+// agents. It returns stdout.
+func withPipedCLIContext(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	stdout := withJSONCLIContext(t)
+	cliCtx.Envelope.JSONMode = false
+	cliCtx.Envelope.IsTTY = false
+	require.True(t, cliCtx.Envelope.WantsJSON())
+	return stdout
+}
+
+func TestAuthStatus_PipedOutputIsJSON_NotLoggedIn(t *testing.T) {
+	isolateCredentialStore(t)
+	stdout := withPipedCLIContext(t)
+
+	cmd := newAuthStatusCmd()
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	var res map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &res), "piped output must be JSON, got %q", stdout.String())
+	assert.Equal(t, authStatusNotLoggedIn, res["status"])
+}
+
+func TestAuthStatus_PipedOutputIsJSON_Authenticated(t *testing.T) {
+	isolateCredentialStore(t)
+	stdout := withPipedCLIContext(t)
+	cliCtx.Config.Account = "acme"
+	cliCtx.Config.Email = "me@example.com"
+	cliCtx.Config.APIKey = "k"
+	cliCtx.Config.Sources = map[string]string{"account": "env", "email": "env", "api_key": "env"}
+
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"email":"me@example.com"}`)),
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Request:    r,
+		}, nil
+	})
+
+	cmd := newAuthStatusCmd()
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	var res map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &res), "piped output must be JSON, got %q", stdout.String())
+	assert.Equal(t, authStatusAuthenticated, res["status"])
+	assert.Equal(t, "acme", res["account"])
+}
+
+// runJSONSignup runs 'dhq signup --json' against a stubbed sign-up API and
+// returns the response's data.
+func runJSONSignup(t *testing.T, stdout *bytes.Buffer) map[string]any {
+	t.Helper()
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Body: io.NopCloser(strings.NewReader(`{"account":{"subdomain":"acme","name":"Acme"},` +
+				`"api_key":"secret-signup-key","email_verified":false}`)),
+			Header:  http.Header{"Content-Type": []string{"application/json"}},
+			Request: r,
+		}, nil
+	})
+
+	cmd := newSignupCmd()
+	cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--account-name", "acme", "--accept-terms"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.NoError(t, cmd.Execute())
+
+	assert.NotContains(t, stdout.String(), "secret-signup-key")
+	var resp struct {
+		Data map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp), "got %q", stdout.String())
+	return resp.Data
+}
+
+func TestSignup_JSON_ReportsCredentialsSaved(t *testing.T) {
+	isolateCredentialStore(t)
+	data := runJSONSignup(t, withJSONCLIContext(t))
+	assert.Equal(t, true, data["credentials_saved"])
+	assert.NotContains(t, data["next_step"], "dhq auth login")
+}
+
+func TestSignup_JSON_ReportsCredentialSaveFailure(t *testing.T) {
+	// No keyring, and a home directory that is a file, so neither store works.
+	keyring.MockInitWithError(errors.New("keyring unavailable"))
+	home := filepath.Join(t.TempDir(), "home")
+	require.NoError(t, os.WriteFile(home, nil, 0o600))
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	data := runJSONSignup(t, withJSONCLIContext(t))
+	assert.Equal(t, false, data["credentials_saved"])
+	assert.Contains(t, data["next_step"], "could not be saved")
+	assert.Contains(t, data["next_step"], "dhq auth login")
+	assert.Contains(t, data["next_step"], "verification link", "the verify-email notice still applies")
+}
+
+func TestAuthStatus_JSON_NotLoggedIn_NamesConfiguredAccount(t *testing.T) {
+	isolateCredentialStore(t)
+	stdout := withJSONCLIContext(t)
+	cliCtx.Config.Account = "acme"
+	cliCtx.Config.Sources = map[string]string{"account": "env", "email": "default", "api_key": "default"}
+
+	cmd := newAuthStatusCmd()
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	var res map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &res), "got %q", stdout.String())
+	assert.Equal(t, authStatusNotLoggedIn, res["status"])
+	assert.Equal(t, "acme", res["account"])
+	assert.Equal(t, "env", res["source"])
+	assert.Equal(t, map[string]any{"account": "env"}, res["sources"])
+	assert.Contains(t, res["next_step"], "dhq auth login")
+	assert.Contains(t, res["next_step"], "DEPLOYHQ_ACCOUNT")
 }

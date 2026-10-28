@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
+	"github.com/deployhq/deployhq-cli/internal/cli"
 	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/detect"
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -721,7 +722,7 @@ func launchEnsureAuth(ctx context.Context, env *output.Envelope, cfg launchConfi
 	if env.NonInteractive {
 		return nil, "", &output.AuthError{
 			Message: "Not authenticated",
-			Hint:    auth.SignInHint(cliCtx.Config.Account, cliCtx.Config.Host),
+			Hint:    auth.SignInHint(cli.NormalizeAccount(cliCtx.Config.Account, cliCtx.Config.Host), cliCtx.Config.Host),
 		}
 	}
 

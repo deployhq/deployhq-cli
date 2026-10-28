@@ -284,6 +284,7 @@ const (
 	authStatusAPIRestricted     = "api_access_restricted"
 	authStatusAccountSuspended  = output.CodeAccountSuspended
 	authStatusUnconfirmed       = "unconfirmed"
+	authStatusNotLoggedIn       = "not_logged_in"
 )
 
 // authStatusResult is the --json shape of 'dhq auth status'.
@@ -410,9 +411,50 @@ func invalidCredentialsNextStep(creds *cli.ResolvedCredentials, host string) str
 	case "flag":
 		return "Check the --account and --api-key values. " + keyAt
 	case "file":
-		return "Check the account and api_key in the dhq config file ('dhq configure show'). " + keyAt
+		return "Check the account and api_key in the dhq config file ('dhq config show'). " + keyAt
 	}
 	return "Ask the person to sign in again by running 'dhq auth login' in a separate terminal window. " + keyAt
+}
+
+// notLoggedInNextStep is the next step when dhq has no credentials to use.
+const notLoggedInNextStep = "Ask the person to sign in by running 'dhq auth login' in a separate terminal window."
+
+// notLoggedInStatus is the not_logged_in result. It names the account dhq is
+// configured to use, if any, and where that setting came from, since a wrong
+// account setting is one reason no stored login is found.
+func notLoggedInStatus(cfg *config.Config) authStatusResult {
+	res := authStatusResult{
+		Status: authStatusNotLoggedIn,
+		Message: "No credentials found: dhq has no stored login to use, and flags, " +
+			"DEPLOYHQ_* environment variables and config files do not set all of account, email and API key",
+		NextStep: notLoggedInNextStep,
+	}
+	if cfg.Account == "" {
+		return res
+	}
+	res.Account = cli.NormalizeAccount(cfg.Account, cfg.Host)
+	res.Sources = map[string]string{}
+	for key, val := range map[string]string{"account": cfg.Account, "email": cfg.Email, "api_key": cfg.APIKey} {
+		if src := cfg.Sources[key]; val != "" && src != "" && src != "default" {
+			res.Sources[key] = src
+		}
+	}
+	for _, src := range res.Sources {
+		if res.Source == "" {
+			res.Source = src
+		} else if res.Source != src {
+			res.Source = "mixed"
+		}
+	}
+	switch cfg.Sources["account"] {
+	case "env":
+		res.NextStep += " If DEPLOYHQ_ACCOUNT names the wrong account, correct or unset it."
+	case "flag":
+		res.NextStep += " If --account names the wrong account, correct or drop it."
+	case "file":
+		res.NextStep += " If the dhq config file ('dhq config show') names the wrong account, correct or unset it."
+	}
+	return res
 }
 
 func newAuthStatusCmd() *cobra.Command {
@@ -432,7 +474,8 @@ The status is one of:
   api_access_restricted         the credentials work, but the plan has no API access
   account_suspended             the credentials work, but the account is suspended
                                 (trial ended, payment outstanding, or by DeployHQ)
-  unconfirmed                   DeployHQ could not be reached to check`,
+  unconfirmed                   DeployHQ could not be reached to check
+  not_logged_in                 no credentials were found`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
@@ -440,6 +483,9 @@ The status is one of:
 			// and reports the account those commands would use.
 			creds, err := cliCtx.ResolveCredentials()
 			if err != nil {
+				if env.WantsJSON() {
+					return env.WriteJSON(notLoggedInStatus(cliCtx.Config))
+				}
 				env.Status("Not logged in")
 				return nil
 			}
@@ -450,7 +496,7 @@ The status is one of:
 			}
 			res := checkAuthStatus(cliCtx.Background(), client, creds, cliCtx.Config.Host)
 
-			if cliCtx.Envelope.JSONMode {
+			if env.WantsJSON() {
 				return env.WriteJSON(res)
 			}
 

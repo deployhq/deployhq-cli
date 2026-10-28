@@ -109,17 +109,24 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			}
 
 			// Auto-save credentials
+			credentialsSaved := true
 			if err := auth.Store(&auth.Credentials{
 				Account: result.Account.Subdomain,
 				Email:   email,
 				APIKey:  result.APIKey,
 			}); err != nil {
+				credentialsSaved = false
 				env.Warn("Could not save credentials: %v", err)
 				env.Status("API key: %s", result.APIKey)
 			}
 
 			if env.WantsJSON() {
 				out := newSignupOutput(result, accountName, email)
+				out.CredentialsSaved = credentialsSaved
+				if !credentialsSaved {
+					// The key is not in the JSON, so the login has to be redone.
+					out.NextStep = strings.TrimSpace(credentialsNotSavedNextStep + " " + out.NextStep)
+				}
 				summary := fmt.Sprintf("Account created: %s", result.Account.Subdomain)
 				if out.NextStep != "" {
 					summary += ". " + out.NextStep
@@ -189,12 +196,21 @@ func confirmSignupTerms(env *output.Envelope, reader *bufio.Reader, accepted boo
 // what the person needs to know about it.
 type signupOutput struct {
 	*sdk.SignupResponse
+	// APIKey hides the embedded response's key: the credentials are saved, so
+	// the key never needs to be in the output.
+	APIKey string `json:"api_key,omitempty"`
 	// RequestedAccountName is set when the account name the person asked for
 	// was not available as-is and a different subdomain was assigned.
 	RequestedAccountName string `json:"requested_account_name,omitempty"`
 	AccountNameChanged   bool   `json:"account_name_changed,omitempty"`
-	NextStep             string `json:"next_step,omitempty"`
+	// CredentialsSaved says whether dhq saved the new login on this machine.
+	CredentialsSaved bool   `json:"credentials_saved"`
+	NextStep         string `json:"next_step,omitempty"`
 }
+
+// credentialsNotSavedNextStep is the next step when sign-up succeeded but the
+// new login could not be saved.
+const credentialsNotSavedNextStep = "The credentials could not be saved on this machine. " + notLoggedInNextStep
 
 func newSignupOutput(result *sdk.SignupResponse, requestedName, email string) signupOutput {
 	out := signupOutput{SignupResponse: result}
