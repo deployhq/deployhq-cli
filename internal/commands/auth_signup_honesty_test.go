@@ -526,3 +526,22 @@ func TestSignup_JSON_ReportsCredentialSaveFailure(t *testing.T) {
 	assert.Contains(t, data["next_step"], "dhq auth login")
 	assert.Contains(t, data["next_step"], "verification link", "the verify-email notice still applies")
 }
+
+func TestAuthStatus_JSON_NotLoggedIn_NamesConfiguredAccount(t *testing.T) {
+	isolateCredentialStore(t)
+	stdout := withJSONCLIContext(t)
+	cliCtx.Config.Account = "acme"
+	cliCtx.Config.Sources = map[string]string{"account": "env", "email": "default", "api_key": "default"}
+
+	cmd := newAuthStatusCmd()
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	var res map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &res), "got %q", stdout.String())
+	assert.Equal(t, authStatusNotLoggedIn, res["status"])
+	assert.Equal(t, "acme", res["account"])
+	assert.Equal(t, "env", res["source"])
+	assert.Equal(t, map[string]any{"account": "env"}, res["sources"])
+	assert.Contains(t, res["next_step"], "dhq auth login")
+	assert.Contains(t, res["next_step"], "DEPLOYHQ_ACCOUNT")
+}
