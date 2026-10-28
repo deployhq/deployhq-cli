@@ -277,6 +277,7 @@ const (
 	authStatusInvalidCredential = "invalid_credentials"
 	authStatusAPIRestricted     = "api_access_restricted"
 	authStatusUnconfirmed       = "unconfirmed"
+	authStatusNotLoggedIn       = "not_logged_in"
 )
 
 // authStatusResult is the --json shape of 'dhq auth status'.
@@ -396,10 +397,13 @@ func invalidCredentialsNextStep(creds *cli.ResolvedCredentials, host string) str
 	case "flag":
 		return "Check the --account and --api-key values. " + keyAt
 	case "file":
-		return "Check the account and api_key in the dhq config file ('dhq configure show'). " + keyAt
+		return "Check the account and api_key in the dhq config file ('dhq config show'). " + keyAt
 	}
 	return "Ask the person to sign in again by running 'dhq auth login' in a separate terminal window. " + keyAt
 }
+
+// notLoggedInNextStep is the next step when dhq has no credentials to use.
+const notLoggedInNextStep = "Ask the person to sign in by running 'dhq auth login' in a separate terminal window."
 
 func newAuthStatusCmd() *cobra.Command {
 	return &cobra.Command{
@@ -416,7 +420,8 @@ The status is one of:
                                 account's email address is verified
   invalid_credentials           DeployHQ rejected the API key, or has no such account
   api_access_restricted         the credentials work, but the plan has no API access
-  unconfirmed                   DeployHQ could not be reached to check`,
+  unconfirmed                   DeployHQ could not be reached to check
+  not_logged_in                 no credentials were found`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
@@ -424,6 +429,14 @@ The status is one of:
 			// and reports the account those commands would use.
 			creds, err := cliCtx.ResolveCredentials()
 			if err != nil {
+				if cliCtx.Envelope.JSONMode {
+					return env.WriteJSON(authStatusResult{
+						Status: authStatusNotLoggedIn,
+						Message: "No credentials found: dhq has no stored login to use, and flags, " +
+							"DEPLOYHQ_* environment variables and config files do not set all of account, email and API key",
+						NextStep: notLoggedInNextStep,
+					})
+				}
 				env.Status("Not logged in")
 				return nil
 			}

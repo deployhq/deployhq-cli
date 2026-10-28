@@ -65,9 +65,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   check and report a different, stored account. `status` is now
   `authenticated`, `email_verification_required`, `invalid_credentials` (wrong
   or revoked key, or no such account), `api_access_restricted` (plan without
-  API access) or `unconfirmed` (network or server error). `--json` adds
+  API access), `unconfirmed` (network or server error) or `not_logged_in` (no
+  credentials found; `--json` used to write nothing). `--json` adds
   `source`/`sources` (`env`, `flag`, `file`, `stored`, or `mixed`) and
-  `message`/`next_step`; text output has a `Source:` line.
+  `message`/`next_step`; text output has a `Source:` line. For credentials
+  from a config file, the hint names `dhq config show`.
 
 - **Account given as a hostname** (e.g. `DEPLOYHQ_ACCOUNT=acme.deployhq.com`) is
   now normalised to the subdomain when credentials are resolved, so it also
@@ -83,7 +85,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **Sign-up output**: `dhq signup` and `dhq hello` say "check your inbox" when
   the new account's email still needs verifying, and warn when the requested
   account name wasn't available as-is (e.g. `acme` became `acme6`). `dhq signup
-  --json` adds `requested_account_name`, `account_name_changed` and `next_step`.
+  --json` adds `requested_account_name`, `account_name_changed` and `next_step`,
+  and no longer prints the API key: it is saved with the credentials, and
+  `dhq auth token` prints it.
   Non-interactive sign-up errors no longer suggest putting a password in the
   command.
 

@@ -50,10 +50,12 @@ account fills gaps.
 | `invalid_credentials` | DeployHQ rejected the API key (wrong or revoked), or has no such account | Stored login: ask the person to run `dhq auth login` again in a separate terminal. Env/flags/config: fix the values there |
 | `api_access_restricted` | Credentials work, but the account's plan has no API access | Upgrade the plan |
 | `unconfirmed` | Network or server error while checking | Check connectivity and retry |
+| `not_logged_in` | No credentials were found: no stored login, and flags/env/config don't set all of account, email and API key | Ask the person to run `dhq auth login` in a separate terminal |
 
 `--json` returns `account`, `email`, `source` (`env`, `flag`, `file`, `stored`
 or `mixed`), `sources` (per field), `status`, and `message`/`next_step` when there
-is something to fix. `Not logged in` means no credentials were found.
+is something to fix. Without `--json`, `Not logged in` means no credentials were
+found (`not_logged_in` in `--json`).
 
 ```bash
 dhq auth status
@@ -123,11 +125,11 @@ Initialize a config file in the current directory.
 dhq configure init  # creates .deployhq.toml
 ```
 
-### `dhq configure show`
+### `dhq config show`
 Display current config with sources.
 
 ```bash
-dhq configure show
+dhq config show
 ```
 
 ### `dhq configure set <key> <value>`

@@ -189,6 +189,9 @@ func confirmSignupTerms(env *output.Envelope, reader *bufio.Reader, accepted boo
 // what the person needs to know about it.
 type signupOutput struct {
 	*sdk.SignupResponse
+	// APIKey hides the embedded response's key: the credentials are saved, so
+	// the key never needs to be in the output.
+	APIKey string `json:"api_key,omitempty"`
 	// RequestedAccountName is set when the account name the person asked for
 	// was not available as-is and a different subdomain was assigned.
 	RequestedAccountName string `json:"requested_account_name,omitempty"`
