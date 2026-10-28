@@ -55,10 +55,13 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Changed
 
-- **`dhq commands --json`**: `deploy` and `signup` now carry
-  `requires_confirmation: true` (one changes what runs on your servers, the
-  other creates an account), and `auth token` is no longer
-  `safe_for_automation`, because it prints the API key.
+- **`dhq commands --json`**: every command that starts a deployment
+  (`deploy`, `rollback`, `retry`, `deployments create`, `deployments retry`,
+  `deployments rollback`) and `signup` now carry `requires_confirmation: true`
+  (the former change what runs on your servers, the latter creates an
+  account). `safe_for_automation` now means deterministic in non-interactive
+  mode and fine to run without a person watching, so `auth token` is no
+  longer marked safe, because it prints the API key.
 
 - **`dhq templates server-groups create` / `update`**: `--transfer-order` help
   now names the two accepted values, matching the project-level command.

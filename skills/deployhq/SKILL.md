@@ -156,7 +156,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - Error responses include `retryable`, `exit_code`, and `recovery` actions when applicable
 - Exit codes: 0 = success, 1 = user error, 2 = internal, 3 = auth, 4 = network, 5 = not found, 6 = conflict
 - Empty results return exit 0 with empty `data` array (not an error)
-- `dhq commands --json` includes per-command agent metadata: `interactive`, `destructive`, `idempotent`, `safe_for_automation`, `resource_types`
+- `dhq commands --json` includes per-command agent metadata: `interactive`, `destructive`, `idempotent`, `requires_confirmation` (ask the person before running), `safe_for_automation` (deterministic in non-interactive mode and fine to run without a person watching; false for commands that print secrets), `resource_types`
 - `dhq api` covers all 144+ API endpoints not in the command tree
 - Project flag (`-p`/`--project`) accepts permalink or identifier
 - Server flag (`-s`/`--server`) uses fuzzy matching: exact > normalized > substring

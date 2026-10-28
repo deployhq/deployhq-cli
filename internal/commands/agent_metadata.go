@@ -8,7 +8,7 @@ type AgentMetadata struct {
 	Idempotent           bool     `json:"idempotent"`                      // safe to retry
 	RequiresConfirmation bool     `json:"requires_confirmation,omitempty"` // agent should confirm before running
 	SupportsJSON         bool     `json:"supports_json"`                   // honours --json
-	SafeForAutomation    bool     `json:"safe_for_automation"`             // deterministic in non-interactive mode
+	SafeForAutomation    bool     `json:"safe_for_automation"`             // deterministic in non-interactive mode and fine to run without a person watching (false for commands that print secrets)
 	ResourceTypes        []string `json:"resource_types,omitempty"`        // e.g. ["deployment", "server"]
 }
 
