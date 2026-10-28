@@ -59,6 +59,11 @@ func TestExcludedFilesCreate_JSONWritesTheCreatedRule(t *testing.T) {
 			Path       string           `json:"path"`
 			Servers    []map[string]any `json:"servers"`
 		} `json:"data"`
+		Breadcrumbs []struct {
+			Action   string `json:"action"`
+			Resource string `json:"resource"`
+			ID       string `json:"id"`
+		} `json:"breadcrumbs"`
 	}
 	require.NoError(t, dec.Decode(&resp), "stdout: %q", stdout)
 	assert.False(t, dec.More(), "stdout holds exactly one JSON document: %q", stdout)
@@ -67,4 +72,8 @@ func TestExcludedFilesCreate_JSONWritesTheCreatedRule(t *testing.T) {
 	assert.Equal(t, "deploy.sh", resp.Data.Path)
 	require.Len(t, resp.Data.Servers, 1)
 	assert.Equal(t, targetServerUUID, resp.Data.Servers[0]["identifier"])
+	require.Len(t, resp.Breadcrumbs, 1)
+	assert.Equal(t, "show", resp.Breadcrumbs[0].Action)
+	assert.Equal(t, "excluded_file", resp.Breadcrumbs[0].Resource)
+	assert.Equal(t, "ef-1", resp.Breadcrumbs[0].ID)
 }

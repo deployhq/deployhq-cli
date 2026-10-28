@@ -185,7 +185,7 @@ unless --server names specific servers or server groups.`,
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(f,
 					fmt.Sprintf("Created excluded file: %s", f.Path),
-					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq excluded-files show %s -p %s", f.Identifier, projectID)},
+					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq excluded-files show %s -p %s", f.Identifier, projectID), Resource: "excluded_file", ID: f.Identifier},
 				))
 			}
 			env.Status("Created excluded file: %s (%s)", f.Path, describeServerTargets(req.ServerIdentifiers))
