@@ -51,12 +51,12 @@ account fills gaps.
 | `api_access_restricted` | Credentials work, but the account's plan has no API access | Upgrade the plan |
 | `account_suspended` | Credentials work, but the account is suspended (trial ended, payment outstanding, or suspended by DeployHQ) | Stop and tell the person: `next_step` has the page that resolves it (plans and billing, or support). Re-running will not help |
 | `unconfirmed` | Network or server error while checking | Check connectivity and retry |
-| `not_logged_in` | No credentials were found: no stored login, and flags/env/config don't set all of account, email and API key | Ask the person to run `dhq auth login` in a separate terminal |
+| `not_logged_in` | No credentials were found: no stored login, and flags/env/config don't set all of account, email and API key. `account` and `source` name the configured account, if any | Ask the person to run `dhq auth login` in a separate terminal, or correct a wrong account setting |
 
 `--json` returns `account`, `email`, `source` (`env`, `flag`, `file`, `stored`
 or `mixed`), `sources` (per field), `status`, and `message`/`next_step` when there
-is something to fix. Without `--json`, `Not logged in` means no credentials were
-found (`not_logged_in` in `--json`).
+is something to fix. Piped output is JSON even without `--json`. Without JSON,
+`Not logged in` means no credentials were found (`not_logged_in` in JSON).
 
 ```bash
 dhq auth status
@@ -124,6 +124,8 @@ After sign-up:
 - **Check the account address.** If the requested name was taken or not valid,
   DeployHQ picks another (e.g. `acme` becomes `acme6`). dhq warns about it, and
   `--json` sets `account_name_changed` and `requested_account_name`.
+- **Check the credentials were saved.** `--json` sets `credentials_saved`; if it
+  is `false`, ask the person to run `dhq auth login` in a separate terminal.
 
 ```bash
 # Run by the person, in their own terminal

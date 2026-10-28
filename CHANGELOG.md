@@ -89,7 +89,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   credentials found; `--json` used to write nothing). `--json` adds
   `source`/`sources` (`env`, `flag`, `file`, `stored`, or `mixed`) and
   `message`/`next_step`; text output has a `Source:` line. For credentials
-  from a config file, the hint names `dhq config show`.
+  from a config file, the hint names `dhq config show`. Like other commands, it
+  answers in JSON when stdout is piped. `not_logged_in` names the configured
+  account, if any, and where that setting came from.
 
 - **Account given as a hostname** (e.g. `DEPLOYHQ_ACCOUNT=acme.deployhq.com`) is
   now normalised to the subdomain when credentials are resolved, so it also
@@ -107,7 +109,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   account name wasn't available as-is (e.g. `acme` became `acme6`). `dhq signup
   --json` adds `requested_account_name`, `account_name_changed` and `next_step`,
   and no longer prints the API key: it is saved with the credentials, and
-  `dhq auth token` prints it.
+  `dhq auth token` prints it. `credentials_saved` says whether that worked;
+  when it is `false`, `next_step` asks for a sign-in with `dhq auth login`.
   Non-interactive sign-up errors no longer suggest putting a password in the
   command.
 - **`dhq servers create`**: `--password-stdin` reads the server password from
