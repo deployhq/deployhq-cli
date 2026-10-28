@@ -14,9 +14,12 @@ The API key is under **Settings → Security → API Credentials** in DeployHQ
 (`https://<account>.deployhq.com/security`).
 
 ### `dhq auth login`
-Prompts for the account, email and API key (typed hidden) and stores them in the
-OS keychain. In non-interactive mode it does not prompt: it stops and says to sign
-in from a separate terminal (exit code 3).
+Sign in. The person runs this in their own terminal, where it prompts for the
+account, email and API key (the key is hidden as it is typed). The agent asks
+the person for their account and email rather than guessing them, and does not
+ask for the API key in the chat.
+In non-interactive mode it does not prompt: it stops and says to sign in from a
+separate terminal (exit code 3).
 
 | Flag | Description |
 |------|-------------|
@@ -25,9 +28,13 @@ in from a separate terminal (exit code 3).
 | `--api-key` | API key. Prefer the hidden prompt or `DEPLOYHQ_API_KEY`; never pass a key relayed through an AI chat |
 
 ```bash
-# Run by the person, in their own terminal
+# The person, in their own terminal (prompts for missing fields; the key is always typed hidden)
 dhq auth login
-dhq auth login --account mycompany --email user@example.com   # key still prompted
+dhq auth login --account mycompany --email user@example.com
+
+# Fully flag-driven: only for scripts that read the key from a secret store,
+# never with a key typed into an agent chat
+dhq auth login --account mycompany --email user@example.com --api-key "$DEPLOYHQ_API_KEY"
 ```
 
 ### `dhq auth logout`
@@ -101,9 +108,11 @@ These need a person with access to the account's billing; an agent should stop, 
 ## Signup
 
 ### `dhq signup`
-Create a new DeployHQ account. **Agents: ask the person to run `dhq signup`
-themselves in a separate terminal window**; it asks for the password at a hidden
-prompt. Never ask for, or make up, a password.
+Create a new DeployHQ account. The person runs this in their own terminal, where
+it prompts for the email and password (the password is hidden), or signs up on
+the DeployHQ website instead. The agent checks with the person before creating
+an account, and does not ask for the password in the chat. The new account has
+to be verified from the email DeployHQ sends before other commands work.
 
 It asks the person to accept the Terms of Service
 (https://www.deployhq.com/terms). In non-interactive mode `--accept-terms` is
@@ -128,17 +137,20 @@ After sign-up:
   is `false`, ask the person to run `dhq auth login` in a separate terminal.
 
 ```bash
-# Run by the person, in their own terminal
+# The person, in their own terminal
 dhq signup
 ```
 
 ## CLI Configuration
 
-### `dhq configure init`
+`dhq configure` (no subcommand) is an interactive wizard and refuses to run
+inside an agent. The `dhq config` commands below work everywhere.
+
+### `dhq config init`
 Initialize a config file in the current directory.
 
 ```bash
-dhq configure init  # creates .deployhq.toml
+dhq config init  # creates .deployhq.toml
 ```
 
 ### `dhq config show`
@@ -148,19 +160,19 @@ Display current config with sources.
 dhq config show
 ```
 
-### `dhq configure set <key> <value>`
+### `dhq config set <key> <value>`
 Set a config value.
 
 ```bash
-dhq configure set project my-app
-dhq configure set account mycompany
+dhq config set project my-app
+dhq config set account mycompany
 ```
 
-### `dhq configure unset <key>`
+### `dhq config unset <key>`
 Remove a config value.
 
 ```bash
-dhq configure unset project
+dhq config unset project
 ```
 
 ### Config File Format (`.deployhq.toml`)
@@ -249,6 +261,10 @@ dhq completion powershell | Out-String | Invoke-Expression
 ```
 
 ## First-Time Setup
+
+`dhq hello` and `dhq init` are interactive wizards for a person at a terminal.
+Inside an agent (non-interactive mode) they refuse to run; the agent uses the
+step-by-step setup in [SKILL.md](../SKILL.md) instead.
 
 ### `dhq hello`
 Interactive guided setup for new users (run by the person in their own terminal):

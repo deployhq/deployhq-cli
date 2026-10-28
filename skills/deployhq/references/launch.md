@@ -6,8 +6,34 @@ own infrastructure — **Static Hosting** (Cloudflare-backed) or a **Managed VPS
 → beta enrollment (if needed) → repo check → target selection → project/server
 creation → provisioning → deploy → prints the live URL → saves `.deployhq.toml`.
 
-Use `dhq launch` for first-time setup of a managed target. Use `dhq deploy` for
+`dhq launch` is one option for first-time setup, for when the person has chosen
+DeployHQ hosting and wants it done in one go. It is not the default way to set up
+DeployHQ, and it does not apply to the person's own servers. Use `dhq deploy` for
 subsequent deploys once `.deployhq.toml` exists (launch writes it).
+
+## Before running it
+
+A single `dhq launch` run can, in order:
+
+1. enroll the account in the managed-resources beta,
+2. create a DeployHQ project,
+3. connect the repository (for a private repository, this gives DeployHQ read access to the code),
+4. create the hosting (a Static Hosting site, or a Managed VPS that is billed once the beta ends),
+5. deploy and publish the site at a public URL.
+
+Each of these is hard to undo, so the person agrees to all of them before the
+agent runs `dhq launch`. A good sequence:
+
+- Run `dhq launch --static --dry-run --json` (or `--vps`) and show the person what it would do.
+- Offer the choice: run `dhq launch`, or go step by step (`dhq projects create`,
+  `dhq repos create`, `dhq beta enroll`, `dhq servers create --protocol-type static_hosting`,
+  `dhq deploy`), approving each action on its own. See "Set up DeployHQ for this
+  project" in [SKILL.md](../SKILL.md).
+
+Some agent permission checks stop commands that bundle several hard-to-undo
+actions, and may refuse `dhq launch`. When that happens, the step-by-step
+commands are the way forward; the person can also run `dhq launch` in their own
+terminal.
 
 ## Usage
 

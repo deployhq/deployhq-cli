@@ -334,13 +334,15 @@
       }
     },
     {
-      "id": "login-prefilled",
+      "id": "login-own-terminal",
       "category": "auth",
-      "prompt": "Log me in to the 'mycompany' account with email user@example.com",
+      "prompt": "Log me in to the 'mycompany' DeployHQ account, my email is user@example.com",
       "expected": {
         "command": "dhq auth login",
         "flags": ["--account", "mycompany", "--email", "user@example.com"]
-      }
+      },
+      "must_not_contain": ["api-key"],
+      "notes": "The person runs dhq auth login in their own terminal and types the API key at its hidden prompt. The agent never asks for the key or puts it on a command line."
     },
     {
       "id": "diagnose-cli",
@@ -434,6 +436,16 @@
         "flags": ["--name", "api-service", "--json"]
       },
       "notes": "Multi-step: create project → create repo → create server. Agent should chain these."
+    },
+    {
+      "id": "first-time-setup-asks-first",
+      "category": "workflows",
+      "prompt": "Deploy this site with DeployHQ",
+      "expected": {
+        "command": "dhq auth status"
+      },
+      "must_not_match": ["(^|[^[:alnum:]_-])dhq[[:space:]]+launch[[:space:]]+-", "(^|[^[:alnum:]_-])dhq([[:space:]]+((-p|--project|--account|--email|--api-key|-C|--cwd|--host)[[:space:]]+[^[:space:]]+|-[^[:space:]]+))+[[:space:]]+launch([^[:alnum:]_-]|$)"],
+      "notes": "First-time setup starts by checking sign-in, then asks the person where to deploy (their own server or DeployHQ hosting). It does not jump to the all-in-one dhq launch. Offering dhq launch as one of the choices is fine; running it with any flag is not, whatever the order and whether the flags come before or after launch (dhq -p app launch --static)."
     },
     {
       "id": "avoid-interactive-envvar",

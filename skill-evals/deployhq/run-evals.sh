@@ -157,49 +157,64 @@ check_eval() {
   local expected_cmd
   expected_cmd=$(echo "$eval_json" | jq -r '.expected.command')
 
-  # Check command is present
-  if ! echo "$response" | grep -qF "$expected_cmd"; then
+  # Check command is present. `-e` keeps a pattern that starts with "-" from
+  # being read as a grep option.
+  if ! printf '%s\n' "$response" | grep -qF -e "$expected_cmd"; then
     echo "MISSING_COMMAND:$expected_cmd"
     return 1
   fi
 
-  # Check required flags
-  local flags
-  flags=$(echo "$eval_json" | jq -r '.expected.flags[]? // empty')
-  for flag in $flags; do
-    if ! echo "$response" | grep -qF "$flag"; then
+  # Required flags, args and forbidden strings are read one JSON array element
+  # per line, so an element containing spaces stays a single pattern.
+  local flag
+  while IFS= read -r flag; do
+    [[ -z "$flag" ]] && continue
+    if ! printf '%s\n' "$response" | grep -qF -e "$flag"; then
       echo "MISSING_FLAG:$flag"
       return 1
     fi
-  done
+  done < <(echo "$eval_json" | jq -r '.expected.flags[]? // empty')
 
-  # Check args
-  local args
-  args=$(echo "$eval_json" | jq -r '.expected.args[]? // empty')
-  for arg in $args; do
-    if ! echo "$response" | grep -qF "$arg"; then
+  local arg
+  while IFS= read -r arg; do
+    [[ -z "$arg" ]] && continue
+    if ! printf '%s\n' "$response" | grep -qF -e "$arg"; then
       echo "MISSING_ARG:$arg"
       return 1
     fi
-  done
+  done < <(echo "$eval_json" | jq -r '.expected.args[]? // empty')
 
-  # Check must_not_contain
-  local forbidden
-  forbidden=$(echo "$eval_json" | jq -r '.must_not_contain[]? // empty')
-  for banned in $forbidden; do
-    if echo "$response" | grep -qF "$banned"; then
+  local banned
+  while IFS= read -r banned; do
+    [[ -z "$banned" ]] && continue
+    if printf '%s\n' "$response" | grep -qF -e "$banned"; then
       echo "FORBIDDEN:$banned"
       return 1
     fi
-  done
+  done < <(echo "$eval_json" | jq -r '.must_not_contain[]? // empty')
+
+  # Forbidden patterns are POSIX extended regexes, for checks a fixed string
+  # can't express, such as a command whose flags may come in any order. Lines
+  # ending in a backslash are joined first, so a command continued over several
+  # lines is matched as one.
+  local joined pattern
+  joined=$(printf '%s\n' "$response" | awk '{ if (sub(/\\$/, "")) printf "%s ", $0; else print }')
+  while IFS= read -r pattern; do
+    [[ -z "$pattern" ]] && continue
+    if printf '%s\n' "$joined" | grep -qE -e "$pattern"; then
+      echo "FORBIDDEN_MATCH:$pattern"
+      return 1
+    fi
+  done < <(echo "$eval_json" | jq -r '.must_not_match[]? // empty')
 
   echo "PASS"
   return 0
 }
 
-# Run evals
+# Run evals. The loop reads from process substitution, not a pipe, so it runs
+# in this shell and the PASSED/FAILED/ERRORS counts survive it.
 INDEX=0
-jq -c "[$EVAL_FILTER][]" "$EVALS_FILE" | while IFS= read -r eval_entry; do
+while IFS= read -r eval_entry; do
   INDEX=$((INDEX + 1))
   id=$(echo "$eval_entry" | jq -r '.id')
   category=$(echo "$eval_entry" | jq -r '.category')
@@ -229,8 +244,9 @@ jq -c "[$EVAL_FILTER][]" "$EVALS_FILE" | while IFS= read -r eval_entry; do
     echo "  Response: $response"
   fi
 
-  # Check result
-  result=$(check_eval "$eval_entry" "$response")
+  # Check result. check_eval returns non-zero on a failed check; `|| true`
+  # keeps set -e from ending the run so the failure is reported below.
+  result=$(check_eval "$eval_entry" "$response") || true
 
   if [[ "$result" == "PASS" ]]; then
     echo -e "${GREEN}PASS${RESET}"
@@ -246,7 +262,7 @@ jq -c "[$EVAL_FILTER][]" "$EVALS_FILE" | while IFS= read -r eval_entry; do
 
   # Rate limit courtesy
   sleep 0.5
-done
+done < <(jq -c "[$EVAL_FILTER][]" "$EVALS_FILE")
 
 echo ""
 echo -e "${BOLD}Results${RESET}"
