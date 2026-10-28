@@ -46,7 +46,7 @@ account fills gaps.
 | `status` | Meaning | Next step |
 |----------|---------|-----------|
 | `authenticated` | Credentials work | Continue |
-| `email_verification_required` | Signed in, but DeployHQ refuses every request until the account's email is verified | Ask the person to open the verification link DeployHQ emailed them, then re-run `dhq auth status` |
+| `email_verification_required` | Signed in, but DeployHQ refuses every request until the account's email is verified | Ask the person to open the verification link DeployHQ emailed them, then re-run `dhq auth status --json` |
 | `invalid_credentials` | DeployHQ rejected the API key (wrong or revoked), or has no such account | Stored login: ask the person to run `dhq auth login` again in a separate terminal. Env/flags/config: fix the values there |
 | `api_access_restricted` | Credentials work, but the account's plan has no API access | Upgrade the plan |
 | `unconfirmed` | Network or server error while checking | Check connectivity and retry |
