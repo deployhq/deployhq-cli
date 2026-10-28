@@ -33,6 +33,12 @@ type targetingAPI struct {
 	writes  []string
 	bodies  []map[string]any
 	created string // JSON returned for writes
+
+	// groupsStatus, when set, is the status of the server-group listing.
+	groupsStatus int
+	// details maps a detail path suffix ("/servers/<id>" or
+	// "/server_groups/<id>") to its status; unlisted lookups are 404.
+	details map[string]int
 }
 
 func installTargetingAPI(t *testing.T, created string) *targetingAPI {
@@ -62,7 +68,12 @@ func installTargetingAPI(t *testing.T, created string) *targetingAPI {
 					{"identifier":"`+targetServerUUID+`","name":"Production","protocol_type":"ssh"},
 					{"identifier":"`+otherServerUUID+`","name":"Staging","protocol_type":"ssh"}]`)
 			case strings.HasSuffix(r.URL.Path, "/server_groups"):
+				if api.groupsStatus != 0 {
+					return respond(api.groupsStatus, `{"error":"boom"}`)
+				}
 				return respond(http.StatusOK, `[{"identifier":"`+targetGroupUUID+`","name":"Web Cluster"}]`)
+			case strings.Contains(r.URL.Path, "/servers/") || strings.Contains(r.URL.Path, "/server_groups/"):
+				return respond(detailResponse(r.URL.Path, api.details))
 			}
 			return respond(http.StatusOK, `[]`)
 		}
@@ -206,6 +217,34 @@ func TestExcludedFilesCreate_UnlistedIdentifierFailsWithoutWriting(t *testing.T)
 	require.ErrorAs(t, err, &userErr)
 	assert.Contains(t, userErr.Message, `"`+unlisted+`"`)
 	assert.Equal(t, 0, api.writeCount(), "an identifier not in the project must not create a rule")
+}
+
+func TestExcludedFilesCreate_UnknownIdentifierFailsWhenGroupListFails(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, excludedFileJSON)
+	api.groupsStatus = http.StatusInternalServerError
+	const unlisted = "8e1c7a52-9999-4c3e-9a0b-000000000009"
+
+	err := runServersCmd(t, "excluded-files", "create", "--path", "deploy.sh", "--server", unlisted)
+	require.Error(t, err)
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Equal(t, 1, api.getCount("/server_groups/"+unlisted), "the identifier is looked up in the project")
+	assert.Equal(t, 0, api.writeCount(), "an identifier not in the project must not create a rule")
+}
+
+func TestExcludedFilesCreate_FailedLookupFailsWithoutWriting(t *testing.T) {
+	withResolvableContext(t)
+	api := installTargetingAPI(t, excludedFileJSON)
+	api.groupsStatus = http.StatusInternalServerError
+	const unlisted = "8e1c7a52-9999-4c3e-9a0b-000000000009"
+	api.details = map[string]int{"/server_groups/" + unlisted: http.StatusInternalServerError}
+
+	err := runServersCmd(t, "excluded-files", "create", "--path", "deploy.sh", "--server", unlisted)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "listing server groups failed")
+	assert.Equal(t, 0, api.writeCount(), "an unconfirmed identifier must not create a rule")
 }
 
 func TestExcludedFilesUpdate_PathOnlyLeavesTargetingUntouched(t *testing.T) {
@@ -435,6 +474,29 @@ const duplicateServerUUID = "8e1c7a52-4444-4c3e-9a0b-000000000004"
 // status and body, so resolveServerTargets can be exercised directly.
 func targetsServer(t *testing.T, serversStatus int, servers string, groupsStatus int, groups string) *httptest.Server {
 	t.Helper()
+	return targetsServerWithDetails(t, serversStatus, servers, groupsStatus, groups, nil)
+}
+
+// detailResponse answers a server or server-group detail lookup with the status
+// details gives its path suffix: 200 with the record, or that error status.
+// A lookup details does not mention is a 404, as for an id not in the project.
+func detailResponse(path string, details map[string]int) (int, string) {
+	for suffix, status := range details {
+		if strings.HasSuffix(path, suffix) {
+			if status == http.StatusOK {
+				id := suffix[strings.LastIndex(suffix, "/")+1:]
+				return status, `{"identifier":"` + id + `","name":"Found"}`
+			}
+			return status, `{"error":"boom"}`
+		}
+	}
+	return http.StatusNotFound, `{"error":"not found"}`
+}
+
+// targetsServerWithDetails is targetsServer that also answers detail lookups
+// as detailResponse does.
+func targetsServerWithDetails(t *testing.T, serversStatus int, servers string, groupsStatus int, groups string, details map[string]int) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -444,6 +506,10 @@ func targetsServer(t *testing.T, serversStatus int, servers string, groupsStatus
 		case strings.HasSuffix(r.URL.Path, "/server_groups"):
 			w.WriteHeader(groupsStatus)
 			_, _ = w.Write([]byte(groups))
+		case strings.Contains(r.URL.Path, "/servers/") || strings.Contains(r.URL.Path, "/server_groups/"):
+			status, body := detailResponse(r.URL.Path, details)
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":"not found"}`))
@@ -586,17 +652,111 @@ func TestResolveServerTargets_EmptyValuesHintCoversCreateAndUpdate(t *testing.T)
 	assert.Equal(t, "To target every server, omit --server when creating, or use --all-servers when updating.", userErr.Hint)
 }
 
-func TestResolveServerTargets_IdentifierPassesThroughWhenGroupListFails(t *testing.T) {
-	const unlisted = "8e1c7a52-9999-4c3e-9a0b-000000000009"
-	srv := longNamesServer(t, http.StatusInternalServerError)
-
-	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlisted})
-	require.NoError(t, err)
-	assert.Equal(t, []string{unlisted}, ids)
+// listingsServer lists the long-named servers and groups, failing the listings
+// whose status is not 200, and answers detail lookups as details says.
+func listingsServer(t *testing.T, serversStatus, groupsStatus int, details map[string]int) *httptest.Server {
+	t.Helper()
+	return targetsServerWithDetails(t, serversStatus, `[
+		{"identifier":"`+targetServerUUID+`","name":"`+longServerName+`","protocol_type":"ssh"},
+		{"identifier":"`+otherServerUUID+`","name":"Staging","protocol_type":"ssh"}]`,
+		groupsStatus, `[{"identifier":"`+targetGroupUUID+`","name":"`+longGroupName+`"}]`, details)
 }
 
-func TestResolveServerTargets_IdentifierPassesThroughWhenServerListFails(t *testing.T) {
-	srv := targetsServer(t, http.StatusInternalServerError, `{"error":"boom"}`, http.StatusOK, `[]`)
+// assertUnresolved checks err rejects input as a value that is not in the
+// project: a user error, not the listing failure.
+func assertUnresolved(t *testing.T, err error, input string) {
+	t.Helper()
+	require.Error(t, err)
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Contains(t, userErr.Message, `"`+input+`"`)
+	// A failed listing leaves the choices unknown, so the hint must not claim
+	// the project is empty or list only part of it.
+	assert.NotContains(t, userErr.Hint, "No servers in this project")
+	assert.NotContains(t, userErr.Hint, "Available:")
+	assert.Contains(t, userErr.Hint, "dhq servers list")
+	var apiErr *sdk.APIError
+	assert.False(t, errors.As(err, &apiErr), "a value the project does not have is not a listing failure")
+}
+
+// unlistedUUID is a well-formed identifier that no listing shows.
+const unlistedUUID = "8e1c7a52-9999-4c3e-9a0b-000000000009"
+
+// When a listing failed, an identifier it might have shown is confirmed with
+// the project before it is used.
+func TestResolveServerTargets_IdentifierIsConfirmedWhenGroupListFails(t *testing.T) {
+	srv := listingsServer(t, http.StatusOK, http.StatusInternalServerError,
+		map[string]int{"/server_groups/" + unlistedUUID: http.StatusOK})
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlistedUUID})
+	require.NoError(t, err)
+	assert.Equal(t, []string{unlistedUUID}, ids)
+}
+
+func TestResolveServerTargets_UnknownIdentifierIsRejectedWhenGroupListFails(t *testing.T) {
+	srv := listingsServer(t, http.StatusOK, http.StatusInternalServerError, nil)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlistedUUID})
+	assert.Nil(t, ids)
+	assertUnresolved(t, err, unlistedUUID)
+}
+
+func TestResolveServerTargets_UnknownIdentifierIsRejectedWhenServerListFails(t *testing.T) {
+	srv := listingsServer(t, http.StatusInternalServerError, http.StatusOK, nil)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlistedUUID})
+	assert.Nil(t, ids)
+	assertUnresolved(t, err, unlistedUUID)
+}
+
+func TestResolveServerTargets_IdentifierIsConfirmedAsGroupWhenBothListsFail(t *testing.T) {
+	srv := listingsServer(t, http.StatusInternalServerError, http.StatusInternalServerError,
+		map[string]int{"/server_groups/" + unlistedUUID: http.StatusOK})
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlistedUUID})
+	require.NoError(t, err)
+	assert.Equal(t, []string{unlistedUUID}, ids)
+}
+
+func TestResolveServerTargets_UnknownIdentifierIsRejectedWhenBothListsFail(t *testing.T) {
+	srv := listingsServer(t, http.StatusInternalServerError, http.StatusInternalServerError, nil)
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlistedUUID})
+	assert.Nil(t, ids)
+	assertUnresolved(t, err, unlistedUUID)
+}
+
+// A lookup that fails for another reason cannot tell whether the project has
+// the identifier, so the listing failure is reported instead.
+func TestResolveServerTargets_FailedLookupReportsGroupListError(t *testing.T) {
+	srv := listingsServer(t, http.StatusOK, http.StatusInternalServerError,
+		map[string]int{"/server_groups/" + unlistedUUID: http.StatusInternalServerError})
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlistedUUID})
+	assert.Nil(t, ids)
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	assert.Contains(t, err.Error(), "listing server groups failed")
+}
+
+func TestResolveServerTargets_FailedLookupReportsServerListError(t *testing.T) {
+	// The server lookup fails; the group lookup is a 404, which on its own
+	// would mean "not in the project".
+	srv := listingsServer(t, http.StatusInternalServerError, http.StatusInternalServerError,
+		map[string]int{"/servers/" + unlistedUUID: http.StatusInternalServerError})
+
+	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlistedUUID})
+	assert.Nil(t, ids)
+	var apiErr *sdk.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Contains(t, err.Error(), "listing servers failed")
+}
+
+func TestResolveServerTargets_IdentifierIsConfirmedWhenServerListFails(t *testing.T) {
+	srv := targetsServerWithDetails(t, http.StatusInternalServerError, `{"error":"boom"}`, http.StatusOK, `[]`,
+		map[string]int{"/servers/" + targetServerUUID: http.StatusOK})
 
 	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{targetServerUUID})
 	require.NoError(t, err)
@@ -632,9 +792,10 @@ func TestResolveServerTargets_LongDashedNameIsNotPassedThroughWhenServerListFail
 	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
 }
 
-func TestResolveServerTargets_UppercaseUUIDPassesThroughWhenGroupListFails(t *testing.T) {
+func TestResolveServerTargets_UppercaseUUIDIsConfirmedWhenGroupListFails(t *testing.T) {
 	const unlisted = "8E1C7A52-9999-4C3E-9A0B-00000000000A"
-	srv := longNamesServer(t, http.StatusInternalServerError)
+	srv := listingsServer(t, http.StatusOK, http.StatusInternalServerError,
+		map[string]int{"/server_groups/" + unlisted: http.StatusOK})
 
 	ids, err := resolveServerTargets(context.Background(), newTestClient(t, srv), "my-app", []string{unlisted})
 	require.NoError(t, err)
