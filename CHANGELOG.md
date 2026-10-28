@@ -91,6 +91,12 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   Non-interactive sign-up errors no longer suggest putting a password in the
   command.
 
+- **`dhq config show --json`** now masks the API key (e.g. `sekr****1234`), as
+  the table output already did, with and without `--resolved`. Scripts that read
+  the key from this output must switch to `dhq auth token`, which prints the
+  stored login's key (a key given through `DEPLOYHQ_API_KEY` or a config file
+  is already in the script's hands).
+
 ### Fixed
 
 - **`dhq launch --dry-run`** no longer reports a successful preview for an
