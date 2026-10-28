@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -22,10 +25,12 @@ func ghAvailable() bool {
 // repo identified by repoURL, using the local `gh` CLI (which carries its own
 // authentication — so this works headlessly, with no browser or prompt).
 //
-// It returns an error when the URL isn't a GitHub repo, the key can't be
-// written, or `gh` fails (e.g. not authenticated, no write access, or a key
-// with the same title already exists). Callers treat a failure as non-fatal and
-// fall back to surfacing the key for manual installation.
+// It returns errDeployKeyInUse when GitHub already has the key (for example
+// from an earlier run), so callers can treat the key as installed. It returns
+// another error when the URL isn't a GitHub repo, the key can't be written, or
+// `gh` fails (e.g. not authenticated or no write access). Callers treat such a
+// failure as non-fatal and fall back to surfacing the key for manual
+// installation.
 func installDeployKeyViaGH(repoURL, publicKey, title string) error {
 	repo := extractGitHubRepo(repoURL)
 	if repo == "" {
@@ -48,9 +53,54 @@ func installDeployKeyViaGH(repoURL, publicKey, title string) error {
 		"--repo", repo,
 		"--title", title)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		// GitHub rejects a key that is already in use; titles need not be unique.
+		if strings.Contains(strings.ToLower(string(out)), "key is already in use") {
+			return errDeployKeyInUse
+		}
 		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// errDeployKeyInUse reports that GitHub already has the deploy key.
+var errDeployKeyInUse = errors.New("key is already in use")
+
+// githubHasDeployKey reports whether publicKey is among the deploy keys of the
+// GitHub repo identified by repoURL, listed with the local `gh` CLI. Any
+// failure is returned as an error so callers can fall back to adding the key.
+func githubHasDeployKey(repoURL, publicKey string) (bool, error) {
+	repo := extractGitHubRepo(repoURL)
+	if repo == "" {
+		return false, fmt.Errorf("could not extract a GitHub repo from URL: %s", repoURL)
+	}
+	out, err := exec.Command("gh", "api", "repos/"+repo+"/keys", "--paginate").Output()
+	if err != nil {
+		return false, err
+	}
+	// With --paginate gh prints one JSON array per page, back to back.
+	dec := json.NewDecoder(bytes.NewReader(out))
+	for {
+		var page []struct {
+			Key string `json:"key"`
+		}
+		if err := dec.Decode(&page); errors.Is(err, io.EOF) {
+			return false, nil
+		} else if err != nil {
+			return false, err
+		}
+		for _, k := range page {
+			if deployKeyMatches(k.Key, publicKey) {
+				return true, nil
+			}
+		}
+	}
+}
+
+// deployKeyMatches reports whether two public keys are the same key. GitHub
+// lists keys without their comment, so only the type and the key are compared.
+func deployKeyMatches(a, b string) bool {
+	fa, fb := strings.Fields(a), strings.Fields(b)
+	return len(fa) >= 2 && len(fb) >= 2 && fa[0] == fb[0] && fa[1] == fb[1]
 }
 
 // isSSHRepoURL reports whether repoURL is an SSH-style git URL: ssh://...,

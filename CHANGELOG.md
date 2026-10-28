@@ -48,6 +48,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `repo_unreachable` error that includes the public deploy key, where to add it,
   and how to resume (the same command with `--project <permalink>`), instead of warning
   and carrying on to provisioning with a project that has no repository.
+- **`dhq launch` / `dhq init`**: re-running after the deploy key was already added
+  to GitHub (for example when only the repository request failed) no longer asks
+  you to add the key again. `launch` checks the repository's deploy keys with
+  `gh` first and skips adding a key that is already there, and both commands
+  treat gh's "key is already in use" as the key being in place.
 - **`dhq repos create`**: a rejected SSH repository's error now includes the
   project's public deploy key, where to add it, and the command to re-run.
 - **`dhq launch --json`**: a failed launch now writes exactly one JSON object to

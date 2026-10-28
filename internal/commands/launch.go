@@ -1171,10 +1171,15 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 
 	// Path A: for a GitHub repo, try the local `gh` CLI to install the deploy
 	// key automatically. gh carries its own auth, so this needs no browser or
-	// prompt and works in both interactive and non-interactive mode. Any failure
-	// (not GitHub, gh missing/unauthenticated, no write access, duplicate key)
-	// falls through to surfacing the key for manual installation.
+	// prompt and works in both interactive and non-interactive mode. A key
+	// already on the repository (say from an earlier run) is not added again.
+	// Any other failure (not GitHub, gh missing/unauthenticated, no write
+	// access) falls through to surfacing the key for manual installation.
 	if isGitHubURL(gitRemote) && ghAvailable() {
+		if found, err := githubHasDeployKey(gitRemote, publicKey); err == nil && found {
+			output.ColorGreen.Fprintf(env.Stderr, "Deploy key already on the repository.\n") //nolint:errcheck
+			return
+		}
 		name := projectID
 		if proj != nil && proj.Name != "" {
 			name = proj.Name
@@ -1182,6 +1187,10 @@ func launchSurfaceDeployKey(ctx context.Context, env *output.Envelope, client *s
 		err := installDeployKeyViaGH(gitRemote, publicKey, fmt.Sprintf("DeployHQ - %s", name))
 		if err == nil {
 			output.ColorGreen.Fprintf(env.Stderr, "Added the project's deploy key to GitHub via the gh CLI.\n") //nolint:errcheck
+			return
+		}
+		if errors.Is(err, errDeployKeyInUse) {
+			output.ColorGreen.Fprintf(env.Stderr, "gh reports this key is already on GitHub; continuing.\n") //nolint:errcheck
 			return
 		}
 		env.Logger.Write("gh deploy-key add failed; falling back to manual key: %v", err)
