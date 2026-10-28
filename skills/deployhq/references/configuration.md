@@ -70,14 +70,21 @@ dhq config-files show 12345 -p my-app --json
 | `--path` | yes | File path on server |
 | `--body` | yes | File content |
 | `--description` | no | Description |
+| `--server` | no | Upload only to these servers or server groups (name or identifier; repeatable or comma-separated). Default: all servers |
+| `--build-only` | no | Only make the file available to build commands; never upload it to a server |
 
 ```bash
 dhq config-files create -p my-app --path ".env" --body "APP_ENV=production" --json
+dhq config-files create -p my-app --path ".env" --body "APP_ENV=production" --server Production --json
 ```
 
 ### `dhq config-files update <id>`
+Only the flags you pass change. `--server` / `--all-servers` re-target the
+file; without them its targeting is left as it is.
+
 ```bash
 dhq config-files update 12345 -p my-app --body "APP_ENV=staging" --json
+dhq config-files update 12345 -p my-app --all-servers
 ```
 
 ### `dhq config-files delete <id>`
@@ -117,17 +124,43 @@ dhq build-commands update 12345 -p my-app --name "Install deps" --command "npm c
 dhq build-configs list -p my-app --json
 ```
 
+A project has one default build config, used for every server, plus optional
+overrides. An override applies **only to the servers it targets** — an override
+with no servers never applies to a deployment. A server can be targeted by at
+most one override.
+
+`--server` takes individual servers only, not server groups. Every value is
+checked against the project's servers before anything is sent: an unknown
+identifier, a server group, or a name shared by several servers fails with the
+available servers listed (use the identifier when names repeat).
+
 ### `dhq build-configs create`
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--name` | yes | Config name |
-| `--commands` | yes | Comma-separated command IDs |
-| `--description` | no | Description |
+| `--server` | no (but needed for the override to apply) | Server name or identifier; repeatable or comma-separated |
+
+Creates an override. Without `--server` it targets nothing and the CLI warns;
+target it later with `dhq build-configs update`.
 
 ```bash
-dhq build-configs create -p my-app --name "Node Build" --commands "123,456" --json
+dhq build-configs create -p my-app --server production --json
 ```
+
+### `dhq build-configs update <id>`
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--server` | yes | Server name or identifier; repeatable or comma-separated. Replaces the override's current servers |
+
+```bash
+dhq build-configs update <override-id> -p my-app --server production --server staging --json
+```
+
+Language versions are not set through `build-configs` (`--packages` is
+rejected). Set them on the override with
+`dhq build-languages set <language> --version <version> --build-config <override-id>`
+(see Build Languages below).
 
 ## Excluded Files
 
@@ -140,14 +173,28 @@ dhq excluded-files list -p my-app --json
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--pattern` | yes | File/directory pattern to exclude |
-| `--description` | no | Description |
+| `--path` | yes | File/directory pattern to exclude |
+| `--server` | no | Exclude only on these servers or server groups (name or identifier; repeatable or comma-separated). Default: all servers, including servers added later |
 
 ```bash
-dhq excluded-files create -p my-app --pattern "node_modules" --json
-dhq excluded-files create -p my-app --pattern ".git" --json
-dhq excluded-files create -p my-app --pattern "*.log" --json
+dhq excluded-files create -p my-app --path "node_modules"
+dhq excluded-files create -p my-app --path "*.log"
+dhq excluded-files create -p my-app --path deploy.sh --server Production
 ```
+
+DeployHQ never uploads `.git`, so it needs no rule.
+
+### `dhq excluded-files update <id>`
+Change the pattern (`--path`) or the targeting (`--server` / `--all-servers`).
+Without a targeting flag the rule keeps its current servers.
+
+```bash
+dhq excluded-files update <id> -p my-app --all-servers
+```
+
+A rule whose `servers` list is empty (`dhq excluded-files list --json`) applies
+to no server: the file is still uploaded. Rules created by older dhq versions
+can be in this state; fix them with `--all-servers`.
 
 ## SSH Commands
 
@@ -163,14 +210,15 @@ dhq ssh-commands list -p my-app --json
 | `--command` | yes | SSH command to execute |
 | `--description` | no | Description shown in the UI |
 | `--timing` | no | When the command runs: `all` (default), `first`, or `after_first` |
+| `--server` | no | Run only on these servers or server groups (name or identifier; repeatable or comma-separated). Default: all servers |
 
 ```bash
 dhq ssh-commands create -p my-app --command "sudo systemctl restart app" --description "Restart" --json
 ```
 
 > **Limitation — `ssh-commands create` cannot express a complete SSH command.**
-> The CLI sends only `command`, `description` and `timing`. It cannot set the
-> callback phase, server targeting, timeout, or halt-on-error, and the backend
+> The CLI sends only `command`, `description`, `timing` and server targeting. It
+> cannot set the callback phase, timeout, or halt-on-error, and the backend
 > requires a valid timeout and description while defaulting the callback to
 > `before_changes` and halt-on-error to `false`. So a command created this way
 > runs **before changes are uploaded, on every server, and does not fail the

@@ -49,6 +49,7 @@ account fills gaps.
 | `email_verification_required` | Signed in, but DeployHQ refuses every request until the account's email is verified | Ask the person to open the verification link DeployHQ emailed them, then re-run `dhq auth status --json` |
 | `invalid_credentials` | DeployHQ rejected the API key (wrong or revoked), or has no such account | Stored login: ask the person to run `dhq auth login` again in a separate terminal. Env/flags/config: fix the values there |
 | `api_access_restricted` | Credentials work, but the account's plan has no API access | Upgrade the plan |
+| `account_suspended` | Credentials work, but the account is suspended (trial ended, payment outstanding, or suspended by DeployHQ) | Stop and tell the person: `next_step` has the page that resolves it (plans and billing, or support). Re-running will not help |
 | `unconfirmed` | Network or server error while checking | Check connectivity and retry |
 | `not_logged_in` | No credentials were found: no stored login, and flags/env/config don't set all of account, email and API key | Ask the person to run `dhq auth login` in a separate terminal |
 
@@ -83,6 +84,19 @@ export DEPLOYHQ_API_KEY=...   # from your CI secret store
 ```
 
 No login needed when these are set.
+
+### When the account itself refuses API access
+
+Some refusals are not credential problems, so `dhq auth login` will not fix them. Every command (including `auth login` and `hello`) reports them with a message naming the cause and the page that resolves it; in `--json` output, `data.code` identifies the case and `data.recovery[0].url` (also `data.doc_url`) is the page to send a person to:
+
+| `code` | Cause | What resolves it |
+|--------|-------|------------------|
+| `api_access_restricted` | The account's plan does not include API access (exit code 3) | Upgrade the plan at `https://<account>.deployhq.com/account/packages` |
+| `account_suspended` | The trial has ended, or a payment is outstanding (exit code 1) | Choose a plan or settle billing at `https://<account>.deployhq.com/account/packages` |
+| `account_suspended` (recovery action `contact_support`) | Suspended for another reason | Contact DeployHQ support |
+| `payment_method_required` | The account has no payment method on file for the hosting requested; a Managed VPS always needs one (exit code 1) | Add a card under Payment Details at `https://<account>.deployhq.com/account/payment_details` |
+
+These need a person with access to the account's billing; an agent should stop, report the cause and link, and not retry.
 
 ## Signup
 

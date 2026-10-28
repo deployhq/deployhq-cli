@@ -296,6 +296,12 @@ func classifyHelloValidateErr(err error, account string) error {
 	if output.IsNetworkErr(err) {
 		return &output.NetworkError{Message: "validate credentials", Cause: err}
 	}
+	// Plan without API access, suspended account or ended trial: name the
+	// cause and link to the page that resolves it.
+	var acctErr *output.AccountError
+	if errors.As(output.ExplainAccountError(err), &acctErr) {
+		return acctErr
+	}
 	var apiErr *sdk.APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.StatusCode {

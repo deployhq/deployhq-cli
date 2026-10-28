@@ -152,6 +152,12 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 	_, err = client.ListProjects(cliCtx.Background(), nil)
 	emailUnverified := output.IsEmailVerificationRequired(err)
 	if err != nil && !emailUnverified {
+		// The credentials are fine but the account's plan or billing state
+		// refuses API access: say so rather than "access denied".
+		var acctErr *output.AccountError
+		if errors.As(output.ExplainAccountError(err), &acctErr) {
+			return acctErr
+		}
 		if sdk.IsUnauthorized(err) {
 			return &output.AuthError{
 				Message: "Invalid credentials",
@@ -276,6 +282,7 @@ const (
 	authStatusEmailUnverified   = "email_verification_required"
 	authStatusInvalidCredential = "invalid_credentials"
 	authStatusAPIRestricted     = "api_access_restricted"
+	authStatusAccountSuspended  = output.CodeAccountSuspended
 	authStatusUnconfirmed       = "unconfirmed"
 	authStatusNotLoggedIn       = "not_logged_in"
 )
@@ -348,6 +355,7 @@ func checkAuthStatus(ctx context.Context, client *sdk.Client, creds *cli.Resolve
 	_, err := client.GetAccountCapabilities(ctx)
 	var apiErr *sdk.APIError
 	isAPIErr := errors.As(err, &apiErr)
+	var acctErr *output.AccountError
 	switch {
 	case err == nil:
 		res.Status = authStatusAuthenticated
@@ -374,6 +382,12 @@ func checkAuthStatus(ctx context.Context, client *sdk.Client, creds *cli.Resolve
 		res.Status = authStatusInvalidCredential
 		res.Message = fmt.Sprintf("DeployHQ has no account %q", creds.Account)
 		res.NextStep = invalidCredentialsNextStep(creds, host)
+	case errors.As(output.ExplainAccountError(err), &acctErr) && acctErr.Code == output.CodeAccountSuspended:
+		// The key is valid, but the account is suspended (trial ended, payment
+		// outstanding, or suspended by DeployHQ). Re-running will not help.
+		res.Status = authStatusAccountSuspended
+		res.Message = acctErr.Message
+		res.NextStep = acctErr.Hint
 	case output.IsNetworkErr(err) || (isAPIErr && apiErr.StatusCode >= 500):
 		res.Status = authStatusUnconfirmed
 		res.Message = fmt.Sprintf("The credentials could not be checked with DeployHQ: %v", err)
@@ -420,6 +434,8 @@ The status is one of:
                                 account's email address is verified
   invalid_credentials           DeployHQ rejected the API key, or has no such account
   api_access_restricted         the credentials work, but the plan has no API access
+  account_suspended             the credentials work, but the account is suspended
+                                (trial ended, payment outstanding, or by DeployHQ)
   unconfirmed                   DeployHQ could not be reached to check
   not_logged_in                 no credentials were found`,
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -10,8 +10,11 @@ import (
 
 // Breadcrumb represents a suggested next action.
 type Breadcrumb struct {
-	Action   string `json:"action"`
-	Cmd      string `json:"cmd"`
+	Action string `json:"action"`
+	Cmd    string `json:"cmd,omitempty"`
+	// URL is set instead of Cmd when the action happens in a browser (for
+	// example adding a payment method), not with a dhq command.
+	URL      string `json:"url,omitempty"`
 	Resource string `json:"resource,omitempty"` // resource type (deployment, server, project)
 	ID       string `json:"id,omitempty"`       // resource identifier
 }
@@ -100,6 +103,25 @@ func ErrorResponseFromErr(err error) *Response {
 				Recovery: []Breadcrumb{
 					{Action: "verify_email_then_check_status", Cmd: "dhq auth status"},
 				},
+			},
+		}
+	}
+
+	// Account-level refusals (plan, suspension, payment method) get a message
+	// naming the cause and a link to the page that resolves it, instead of the
+	// generic status-code mapping below (which would suggest logging in again).
+	var acctErr *AccountError
+	if errors.As(ExplainAccountError(err), &acctErr) {
+		return &Response{
+			OK: false,
+			Data: ErrorData{
+				Error:      acctErr.Message,
+				Code:       acctErr.Code,
+				ExitCode:   ClassifyError(err),
+				Retryable:  false,
+				Suggestion: acctErr.Hint,
+				DocURL:     acctErr.URL,
+				Recovery:   acctErr.Recovery(),
 			},
 		}
 	}
