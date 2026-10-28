@@ -119,15 +119,30 @@ func initDuplicateProjectCheck(ctx context.Context, env *output.Envelope, client
 	return err
 }
 
+// insideGitWorkTree reports whether the current directory is inside a git
+// working tree. Any git failure (git missing, not a repository) counts as
+// outside. A variable so tests can fake it.
+var insideGitWorkTree = func() bool {
+	out, err := runGitCommand("rev-parse", "--is-inside-work-tree")
+	return err == nil && out == "true"
+}
+
 // linkProjectToDirectory records permalink as the project in the current
 // directory's .deployhq.toml, so later commands (and new agent sessions) in
-// this folder find and reuse it instead of creating another. It never replaces
-// a different project already recorded there, and never creates a file here
-// when a parent folder's .deployhq.toml is the one commands here use (the
-// loader reads only the nearest file, so a new one would shadow the parent's
-// project and settings) — it warns instead — and never rewrites a file it
-// can't parse. Best-effort: a failure is a warning, not an error.
+// this folder find and reuse it instead of creating another. It links only
+// inside a git working tree: the loader also reads a parent folder's file, so
+// one written in, say, the home folder would apply to every folder below it.
+// It never replaces a different project already recorded there, and never
+// creates a file here when a parent folder's .deployhq.toml is the one commands
+// here use (the loader reads only the nearest file, so a new one would shadow
+// the parent's project and settings) — it warns instead — and never rewrites a
+// file it can't parse. Best-effort: a failure is a warning, not an error.
 func linkProjectToDirectory(env *output.Envelope, permalink string) {
+	if !insideGitWorkTree() {
+		env.Warn("Not linking the project to this folder (it isn't a git repository).")
+		env.Warn("To use it here: dhq config set project %s", permalink)
+		return
+	}
 	path := config.ProjectConfigPath()
 	if inherited := parentProjectConfig(path); inherited != "" {
 		linked, err := config.GetStrict(inherited, "project")

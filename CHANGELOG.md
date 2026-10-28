@@ -71,12 +71,15 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   opts out. The account it was created in is saved with it, so a project
   created with `--account` isn't later looked up in the global config's
   account; a file that names a different account is not linked, and a warning
-  gives the commands to link it.
+  gives the commands to link it. The folder is only linked inside a git
+  repository; elsewhere (for example the home folder) nothing is written and
+  the `dhq config set project` command to link it is printed instead.
 - **`dhq launch`**: saves a newly created project to `.deployhq.toml` right
   away, so a re-run after a later failure reuses it instead of creating
   another, and asks before creating a project whose name already exists. As
   with `dhq projects create`, the account is saved with the project, and a
-  folder whose file names a different account is not linked.
+  folder whose file names a different account is not linked, and nothing is
+  written outside a git repository.
 - **`dhq init`**: if a project with the entered name already exists, the
   wizard lists it and creates another only when the same name is submitted
   again.

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/deployhq/deployhq-cli/internal/cli"
@@ -137,7 +138,64 @@ func createdUnderAccount(t *testing.T, account string) {
 	cliCtx = &cli.Context{Config: &config.Config{Account: account, Email: "u@e.com", APIKey: "k"}}
 }
 
+// insideGitWorkTreeFor makes linkProjectToDirectory see the current directory
+// as inside (or outside) a git working tree for the rest of the test.
+func insideGitWorkTreeFor(t *testing.T, inside bool) {
+	t.Helper()
+	orig := insideGitWorkTree
+	t.Cleanup(func() { insideGitWorkTree = orig })
+	insideGitWorkTree = func() bool { return inside }
+}
+
+// Outside a git repository (for example the home folder) nothing is written:
+// a .deployhq.toml there would be picked up by every folder below it.
+func TestLinkProjectToDirectory_OutsideGitRepoWritesNothing(t *testing.T) {
+	insideGitWorkTreeFor(t, false)
+	t.Chdir(t.TempDir())
+	createdUnderAccount(t, "acme")
+	env, stdout, stderr := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "my-app")
+
+	assert.NoFileExists(t, ".deployhq.toml")
+	assert.Contains(t, stderr.String(), "Not linking the project to this folder (it isn't a git repository).")
+	assert.Contains(t, stderr.String(), "To use it here: dhq config set project my-app")
+	assert.Empty(t, stdout.String())
+}
+
+// 'dhq projects create' run outside a git repository creates the project but
+// writes no .deployhq.toml.
+func TestProjectsCreate_OutsideGitRepoWritesNoConfig(t *testing.T) {
+	withResolvableContext(t)
+	t.Setenv("DEPLOYHQ_PROJECT", "")
+	t.Setenv("HOME", t.TempDir())
+	insideGitWorkTreeFor(t, false)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	posts := 0
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := "[]"
+		if r.Method == http.MethodPost {
+			posts++
+			body = `{"name":"My App","permalink":"my-app","identifier":"p-1"}`
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Request:    r,
+		}, nil
+	})
+
+	require.NoError(t, runServersCmd(t, "projects", "create", "--name", "My App"))
+	assert.Equal(t, 1, posts, "the project is still created")
+	assert.NoFileExists(t, filepath.Join(dir, ".deployhq.toml"))
+}
+
 func TestLinkProjectToDirectory_WritesWhenUnset(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	t.Chdir(t.TempDir())
 	createdUnderAccount(t, "acme")
 	env, _, stderr := testLaunchEnvelope()
@@ -152,6 +210,7 @@ func TestLinkProjectToDirectory_WritesWhenUnset(t *testing.T) {
 // with that account: the folder's file must not leave account resolution to
 // the global config, which may name a different account.
 func TestLinkProjectToDirectory_RecordsCreatingAccount(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	require.NoError(t, os.MkdirAll(filepath.Dir(config.GlobalConfigPath()), 0o755))
@@ -168,6 +227,7 @@ func TestLinkProjectToDirectory_RecordsCreatingAccount(t *testing.T) {
 // A folder whose file names another account is not linked: the project there
 // would be looked up in the wrong account.
 func TestLinkProjectToDirectory_KeepsDifferentAccount(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	t.Chdir(t.TempDir())
 	original := []byte("account = 'acme'\n")
 	require.NoError(t, os.WriteFile(".deployhq.toml", original, 0o644))
@@ -187,6 +247,7 @@ func TestLinkProjectToDirectory_KeepsDifferentAccount(t *testing.T) {
 // Accounts are compared as subdomains, so the hostname form names the same
 // account.
 func TestLinkProjectToDirectory_AccountHostnameFormIsSameAccount(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	t.Chdir(t.TempDir())
 	require.NoError(t, os.WriteFile(".deployhq.toml", []byte("account = 'acme.deployhq.com'\n"), 0o644))
 	createdUnderAccount(t, "acme")
@@ -200,6 +261,7 @@ func TestLinkProjectToDirectory_AccountHostnameFormIsSameAccount(t *testing.T) {
 
 // A file already naming the creating account only gets the project.
 func TestLinkProjectToDirectory_SameAccountAddsProjectOnly(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	t.Chdir(t.TempDir())
 	require.NoError(t, os.WriteFile(".deployhq.toml", []byte("account = 'acme'\n"), 0o644))
 	createdUnderAccount(t, "acme")
@@ -214,6 +276,7 @@ func TestLinkProjectToDirectory_SameAccountAddsProjectOnly(t *testing.T) {
 
 // An existing link to a different project is never silently replaced.
 func TestLinkProjectToDirectory_KeepsDifferentProject(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	t.Chdir(t.TempDir())
 	require.NoError(t, os.WriteFile(".deployhq.toml", []byte("project = 'old-app'\naccount = 'acme'\n"), 0o644))
 	env, _, stderr := testLaunchEnvelope()
@@ -227,6 +290,7 @@ func TestLinkProjectToDirectory_KeepsDifferentProject(t *testing.T) {
 // An empty project entry (as written by a bare 'dhq config init') is filled in,
 // and other keys are preserved.
 func TestLinkProjectToDirectory_FillsEmptyEntry(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	t.Chdir(t.TempDir())
 	createdUnderAccount(t, "acme")
 	require.NoError(t, os.WriteFile(".deployhq.toml", []byte("project = ''\naccount = 'acme'\n"), 0o644))
@@ -299,6 +363,7 @@ func TestInitWizard_FreeNameCreatesImmediately(t *testing.T) {
 // A .deployhq.toml that exists but can't be parsed is left exactly as it is:
 // reading it as "no project" would overwrite the user's settings.
 func TestLinkProjectToDirectory_LeavesUnparseableFileUntouched(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	t.Chdir(t.TempDir())
 	broken := []byte("project = 'old-app\naccount = 'acme'\n[[[\n")
 	require.NoError(t, os.WriteFile(".deployhq.toml", broken, 0o644))
@@ -331,6 +396,7 @@ func chdirIntoLinkedSubfolder(t *testing.T, project string) (parentConfig string
 // A parent folder's link to a different project is not silently shadowed by a
 // new .deployhq.toml in a subfolder.
 func TestLinkProjectToDirectory_KeepsParentFolderLink(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	parentConfig := chdirIntoLinkedSubfolder(t, "other")
 	env, _, stderr := testLaunchEnvelope()
 
@@ -347,6 +413,7 @@ func TestLinkProjectToDirectory_KeepsParentFolderLink(t *testing.T) {
 
 // A parent folder already linking the same project needs nothing written.
 func TestLinkProjectToDirectory_ParentFolderLinksSameProject(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	chdirIntoLinkedSubfolder(t, "new")
 	env, stdout, stderr := testLaunchEnvelope()
 
@@ -362,6 +429,7 @@ func TestLinkProjectToDirectory_ParentFolderLinksSameProject(t *testing.T) {
 // those settings. Nothing is written; the user is told to add the project to
 // the parent file instead.
 func TestLinkProjectToDirectory_KeepsParentFolderSettings(t *testing.T) {
+	insideGitWorkTreeFor(t, true)
 	parent := t.TempDir()
 	parentConfig := filepath.Join(parent, ".deployhq.toml")
 	original := []byte("account = \"acme\"\n")
