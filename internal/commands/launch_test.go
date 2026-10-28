@@ -955,7 +955,7 @@ func TestLaunchCheckPlanLimits_StaticIneligible(t *testing.T) {
 		ManagedVPSEligible:    true,
 	}
 	cfg := launchConfig{targetProtocol: "static_hosting"}
-	err := launchCheckPlanLimits(env, cfg, caps)
+	err := launchCheckPlanLimits(env, cfg, caps, "acme")
 	require.Error(t, err)
 	var le *launchError
 	require.True(t, isLaunchErr(err, &le))
@@ -980,7 +980,7 @@ func TestLaunchCheckPlanLimits_VPSIneligible(t *testing.T) {
 		ManagedVPSEligible: false,
 	}
 	cfg := launchConfig{targetProtocol: "managed_vps"}
-	err := launchCheckPlanLimits(env, cfg, caps)
+	err := launchCheckPlanLimits(env, cfg, caps, "acme")
 	require.Error(t, err)
 	var le *launchError
 	require.True(t, isLaunchErr(err, &le))
@@ -996,7 +996,7 @@ func TestLaunchCheckPlanLimits_BothEligible_NoError(t *testing.T) {
 	}
 	for _, proto := range []string{"static_hosting", "managed_vps"} {
 		cfg := launchConfig{targetProtocol: proto}
-		assert.NoError(t, launchCheckPlanLimits(env, cfg, caps))
+		assert.NoError(t, launchCheckPlanLimits(env, cfg, caps, "acme"))
 	}
 }
 
