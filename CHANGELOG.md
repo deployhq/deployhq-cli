@@ -49,6 +49,24 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   server in a group in parallel; it describes the group's transfer order
   instead.
 
+- **`dhq build-configs create` / `update`**: `--server` (name or identifier,
+  repeatable or comma-separated) chooses which servers a build configuration
+  override applies to. Previously there was no way to target an override from
+  the CLI, and an override with no servers never applies to a deployment.
+  `create --server` creates the override and then targets it; `create` without
+  `--server` now warns that the override will not apply and prints the
+  `update --server` command to fix it. `update --server` replaces the
+  override's servers. Only the project's own servers are accepted: an unknown
+  identifier, a server group (an override never applies through one) or a
+  name shared by several servers fails before anything is sent.
+
+- **`dhq build-configs create` / `update`**: `--packages` is now rejected with a
+  hint to use `dhq build-languages set --build-config`. DeployHQ never applied
+  language versions sent this way, so the flag silently did nothing. The
+  `dhq language-versions list` tip now points at `dhq build-languages set`
+  instead of `--packages`.
+  `update` with no flags now fails locally instead of sending an empty request.
+
 - **`dhq excluded-files update`**: `--path` is now optional, so a rule can be
   re-targeted without restating its pattern.
 - **`dhq excluded-files list --json`** / **`show`** now include an empty

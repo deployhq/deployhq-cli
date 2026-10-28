@@ -124,17 +124,43 @@ dhq build-commands update 12345 -p my-app --name "Install deps" --command "npm c
 dhq build-configs list -p my-app --json
 ```
 
+A project has one default build config, used for every server, plus optional
+overrides. An override applies **only to the servers it targets** — an override
+with no servers never applies to a deployment. A server can be targeted by at
+most one override.
+
+`--server` takes individual servers only, not server groups. Every value is
+checked against the project's servers before anything is sent: an unknown
+identifier, a server group, or a name shared by several servers fails with the
+available servers listed (use the identifier when names repeat).
+
 ### `dhq build-configs create`
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--name` | yes | Config name |
-| `--commands` | yes | Comma-separated command IDs |
-| `--description` | no | Description |
+| `--server` | no (but needed for the override to apply) | Server name or identifier; repeatable or comma-separated |
+
+Creates an override. Without `--server` it targets nothing and the CLI warns;
+target it later with `dhq build-configs update`.
 
 ```bash
-dhq build-configs create -p my-app --name "Node Build" --commands "123,456" --json
+dhq build-configs create -p my-app --server production --json
 ```
+
+### `dhq build-configs update <id>`
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--server` | yes | Server name or identifier; repeatable or comma-separated. Replaces the override's current servers |
+
+```bash
+dhq build-configs update <override-id> -p my-app --server production --server staging --json
+```
+
+Language versions are not set through `build-configs` (`--packages` is
+rejected). Set them on the override with
+`dhq build-languages set <language> --version <version> --build-config <override-id>`
+(see Build Languages below).
 
 ## Excluded Files
 
