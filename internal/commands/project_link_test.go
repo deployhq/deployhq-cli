@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/deployhq/deployhq-cli/internal/cli"
 	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/stretchr/testify/assert"
@@ -127,12 +128,88 @@ func TestConfirmNoDuplicateProject_ListErrorDoesNotBlock(t *testing.T) {
 	require.NoError(t, confirmNoDuplicateProject(t.Context(), env, newTestClient(t, srv), "My App", false))
 }
 
+// createdUnderAccount makes account the one the CLI resolves (and so the one
+// a project is created under) for the rest of the test.
+func createdUnderAccount(t *testing.T, account string) {
+	t.Helper()
+	origCtx := cliCtx
+	t.Cleanup(func() { cliCtx = origCtx })
+	cliCtx = &cli.Context{Config: &config.Config{Account: account, Email: "u@e.com", APIKey: "k"}}
+}
+
 func TestLinkProjectToDirectory_WritesWhenUnset(t *testing.T) {
 	t.Chdir(t.TempDir())
-	env, _, _ := testLaunchEnvelope()
+	createdUnderAccount(t, "acme")
+	env, _, stderr := testLaunchEnvelope()
 
 	linkProjectToDirectory(env, "my-app")
 	assert.Equal(t, "my-app", config.Get(config.ProjectConfigPath(), "project"))
+	assert.Equal(t, "acme", config.Get(config.ProjectConfigPath(), "account"))
+	assert.Contains(t, stderr.String(), "Saved account acme and project my-app to")
+}
+
+// A project created under --account (or DEPLOYHQ_ACCOUNT) is linked together
+// with that account: the folder's file must not leave account resolution to
+// the global config, which may name a different account.
+func TestLinkProjectToDirectory_RecordsCreatingAccount(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(config.GlobalConfigPath()), 0o755))
+	require.NoError(t, config.Set(config.GlobalConfigPath(), "account", "acme"))
+	t.Chdir(t.TempDir())
+	createdUnderAccount(t, "acme-agency")
+	env, _, _ := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "my-app")
+	assert.Equal(t, "acme-agency", config.Get(config.ProjectConfigPath(), "account"))
+	assert.Equal(t, "my-app", config.Get(config.ProjectConfigPath(), "project"))
+}
+
+// A folder whose file names another account is not linked: the project there
+// would be looked up in the wrong account.
+func TestLinkProjectToDirectory_KeepsDifferentAccount(t *testing.T) {
+	t.Chdir(t.TempDir())
+	original := []byte("account = 'acme'\n")
+	require.NoError(t, os.WriteFile(".deployhq.toml", original, 0o644))
+	createdUnderAccount(t, "acme-agency")
+	env, stdout, stderr := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "my-app")
+
+	after, err := os.ReadFile(".deployhq.toml")
+	require.NoError(t, err)
+	assert.Equal(t, original, after, "a file naming another account must not be changed")
+	assert.Contains(t, stderr.String(), `uses account "acme", but the project was created in "acme-agency"; not linking it here.`)
+	assert.Contains(t, stderr.String(), "dhq config set account acme-agency && dhq config set project my-app")
+	assert.Empty(t, stdout.String())
+}
+
+// Accounts are compared as subdomains, so the hostname form names the same
+// account.
+func TestLinkProjectToDirectory_AccountHostnameFormIsSameAccount(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.WriteFile(".deployhq.toml", []byte("account = 'acme.deployhq.com'\n"), 0o644))
+	createdUnderAccount(t, "acme")
+	env, _, stderr := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "my-app")
+	assert.Equal(t, "my-app", config.Get(config.ProjectConfigPath(), "project"))
+	assert.Equal(t, "acme.deployhq.com", config.Get(config.ProjectConfigPath(), "account"), "the account entry is left as written")
+	assert.Contains(t, stderr.String(), "Saved project my-app to")
+}
+
+// A file already naming the creating account only gets the project.
+func TestLinkProjectToDirectory_SameAccountAddsProjectOnly(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.WriteFile(".deployhq.toml", []byte("account = 'acme'\n"), 0o644))
+	createdUnderAccount(t, "acme")
+	env, _, stderr := testLaunchEnvelope()
+
+	linkProjectToDirectory(env, "my-app")
+	assert.Equal(t, "my-app", config.Get(config.ProjectConfigPath(), "project"))
+	assert.Equal(t, "acme", config.Get(config.ProjectConfigPath(), "account"))
+	assert.Contains(t, stderr.String(), "Saved project my-app to")
+	assert.NotContains(t, stderr.String(), "Saved account")
 }
 
 // An existing link to a different project is never silently replaced.
@@ -151,6 +228,7 @@ func TestLinkProjectToDirectory_KeepsDifferentProject(t *testing.T) {
 // and other keys are preserved.
 func TestLinkProjectToDirectory_FillsEmptyEntry(t *testing.T) {
 	t.Chdir(t.TempDir())
+	createdUnderAccount(t, "acme")
 	require.NoError(t, os.WriteFile(".deployhq.toml", []byte("project = ''\naccount = 'acme'\n"), 0o644))
 	env, _, _ := testLaunchEnvelope()
 

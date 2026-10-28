@@ -41,7 +41,9 @@ mode (asks in interactive mode). Reuse the existing project
 unless the user really wants a second one.
 
 **Directory link:** the new project is saved as `project` in `.deployhq.toml` in
-the current directory (an existing link to a different project is left alone,
+the current directory, together with the `account` it was created in, so a
+different account in `~/.deployhq/config.toml` can't take over (an existing link
+to a different project, or a file naming a different account, is left alone,
 with a warning). Later commands in that folder, including a fresh agent session,
 then use it without `--project`. Before creating a project, check
 `dhq config show` — if the folder already names a project, use it.

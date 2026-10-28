@@ -164,11 +164,61 @@ func linkProjectToDirectory(env *output.Envelope, permalink string) {
 		env.Warn("To use the new project here: dhq config set project %s", permalink)
 		return
 	}
+	// Commands pick the account from the folder's file before the global
+	// config, so record the account the project was created in alongside it;
+	// otherwise a later command here could look it up in another account.
+	account, host := creatingAccount()
+	fileAccount, err := config.GetStrict(path, "account")
+	if err != nil {
+		env.Warn("Could not read %s, so the project was not saved to it: %v", path, err)
+		env.Warn("Fix the file, then link the project: dhq config set project %s", permalink)
+		return
+	}
+	if account != "" && fileAccount != "" && !sameAccount(fileAccount, account, host) {
+		env.Warn("%s uses account %q, but the project was created in %q; not linking it here.", path, fileAccount, account)
+		env.Warn("To use it in this folder: dhq config set account %s && dhq config set project %s", account, permalink)
+		return
+	}
+	// The project goes in first: if saving the account then fails, the folder
+	// is linked as it was before accounts were recorded, not left with an
+	// account and no project.
 	if err := config.Set(path, "project", permalink); err != nil {
 		env.Warn("Could not save project to %s: %v", path, err)
 		return
 	}
-	env.Status("Saved project %s to %s", permalink, path)
+	if account == "" || fileAccount != "" {
+		env.Status("Saved project %s to %s", permalink, path)
+		return
+	}
+	if err := config.Set(path, "account", account); err != nil {
+		env.Status("Saved project %s to %s", permalink, path)
+		env.Warn("Could not save account to %s: %v", path, err)
+		env.Warn("To pin this folder to the account: dhq config set account %s", account)
+		return
+	}
+	env.Status("Saved account %s and project %s to %s", account, permalink, path)
+}
+
+// creatingAccount returns the account (as a subdomain) that commands in this
+// run use, which is the one a project was just created in, and the configured
+// host. It returns "" when the account can't be resolved; the caller then
+// links the project alone.
+func creatingAccount() (account, host string) {
+	if cliCtx == nil || cliCtx.Config == nil {
+		return "", ""
+	}
+	account, _, _, err := cliCtx.Credentials()
+	if err != nil {
+		return "", ""
+	}
+	host = cliCtx.Config.Host
+	return normalizeAccount(account, host), host
+}
+
+// sameAccount reports whether a and b name the same account, accepting the
+// subdomain or hostname form of either.
+func sameAccount(a, b, host string) bool {
+	return strings.EqualFold(normalizeAccount(a, host), normalizeAccount(b, host))
 }
 
 // parentProjectConfig returns the parent folder's .deployhq.toml the config
