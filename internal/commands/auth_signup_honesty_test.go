@@ -420,3 +420,55 @@ func TestLaunchEnsureAuth_NonInteractive_HintNormalisesHostnameAccount(t *testin
 	assert.Contains(t, authErr.Hint, "https://acme.deployhq.com/security")
 	assert.NotContains(t, authErr.Hint, "deployhq.com.deployhq.com")
 }
+
+// withPipedCLIContext is a run with stdout piped and no output flag: JSONMode
+// is false, but the envelope switches to JSON automatically, as it does for
+// agents. It returns stdout.
+func withPipedCLIContext(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	stdout := withJSONCLIContext(t)
+	cliCtx.Envelope.JSONMode = false
+	cliCtx.Envelope.IsTTY = false
+	require.True(t, cliCtx.Envelope.WantsJSON())
+	return stdout
+}
+
+func TestAuthStatus_PipedOutputIsJSON_NotLoggedIn(t *testing.T) {
+	isolateCredentialStore(t)
+	stdout := withPipedCLIContext(t)
+
+	cmd := newAuthStatusCmd()
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	var res map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &res), "piped output must be JSON, got %q", stdout.String())
+	assert.Equal(t, authStatusNotLoggedIn, res["status"])
+}
+
+func TestAuthStatus_PipedOutputIsJSON_Authenticated(t *testing.T) {
+	isolateCredentialStore(t)
+	stdout := withPipedCLIContext(t)
+	cliCtx.Config.Account = "acme"
+	cliCtx.Config.Email = "me@example.com"
+	cliCtx.Config.APIKey = "k"
+	cliCtx.Config.Sources = map[string]string{"account": "env", "email": "env", "api_key": "env"}
+
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"email":"me@example.com"}`)),
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Request:    r,
+		}, nil
+	})
+
+	cmd := newAuthStatusCmd()
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	var res map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &res), "piped output must be JSON, got %q", stdout.String())
+	assert.Equal(t, authStatusAuthenticated, res["status"])
+	assert.Equal(t, "acme", res["account"])
+}

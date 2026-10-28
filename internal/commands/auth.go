@@ -445,7 +445,7 @@ The status is one of:
 			// and reports the account those commands would use.
 			creds, err := cliCtx.ResolveCredentials()
 			if err != nil {
-				if cliCtx.Envelope.JSONMode {
+				if env.WantsJSON() {
 					return env.WriteJSON(authStatusResult{
 						Status: authStatusNotLoggedIn,
 						Message: "No credentials found: dhq has no stored login to use, and flags, " +
@@ -463,7 +463,7 @@ The status is one of:
 			}
 			res := checkAuthStatus(cliCtx.Background(), client, creds, cliCtx.Config.Host)
 
-			if cliCtx.Envelope.JSONMode {
+			if env.WantsJSON() {
 				return env.WriteJSON(res)
 			}
 
