@@ -26,13 +26,19 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq rollback": {
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
 		Destructive: false, Idempotent: false,
-		SupportsJSON: true, SafeForAutomation: true,
+		RequiresConfirmation: true,
+		SupportsJSON:         true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq retry": {
-		Idempotent:   false,
-		SupportsJSON: true, SafeForAutomation: true,
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
+		Idempotent:           false,
+		RequiresConfirmation: true,
+		SupportsJSON:         true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq launch": {
@@ -111,7 +117,24 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq deployments create": {
-		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
+		Idempotent: false, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment"},
+	},
+	"dhq deployments retry": {
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
+		Idempotent: false, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"deployment"},
+	},
+	"dhq deployments rollback": {
+		// Starts a deployment, which changes what is running on the person's
+		// servers, so agents should confirm first (as with dhq deploy).
+		Idempotent: false, RequiresConfirmation: true,
+		SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq deployments abort": {

@@ -214,3 +214,22 @@ func TestAgentMetadata_AuthTokenNotSafeForAutomation(t *testing.T) {
 	assert.False(t, m.SafeForAutomation, "auth token prints the API key")
 	assert.True(t, m.Idempotent)
 }
+
+// Every command that starts a deployment changes what is running on the
+// person's servers, the same way deploy does.
+func TestAgentMetadata_DeploymentStartersRequireConfirmation(t *testing.T) {
+	starters := []string{
+		"dhq rollback",
+		"dhq retry",
+		"dhq deployments create",
+		"dhq deployments retry",
+		"dhq deployments rollback",
+	}
+	for _, path := range starters {
+		m := lookupAgentMetadata(path)
+		assert.True(t, m.RequiresConfirmation, "%s starts a deployment", path)
+		assert.True(t, m.SupportsJSON, "%s honours --json", path)
+		assert.True(t, m.SafeForAutomation, "%s is deterministic non-interactively", path)
+		assert.Contains(t, m.ResourceTypes, "deployment")
+	}
+}
