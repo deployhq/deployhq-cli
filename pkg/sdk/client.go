@@ -19,6 +19,11 @@ const (
 	userAgent      = "deployhq-cli"
 )
 
+// slowRequestTimeout bounds calls DeployHQ answers only after checking the
+// connection itself (connecting a repository, creating a server), which can
+// take longer than defaultTimeout.
+const slowRequestTimeout = 60 * time.Second
+
 // Client is the DeployHQ API client.
 type Client struct {
 	httpClient *http.Client
@@ -26,6 +31,11 @@ type Client struct {
 	email      string
 	apiKey     string
 	userAgent  string
+
+	// slowHTTPClient sends the calls that may outlast defaultTimeout. It is a
+	// separate client (sharing the default transport) because
+	// http.Client.Timeout is a hard cap a longer context deadline cannot lift.
+	slowHTTPClient *http.Client
 }
 
 // Account returns the account subdomain this client is configured for.
@@ -40,9 +50,14 @@ func (c *Client) Account() string {
 // Option configures the Client.
 type Option func(*Client)
 
-// WithHTTPClient sets a custom HTTP client.
+// WithHTTPClient sets a custom HTTP client. It is used for every request,
+// including those that otherwise get a longer timeout, so its own Timeout
+// applies throughout.
 func WithHTTPClient(c *http.Client) Option {
-	return func(cl *Client) { cl.httpClient = c }
+	return func(cl *Client) {
+		cl.httpClient = c
+		cl.slowHTTPClient = c
+	}
 }
 
 // WithUserAgent appends to the User-Agent header (e.g. agent name).
@@ -104,11 +119,12 @@ func newClient(account, email, apiKey string, opts ...Option) (*Client, error) {
 	}
 
 	c := &Client{
-		httpClient: &http.Client{Timeout: defaultTimeout},
-		baseURL:    base,
-		email:      email,
-		apiKey:     apiKey,
-		userAgent:  userAgent,
+		httpClient:     &http.Client{Timeout: defaultTimeout},
+		slowHTTPClient: &http.Client{Timeout: slowRequestTimeout},
+		baseURL:        base,
+		email:          email,
+		apiKey:         apiKey,
+		userAgent:      userAgent,
 	}
 
 	for _, opt := range opts {
@@ -150,6 +166,17 @@ func (c *Client) doRaw(ctx context.Context, method, path string) ([]byte, error)
 // do executes an HTTP request and decodes the JSON response into v.
 // If v is nil, the response body is discarded.
 func (c *Client) do(ctx context.Context, method, path string, body, v interface{}) error {
+	return c.doWith(ctx, c.httpClient, method, path, body, v)
+}
+
+// doSlow is do for calls DeployHQ may take longer than defaultTimeout to
+// answer; they are bounded by slowRequestTimeout instead. A shorter deadline
+// on ctx still applies.
+func (c *Client) doSlow(ctx context.Context, method, path string, body, v interface{}) error {
+	return c.doWith(ctx, c.slowHTTPClient, method, path, body, v)
+}
+
+func (c *Client) doWith(ctx context.Context, hc *http.Client, method, path string, body, v interface{}) error {
 	rel, err := url.Parse(path)
 	if err != nil {
 		return fmt.Errorf("deployhq: invalid path %q: %w", path, err)
@@ -177,7 +204,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, v interface{
 		req.Header.Set("Content-Type", jsonMediaType)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("deployhq: request failed: %w", err)
 	}
