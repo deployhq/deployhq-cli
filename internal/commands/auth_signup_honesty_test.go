@@ -325,7 +325,10 @@ func TestInvalidCredentialsNextStep_BySource(t *testing.T) {
 func isolateCredentialStore(t *testing.T) {
 	t.Helper()
 	keyring.MockInit()
-	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	// os.UserHomeDir reads USERPROFILE on Windows.
+	t.Setenv("USERPROFILE", dir)
 }
 
 // withJSONCLIContext is withTestCLIContext for --json runs; it returns stdout.
