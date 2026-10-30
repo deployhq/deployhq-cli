@@ -176,10 +176,10 @@ func TestNonInteractive_ConfigureFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "interactive-only")
 }
 
-func TestAgentMetadata_MCPSetupIsJSONSafe(t *testing.T) {
+func TestAgentMetadata_MCPJSONButNotAutomationSafe(t *testing.T) {
 	m := lookupAgentMetadata("dhq mcp")
 	assert.True(t, m.SupportsJSON)
-	assert.True(t, m.SafeForAutomation)
+	assert.False(t, m.SafeForAutomation, "bare `dhq mcp` with piped stdin starts the blocking local server")
 	assert.False(t, m.Interactive)
 }
 

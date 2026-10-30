@@ -20,7 +20,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   configs, it still starts the local server and warns that this is deprecated.
   `MCPConfigSnippet()` now returns the hosted `http` config. Setup guidance goes
   to stderr and only the JSON config snippet to stdout. `dhq commands --json` now
-  reports `dhq mcp` as JSON-capable and safe for automation.
+  reports `dhq mcp` as JSON-capable (still not safe for automation, since bare
+  `dhq mcp` with piped stdin starts the local server).
 
 ## [0.22.0] - 2026-10-28
 
