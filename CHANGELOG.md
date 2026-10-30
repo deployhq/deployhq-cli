@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
-## [Unreleased]
-
 ## [0.23.0] - 2026-10-30
 
 ### Changed
