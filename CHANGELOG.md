@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Changed
+
+- **`dhq mcp`** now points at the hosted DeployHQ MCP server
+  (`https://mcp.deployhq.com/mcp`): in a terminal it prints the setup (the
+  `claude mcp add --transport http` command and an `mcpServers` JSON snippet;
+  `--json` returns the same, even when stdin is piped). The hosted server is read-only for now. The local
+  `deployhq-mcp-server` stdio launcher moved behind `dhq mcp --local`. When stdin
+  is piped, as with existing `{"command": "dhq", "args": ["mcp"]}` client
+  configs, it still starts the local server and warns that this is deprecated.
+  `MCPConfigSnippet()` now returns the hosted `http` config. Setup guidance goes
+  to stderr and only the JSON config snippet to stdout. `dhq commands --json` now
+  reports `dhq mcp` as JSON-capable (still not safe for automation, since bare
+  `dhq mcp` with piped stdin starts the local server).
+
 ## [0.22.0] - 2026-10-28
 
 ### Added
