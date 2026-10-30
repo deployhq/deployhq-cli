@@ -152,3 +152,15 @@ func TestPrintHostedMCPSetup_JSON(t *testing.T) {
 		t.Errorf("JSON mode should not write guidance to stderr, got: %s", stderr.String())
 	}
 }
+
+func TestPrintHostedMCPSetup_RedirectedStdoutIsBareConfig(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	// stdout redirected to a file (non-TTY) without an explicit --json
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr, IsTTY: false}
+	if err := printHostedMCPSetup(env); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != MCPConfigSnippet() {
+		t.Fatalf("redirected stdout should be the bare mcpServers config, got:\n%s", got)
+	}
+}

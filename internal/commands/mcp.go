@@ -83,7 +83,10 @@ func decideMCPMode(local, stdinPiped, explicitJSON bool) mcpMode {
 // JSON config snippet, or the structured --json object); the guidance is
 // human text and goes to stderr.
 func printHostedMCPSetup(env *output.Envelope) error {
-	if env.WantsJSON() {
+	// Only an explicit --json gets the wrapper object. A redirected stdout
+	// (`dhq mcp > mcp.json`) must stay the bare mcpServers config, which is
+	// what a client reads; WantsJSON() alone would auto-switch on any pipe.
+	if env.JSONMode && env.WantsJSON() {
 		return env.WriteJSON(map[string]interface{}{
 			"url":         hostedMCPURL,
 			"claude_code": claudeCodeMCPCommand(),
