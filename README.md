@@ -199,7 +199,7 @@ dhq doctor        (health check)
 dhq update        (self-update to latest version)
 dhq skills        list | install (auto-detect AI agents and install the DeployHQ skill)
 dhq setup         claude | codex | cursor | windsurf (deprecated — use 'dhq skills')
-dhq mcp           (start MCP server in stdio mode)
+dhq mcp           (set up the hosted MCP server; --local runs the stdio server)
 ```
 
 ## Deploy with Live Progress

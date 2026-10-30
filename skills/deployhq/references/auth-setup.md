@@ -225,11 +225,23 @@ dhq setup claude --uninstall  # remove (no dhq skills equivalent yet)
 ```
 
 ### `dhq mcp`
-Show MCP (Model Context Protocol) server configuration.
+Show how to connect an assistant to the hosted DeployHQ MCP server
+(`https://mcp.deployhq.com/mcp`). Nothing to install; the user signs in to
+DeployHQ from their assistant. The hosted server is read-only (accounts,
+projects, servers, deployments), so use the CLI for anything that changes a
+deployment.
 
 ```bash
-dhq mcp
+dhq mcp --json                # hosted setup as JSON (url, claude_code, config)
+dhq mcp                       # human setup on stderr, mcpServers JSON snippet on stdout
+dhq mcp --local               # run the deprecated local stdio server instead
+claude mcp add --transport http deployhq https://mcp.deployhq.com/mcp
 ```
+
+When stdin is piped (an old client config of `command: dhq, args: [mcp]`),
+`dhq mcp` still starts the local stdio server and warns on stderr; pass `--json`
+to get the setup instead. Claude Desktop adds remote servers via Settings >
+Connectors (custom connector), not the JSON snippet.
 
 ## Telemetry
 

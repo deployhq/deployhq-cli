@@ -221,8 +221,11 @@ var commandMetadataTable = map[string]AgentMetadata{
 		SupportsJSON: true, SafeForAutomation: true,
 	},
 	"dhq mcp": {
-		Interactive:  true,
-		SupportsJSON: false, SafeForAutomation: false,
+		// Prints hosted-server setup; safe with --json. Without it, piped stdin
+		// starts the deprecated local stdio server, and --local is long-running
+		// and can prompt to install the npm package.
+		Idempotent:   true,
+		SupportsJSON: true, SafeForAutomation: true,
 	},
 
 	// Configuration resources (all non-interactive CRUD)
