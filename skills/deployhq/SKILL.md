@@ -98,7 +98,7 @@ Small steps, each one something the person can approve on its own:
 2. **Existing project?** `dhq projects list --json`, and check for a `.deployhq.toml` in the folder. If a matching project exists, ask whether to reuse it rather than creating a second one.
 3. **Where to deploy.** Ask, and wait for the answer. The usual options:
    - **Their own server** (SSH/SFTP, FTP, S3 and others): most DeployHQ customers deploy this way.
-   - **DeployHQ hosting**: Static Hosting for static sites, or a Managed VPS. These are beta features that the account has to be enrolled in, can need a payment method on the account, and are billed once the beta ends.
+   - **DeployHQ hosting**: Static Hosting for static sites, or a Managed VPS. These are beta features that the account has to be enrolled in, and are billed once the beta ends. A Managed VPS needs a payment method on the account; Static Hosting does not (an account that isn't paying yet can have one site, paying accounts get more).
 4. **Create the project** (after the person agrees): `dhq projects create --name "<name>" --json`, then `dhq config set project <permalink>` so later sessions find it.
 5. **Connect the repository** (after the person agrees; for a private repository this gives DeployHQ read access): `dhq repos create -p <project> --scm-type git --url <repo-url> --json`. See [repos.md](references/repos.md) for the access key a private repository needs.
 6. **Add the target.**

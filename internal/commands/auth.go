@@ -94,6 +94,30 @@ func normalizeAccount(input, host string) string {
 	return cli.NormalizeAccount(input, host)
 }
 
+// accountPromptAttempts is how many times 'dhq auth login' asks for the account
+// before giving up on empty answers.
+const accountPromptAttempts = 3
+
+// promptAccount asks for the account subdomain, asking again straight away
+// after an empty answer rather than going on to ask for the email and API key.
+// It stops at the end of the input or on a read error.
+func promptAccount(env *output.Envelope, reader *bufio.Reader) (string, error) {
+	for range accountPromptAttempts {
+		fmt.Fprint(env.Stderr, "Account subdomain (e.g. 'mycompany' for mycompany.deployhq.com): ") //nolint:errcheck // best-effort stderr
+		input, err := reader.ReadString('\n')
+		if account := strings.TrimSpace(input); account != "" {
+			return account, nil
+		}
+		if err != nil {
+			break
+		}
+	}
+	return "", &output.UserError{
+		Message: "Account is required",
+		Hint:    "Enter the account subdomain, e.g. 'mycompany' for mycompany.deployhq.com.",
+	}
+}
+
 func runAuthLogin(opts *AuthLoginOptions) error {
 	env := cliCtx.Envelope
 	reader := bufio.NewReader(os.Stdin)
@@ -110,9 +134,11 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 
 	// Interactive prompts for missing values (two-tier: flag > prompt)
 	if opts.Account == "" {
-		fmt.Fprint(env.Stderr, "Account subdomain (e.g. 'mycompany' for mycompany.deployhq.com): ") //nolint:errcheck // best-effort stderr
-		input, _ := reader.ReadString('\n')
-		opts.Account = strings.TrimSpace(input)
+		account, err := promptAccount(env, reader)
+		if err != nil {
+			return err
+		}
+		opts.Account = account
 	}
 	opts.Account = normalizeAccount(opts.Account, cliCtx.Config.Host)
 
@@ -416,8 +442,12 @@ func invalidCredentialsNextStep(creds *cli.ResolvedCredentials, host string) str
 	return "Ask the person to sign in again by running 'dhq auth login' in a separate terminal window. " + keyAt
 }
 
-// notLoggedInNextStep is the next step when dhq has no credentials to use.
-const notLoggedInNextStep = "Ask the person to sign in by running 'dhq auth login' in a separate terminal window."
+// signInNextStep asks the person to sign in themselves.
+const signInNextStep = "Ask the person to sign in by running 'dhq auth login' in a separate terminal window."
+
+// notLoggedInNextStep is the next step when dhq has no credentials to use. The
+// person may not have an account yet, so it names sign-up too.
+const notLoggedInNextStep = signInNextStep + " If they have no DeployHQ account yet, they run 'dhq signup' there instead."
 
 // notLoggedInStatus is the not_logged_in result. It names the account dhq is
 // configured to use, if any, and where that setting came from, since a wrong

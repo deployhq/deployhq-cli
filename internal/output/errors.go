@@ -34,6 +34,9 @@ const (
 type UserError struct {
 	Message string
 	Hint    string // optional suggestion for fixing the error
+	// Recovery, when set, replaces the generic recovery actions in --json
+	// output with commands specific to this error.
+	Recovery []Breadcrumb
 }
 
 func (e *UserError) Error() string {

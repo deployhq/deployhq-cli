@@ -119,7 +119,7 @@ func (f *checkFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.scanTargetKind, "scan-target-kind", "", "Scan target kind (vulnerability_scan)")
 	cmd.Flags().StringVar(&f.scanTarget, "scan-target", "", "Scan target path or identifier (vulnerability_scan)")
 	cmd.Flags().StringVar(&f.severityThreshold, "severity-threshold", "", "Minimum severity that fails the check (vulnerability_scan)")
-	cmd.Flags().BoolVar(&f.failOnUnfixedOnly, "fail-on-unfixed-only", false, "Only fail on findings with no available fix (vulnerability_scan)")
+	cmd.Flags().BoolVar(&f.failOnUnfixedOnly, "fail-on-unfixed-only", false, "Only fail on findings that have a fix available (vulnerability_scan)")
 	cmd.Flags().StringVar(&f.sarifOutputPath, "sarif-output-path", "", "Path where the scanner writes SARIF output (vulnerability_scan)")
 }
 

@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the CLI is pre-1.0, minor versions may carry breaking changes to the public
 `pkg/sdk` surface; these are always called out under **Breaking (SDK)**.
 
+## [Unreleased]
+
+### Fixed
+
+- **Not signed in**: the sign-in guidance (error hints, `dhq auth status`,
+  `dhq doctor`) now also says that a person with no DeployHQ account runs
+  `dhq signup` themselves, in a separate terminal window. In `--json` output
+  the recovery actions add `ask_user_to_signup_in_separate_terminal`
+  (`dhq signup`) after the login action.
+- **`dhq signup`** now switches the CLI to the new account, as `dhq auth login`
+  does. Before, an account already named in the global config kept being used
+  for every command after signing up. When the `DEPLOYHQ_ACCOUNT` environment
+  variable or the folder's `.deployhq.toml` still names another account, which
+  takes precedence over the global config, it now warns that dhq keeps using
+  that account and says how to change it (in `--json` output, at the start of
+  `next_step`).
+- **`dhq repos create` / `dhq repos update`**: when `--branch` names a branch
+  that isn't in the repository, DeployHQ saves another branch instead. The
+  command now fails (exit 1) naming the branch that was saved, lists the
+  repository's branches (up to 20) and says how to pick one. In `--json` output
+  the error carries `set_branch` and `list_branches` recovery actions. A
+  repository with no branches yet (no commits) gets "push a commit, then set
+  the branch" instead.
+- **`dhq repos update`** on a project with no repository yet now says so and
+  points at `dhq repos create` (exit 1), instead of failing with
+  "500 Internal Server Error".
+- **`dhq servers create`** with `--protocol-type static_hosting` or
+  `managed_vps` on an account that isn't enrolled in the beta now explains
+  that the account has to be enrolled first, with `dhq beta enroll --protocol
+  <type>` (needs an account admin). In `--json` output the error carries an
+  `enroll_in_beta` recovery action.
+- **`dhq auth login`** asks for the account again when the answer is empty,
+  instead of going on to ask for the email and API key. After three empty
+  answers it fails with "Account is required".
+- **`dhq signup`**: when the email address isn't verified yet, the suggested
+  next steps are now for after verification ("Once you've verified your
+  email:"), since the API refuses requests until then. In `--json` output,
+  `check_status` is followed by `create_project_once_email_verified` instead of
+  a project listing. `dhq hello` uses the same wording.
+- **`dhq signup`** in non-interactive mode now leads with "Signing up needs the
+  person at the keyboard: dhq can't ask for a password in non-interactive
+  mode", instead of "--password is required in non-interactive mode".
+- **Help text**: `dhq templates commands create/update --timing` now lists the
+  values DeployHQ accepts (`all`, `first` or `after_first`) instead of
+  "before/after", and `dhq deployment-checks --fail-on-unfixed-only` now says
+  it fails only on findings that have a fix available, not on those without
+  one.
+
+### Changed
+
+- **`dhq --help`** now tells AI agents to install DeployHQ's skill with
+  `dhq skills install` and follow it, or read
+  `https://www.deployhq.com/agents.md`.
+- **Skill**: says that a Managed VPS needs a payment method on the account and
+  Static Hosting does not (an account that isn't paying yet can have one site).
+
 ## [0.23.0] - 2026-10-30
 
 ### Changed

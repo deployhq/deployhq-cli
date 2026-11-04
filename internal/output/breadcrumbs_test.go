@@ -2,6 +2,7 @@ package output
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -99,6 +100,15 @@ func TestErrorResponseFromErr_UserError(t *testing.T) {
 	assert.False(t, data.Retryable)
 }
 
+func TestErrorResponseFromErr_UserErrorRecoveryReplacesGenericActions(t *testing.T) {
+	err := &UserError{
+		Message:  "Branch not found",
+		Recovery: []Breadcrumb{{Action: "list_branches", Cmd: "dhq repos branches -p app"}},
+	}
+	data := ErrorResponseFromErr(err).Data.(ErrorData)
+	assert.Equal(t, []Breadcrumb{{Action: "list_branches", Cmd: "dhq repos branches -p app"}}, data.Recovery)
+}
+
 func TestErrorResponseFromErr_AuthError(t *testing.T) {
 	err := &AuthError{Message: "Not logged in", Hint: "Run dhq auth login"}
 	resp := ErrorResponseFromErr(err)
@@ -109,6 +119,44 @@ func TestErrorResponseFromErr_AuthError(t *testing.T) {
 	assert.NotEmpty(t, data.Recovery)
 	assert.Equal(t, "ask_user_to_login_in_separate_terminal", data.Recovery[0].Action)
 	assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
+	require.GreaterOrEqual(t, len(data.Recovery), 2)
+	assert.Equal(t, "ask_user_to_signup_in_separate_terminal", data.Recovery[1].Action)
+	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
+}
+
+func TestErrorResponseFromErr_NotLoggedIn_OffersSignup(t *testing.T) {
+	data := ErrorResponseFromErr(errors.New("auth: not logged in")).Data.(ErrorData)
+	require.Len(t, data.Recovery, 2)
+	assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
+	assert.Equal(t, "ask_user_to_signup_in_separate_terminal", data.Recovery[1].Action)
+	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
+}
+
+func TestErrorResponseFromErr_SignedInAuthErrorsDoNotOfferSignup(t *testing.T) {
+	// These people already have an account: a signup crumb would mislead.
+	for name, err := range map[string]error{
+		"api 403":             &sdk.APIError{StatusCode: 403, Message: "forbidden"},
+		"api 401":             &sdk.APIError{StatusCode: 401, Message: "unauthorized"},
+		"invalid credentials": &AuthError{Message: "Invalid credentials"},
+		"access denied":       &AuthError{Message: "Access denied"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			data := ErrorResponseFromErr(err).Data.(ErrorData)
+			assert.Equal(t, "auth_error", data.Code)
+			require.NotEmpty(t, data.Recovery)
+			assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
+			for _, b := range data.Recovery {
+				assert.NotEqual(t, "dhq signup", b.Cmd)
+			}
+		})
+	}
+}
+
+func TestErrorResponseFromErr_NonInteractiveLoginRefusal_OffersSignup(t *testing.T) {
+	err := &AuthError{Message: "Signing in needs your DeployHQ API key, which dhq can't ask for in non-interactive mode"}
+	data := ErrorResponseFromErr(err).Data.(ErrorData)
+	require.GreaterOrEqual(t, len(data.Recovery), 2)
+	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
 }
 
 func TestErrorResponseFromErr_EmailVerificationRequired(t *testing.T) {

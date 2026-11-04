@@ -330,7 +330,7 @@ dhq deployment-checks show chk_abc123 -p my-app --json
 | `--scan-target-kind` | vuln | Target kind |
 | `--scan-target` | vuln | Target path or identifier |
 | `--severity-threshold` | vuln | Minimum severity that fails the check |
-| `--fail-on-unfixed-only` | vuln | Only fail on findings with no available fix |
+| `--fail-on-unfixed-only` | vuln | Only fail on findings that have a fix available |
 | `--sarif-output-path` | vuln | Where the scanner writes SARIF output |
 
 SSH check:

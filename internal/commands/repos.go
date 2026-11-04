@@ -2,8 +2,10 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -118,6 +120,21 @@ func newReposCreateCmd() *cobra.Command {
 			project, projErr := client.GetProject(cliCtx.Background(), projectID)
 
 			env := cliCtx.Envelope
+			if branchErr := branchNotKeptError(cliCtx.Background(), client, projectID, "connected", branch, repo); branchErr != nil {
+				// The repository is connected, so the deploy key is still
+				// needed once the branch is fixed.
+				if projErr == nil && project.PublicKey != "" {
+					if env.WantsJSON() {
+						branchErr.Recovery = append(branchErr.Recovery, deployKeyBreadcrumbs(url, project.PublicKey, projectID)...)
+					} else {
+						env.Status("Deploy key (add to your repo for DeployHQ to pull):")
+						env.Status("  %s", project.PublicKey)
+						printDeployKeyHint(env, url, project.PublicKey, projectID)
+						env.Status("")
+					}
+				}
+				return branchErr
+			}
 			if env.WantsJSON() {
 				breadcrumbs := []output.Breadcrumb{}
 				if projErr == nil && project.PublicKey != "" {
@@ -163,7 +180,10 @@ func newReposUpdateCmd() *cobra.Command {
 			req := sdk.RepositoryCreateRequest{ScmType: scmType, URL: url, Branch: branch}
 			repo, err := client.UpdateRepository(cliCtx.Background(), projectID, req)
 			if err != nil {
-				return err
+				return repoUpdateError(cliCtx.Background(), client, projectID, err)
+			}
+			if branchErr := branchNotKeptError(cliCtx.Background(), client, projectID, "updated", branch, repo); branchErr != nil {
+				return branchErr
 			}
 
 			env := cliCtx.Envelope
@@ -370,6 +390,81 @@ func repoConnectError(ctx context.Context, client *sdk.Client, projectID, scmTyp
 	return &output.UserError{
 		Message: err.Error(),
 		Hint:    deployKeyInstructions(url, project.PublicKey, rerun),
+	}
+}
+
+// repoUpdateError explains a failed repository update on a project that has no
+// repository yet: DeployHQ answers that update with a server error (or, on
+// newer servers, a 404), and reading the repository returns a placeholder with
+// no URL. Other errors pass through as-is.
+func repoUpdateError(ctx context.Context, client *sdk.Client, projectID string, err error) error {
+	var apiErr *sdk.APIError
+	if !errors.As(err, &apiErr) || (apiErr.StatusCode < 500 && apiErr.StatusCode != 404) {
+		return err
+	}
+	repo, getErr := client.GetRepository(ctx, projectID)
+	if getErr != nil || repo == nil || repo.URL != "" {
+		return err
+	}
+	create := fmt.Sprintf("dhq repos create -p %s --scm-type git --url <url> [--branch <branch>]", quoteRerunArg(projectID))
+	return &output.UserError{
+		Message:  "This project has no repository yet",
+		Hint:     create,
+		Recovery: []output.Breadcrumb{{Action: "create_repository", Cmd: create}},
+	}
+}
+
+// maxBranchesShown caps the branch names listed when a branch wasn't kept.
+const maxBranchesShown = 20
+
+// branchNotKeptError returns an error when --branch was given and the saved
+// repository is on a different branch. DeployHQ does not refuse a branch that
+// isn't in the repository: it saves the first branch it finds instead, so a
+// mistyped branch would otherwise be reported as a success. done says what
+// happened to the repository ("connected", "updated").
+func branchNotKeptError(ctx context.Context, client *sdk.Client, projectID, done, requested string, repo *sdk.Repository) *output.UserError {
+	if requested == "" || repo == nil || repo.Branch == requested {
+		return nil
+	}
+	project := quoteRerunArg(projectID)
+
+	// A repository with no commits has no branches, so none could be saved.
+	if repo.Branch == "" {
+		retry := fmt.Sprintf("dhq repos update -p %s --branch %s", project, quoteRerunArg(requested))
+		return &output.UserError{
+			Message:  fmt.Sprintf("The repository was %s, but it has no branches yet, so %q couldn't be set", done, requested),
+			Hint:     "Push a commit to the repository, then run: " + retry + "\nNothing has been deployed.",
+			Recovery: []output.Breadcrumb{{Action: "set_branch", Cmd: retry}},
+		}
+	}
+
+	setBranch := fmt.Sprintf("dhq repos update -p %s --branch <name>", project)
+	listBranches := fmt.Sprintf("dhq repos branches -p %s", project)
+
+	hint := "Pick one with: " + setBranch
+	if branches, err := client.ListBranches(ctx, projectID, nil); err == nil && len(branches) > 0 {
+		names := make([]string, 0, len(branches))
+		for name := range branches {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		list := strings.Join(names, ", ")
+		if len(names) > maxBranchesShown {
+			list = strings.Join(names[:maxBranchesShown], ", ") +
+				fmt.Sprintf(" … and %d more (see: %s)", len(names)-maxBranchesShown, listBranches)
+		}
+		hint = "Branches: " + list + ". " + hint
+	} else {
+		hint = "See the branches with: " + listBranches + ". " + hint
+	}
+
+	return &output.UserError{
+		Message: fmt.Sprintf("The repository was %s, but on branch %q: %q isn't in it", done, repo.Branch, requested),
+		Hint:    hint + "\nNothing has been deployed.",
+		Recovery: []output.Breadcrumb{
+			{Action: "set_branch", Cmd: setBranch},
+			{Action: "list_branches", Cmd: listBranches},
+		},
 	}
 }
 

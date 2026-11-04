@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
+	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/spf13/cobra"
@@ -23,6 +25,11 @@ const termsURL = "https://www.deployhq.com/terms"
 const signupInOwnTerminalHint = "Ask the person to run 'dhq signup' themselves in a separate terminal window " +
 	"(not through the AI agent): it asks for the password at a hidden prompt and asks them to accept the " +
 	"Terms of Service. Never ask for, or make up, a password in an AI chat."
+
+// signupNonInteractiveMessage is the refusal when sign-up can't prompt. It
+// leads with what to do (hand sign-up to the person) rather than naming a
+// password flag.
+const signupNonInteractiveMessage = "Signing up needs the person at the keyboard: dhq can't ask for a password in non-interactive mode"
 
 func newSignupCmd() *cobra.Command {
 	var email, password, accountName, fullName string
@@ -50,7 +57,7 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			if email == "" {
 				if env.NonInteractive {
 					return &output.UserError{
-						Message: "--email is required in non-interactive mode",
+						Message: signupNonInteractiveMessage,
 						Hint:    signupInOwnTerminalHint,
 					}
 				}
@@ -65,7 +72,7 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			if password == "" {
 				if env.NonInteractive {
 					return &output.UserError{
-						Message: "--password is required in non-interactive mode",
+						Message: signupNonInteractiveMessage,
 						Hint:    signupInOwnTerminalHint,
 					}
 				}
@@ -110,6 +117,7 @@ run 'dhq signup' themselves in a separate terminal window.`,
 
 			// Auto-save credentials
 			credentialsSaved := true
+			accountOverride := ""
 			if err := auth.Store(&auth.Credentials{
 				Account: result.Account.Subdomain,
 				Email:   email,
@@ -118,6 +126,13 @@ run 'dhq signup' themselves in a separate terminal window.`,
 				credentialsSaved = false
 				env.Warn("Could not save credentials: %v", err)
 				env.Status("API key: %s", result.APIKey)
+			} else {
+				// Switch the CLI to the new account, as 'dhq auth login' does;
+				// otherwise an account already named in the global config
+				// keeps being used.
+				if err := config.Set(config.GlobalConfigPath(), "account", result.Account.Subdomain); err == nil {
+					accountOverride = accountStillOverridden(result.Account.Subdomain)
+				}
 			}
 
 			if env.WantsJSON() {
@@ -127,13 +142,23 @@ run 'dhq signup' themselves in a separate terminal window.`,
 					// The key is not in the JSON, so the login has to be redone.
 					out.NextStep = strings.TrimSpace(credentialsNotSavedNextStep + " " + out.NextStep)
 				}
+				if accountOverride != "" {
+					out.NextStep = strings.TrimSpace(accountOverride + " " + out.NextStep)
+				}
 				summary := fmt.Sprintf("Account created: %s", result.Account.Subdomain)
 				if out.NextStep != "" {
 					summary += ". " + out.NextStep
 				}
+				// Until the email is verified the API refuses requests, so
+				// 'dhq auth status' (which says so) comes first and project
+				// commands wait for the verification.
+				next := output.Breadcrumb{Action: "projects", Cmd: "dhq projects list"}
+				if !result.EmailVerified {
+					next = output.Breadcrumb{Action: "create_project_once_email_verified", Cmd: "dhq projects create --name <name>"}
+				}
 				return env.WriteJSON(output.NewResponse(out, summary,
 					output.Breadcrumb{Action: "check_status", Cmd: "dhq auth status"},
-					output.Breadcrumb{Action: "projects", Cmd: "dhq projects list"},
+					next,
 				))
 			}
 
@@ -149,6 +174,22 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			env.Status("  SSH Key:     %s", result.SSHPublicKey.Fingerprint)
 			env.Status("")
 			reportSignupOutcome(env, accountName, result, email, host)
+			if accountOverride != "" {
+				env.Warn("%s", accountOverride)
+			}
+			if !credentialsSaved {
+				env.Status(credentialsNotSavedNextStep)
+				if !result.EmailVerified {
+					env.Status("Do that once you've verified your email.")
+				}
+				return nil
+			}
+			if !result.EmailVerified {
+				env.Status("Credentials saved. Once you've verified your email:")
+				env.Status("  dhq auth status")
+				env.Status("  dhq projects create --name my-app")
+				return nil
+			}
 			env.Status("Credentials saved. Get started:")
 			env.Status("  dhq projects list")
 			env.Status("  dhq projects create --name my-app")
@@ -208,9 +249,41 @@ type signupOutput struct {
 	NextStep         string `json:"next_step,omitempty"`
 }
 
+// accountStillOverridden reports when the account just written to the global
+// config is not the one later commands will use, because the DEPLOYHQ_ACCOUNT
+// environment variable or this folder's .deployhq.toml names another account.
+// It returns "" when the new account is in effect.
+func accountStillOverridden(newAccount string) string {
+	cfg, err := config.Load()
+	// Exact match: stored logins are looked up by the exact account name.
+	if err != nil || cfg.Account == "" || cfg.Account == newAccount {
+		return ""
+	}
+	var source, fix string
+	switch cfg.Sources["account"] {
+	case "env":
+		source = "the DEPLOYHQ_ACCOUNT environment variable"
+		fix = "Unset it to use the new account."
+	case "file":
+		// The global config now holds the new account, so a different
+		// value read from a file comes from the project config, which can
+		// be in this folder or a parent folder.
+		source = "this folder's .deployhq.toml"
+		if path := config.FindProjectConfig(); path != "" {
+			if wd, err := os.Getwd(); err != nil || filepath.Dir(path) != wd {
+				source = path
+			}
+		}
+		fix = "Change or remove the account line there to use the new account."
+	default:
+		return ""
+	}
+	return fmt.Sprintf("dhq still uses account %q from %s, not %q. %s", cfg.Account, source, newAccount, fix)
+}
+
 // credentialsNotSavedNextStep is the next step when sign-up succeeded but the
 // new login could not be saved.
-const credentialsNotSavedNextStep = "The credentials could not be saved on this machine. " + notLoggedInNextStep
+const credentialsNotSavedNextStep = "The credentials could not be saved on this machine. " + signInNextStep
 
 func newSignupOutput(result *sdk.SignupResponse, requestedName, email string) signupOutput {
 	out := signupOutput{SignupResponse: result}

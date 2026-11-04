@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -73,6 +74,22 @@ func TestSignInHint_UsesAccountURL(t *testing.T) {
 	assert.Contains(t, auth.SignInHint("acme", ""), "https://acme.deployhq.com/security")
 	assert.Contains(t, auth.SignInHint("", ""), "https://<your-account>.deployhq.com/security")
 	assert.Contains(t, auth.APIKeyLocation("acme", "deployhq.dev"), "https://acme.deployhq.dev/security")
+}
+
+func TestSignInHint_MentionsSignupForPeopleWithoutAnAccount(t *testing.T) {
+	hint := auth.SignInHint("", "")
+	assert.Contains(t, hint, "dhq signup")
+	assert.NotContains(t, hint, "dhq hello")
+	assert.Contains(t, hint, "Never paste an API key into an AI chat")
+}
+
+func TestNotLoggedInNextStep_MentionsSignup(t *testing.T) {
+	assert.Contains(t, notLoggedInNextStep, "dhq auth login")
+	assert.Contains(t, notLoggedInNextStep, "dhq signup")
+	// Sign-up just succeeded when the credentials could not be saved: signing
+	// up again is not the fix.
+	assert.NotContains(t, credentialsNotSavedNextStep, "dhq signup")
+	assert.Contains(t, credentialsNotSavedNextStep, "dhq auth login")
 }
 
 // ── auth status ──────────────────────────────────────────────────────────────
@@ -292,6 +309,7 @@ func TestRootHelp_PointsAgentsToSetupInstructions(t *testing.T) {
 	cmd.SetArgs([]string{"--help"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, stdout.String(), "https://www.deployhq.com/agents.md")
+	assert.Contains(t, stdout.String(), "install DeployHQ's skill with 'dhq skills install' and follow it")
 }
 
 func TestDescribeCredentialSource(t *testing.T) {
@@ -412,6 +430,144 @@ func TestSignup_JSON_OmitsAPIKey(t *testing.T) {
 	assert.Equal(t, "secret-signup-key", stored.APIKey, "the key is saved, not printed")
 }
 
+// stubSignupAPI answers the sign-up request with a new, unverified account
+// named subdomain.
+func stubSignupAPI(t *testing.T, subdomain string) {
+	t.Helper()
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Body: io.NopCloser(strings.NewReader(`{"account":{"subdomain":"` + subdomain + `","name":"New"},` +
+				`"api_key":"new-key","email_verified":false,` +
+				`"ssh_public_key":{"public_key":"ssh-ed25519 AAAA","fingerprint":"SHA256:x"}}`)),
+			Header:  http.Header{"Content-Type": []string{"application/json"}},
+			Request: r,
+		}, nil
+	})
+}
+
+func TestSignup_SwitchesGlobalConfigToNewAccount(t *testing.T) {
+	isolateCredentialStore(t)
+	withJSONCLIContext(t)
+	require.NoError(t, config.Set(config.GlobalConfigPath(), "account", "older-account"))
+	stubSignupAPI(t, "newco")
+
+	cmd := newSignupCmd()
+	cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--accept-terms"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, "newco", config.Get(config.GlobalConfigPath(), "account"),
+		"commands after sign-up must use the new account, not the one configured before")
+}
+
+const (
+	envAccountOverrideWarning = `dhq still uses account "old-env" from the DEPLOYHQ_ACCOUNT environment variable, not "newco". ` +
+		"Unset it to use the new account."
+	projectAccountOverrideWarning = `dhq still uses account "old-project" from this folder's .deployhq.toml, not "newco". ` +
+		"Change or remove the account line there to use the new account."
+)
+
+// runSignupWithAccountOverride signs up as "newco" from an empty folder with
+// an isolated home, after setup has put any overriding account in place. It
+// returns stderr in text mode, or the JSON next_step in JSON mode.
+func runSignupWithAccountOverride(t *testing.T, jsonMode bool, setup func(t *testing.T)) string {
+	t.Helper()
+	isolateCredentialStore(t)
+	t.Chdir(t.TempDir())
+	t.Setenv("DEPLOYHQ_ACCOUNT", "")
+	setup(t)
+	stubSignupAPI(t, "newco")
+
+	var stdout *bytes.Buffer
+	var stderr *bytes.Buffer
+	if jsonMode {
+		stdout = withJSONCLIContext(t)
+	} else {
+		stderr = withTestCLIContext(t, true)
+		cliCtx.Envelope.IsTTY = true // otherwise the output is JSON
+	}
+
+	cmd := newSignupCmd()
+	cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--accept-terms"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.NoError(t, cmd.Execute())
+
+	if !jsonMode {
+		return stderr.String()
+	}
+	var resp struct {
+		Data struct {
+			NextStep string `json:"next_step"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp), "got %q", stdout.String())
+	return resp.Data.NextStep
+}
+
+func TestSignup_WarnsWhenAnotherAccountStillWins(t *testing.T) {
+	envOverride := func(t *testing.T) { t.Setenv("DEPLOYHQ_ACCOUNT", "old-env") }
+	projectOverride := func(t *testing.T) {
+		require.NoError(t, os.WriteFile(".deployhq.toml", []byte("account = \"old-project\"\n"), 0o600))
+	}
+
+	t.Run("env var, text", func(t *testing.T) {
+		out := runSignupWithAccountOverride(t, false, envOverride)
+		assert.Contains(t, out, "Warning: "+envAccountOverrideWarning)
+	})
+	t.Run("env var, json", func(t *testing.T) {
+		next := runSignupWithAccountOverride(t, true, envOverride)
+		assert.True(t, strings.HasPrefix(next, envAccountOverrideWarning+" "), "got %q", next)
+	})
+	t.Run("project file, text", func(t *testing.T) {
+		out := runSignupWithAccountOverride(t, false, projectOverride)
+		assert.Contains(t, out, "Warning: "+projectAccountOverrideWarning)
+	})
+	t.Run("project file, json", func(t *testing.T) {
+		next := runSignupWithAccountOverride(t, true, projectOverride)
+		assert.True(t, strings.HasPrefix(next, projectAccountOverrideWarning+" "), "got %q", next)
+	})
+	// Stored logins are looked up by the exact account name, so an account
+	// that differs only in case is still another account.
+	t.Run("env var differing only in case", func(t *testing.T) {
+		out := runSignupWithAccountOverride(t, false, func(t *testing.T) { t.Setenv("DEPLOYHQ_ACCOUNT", "NewCo") })
+		assert.Contains(t, out, `dhq still uses account "NewCo" from the DEPLOYHQ_ACCOUNT environment variable, not "newco".`)
+	})
+	// The CLI also reads a .deployhq.toml from a parent folder: name the file.
+	t.Run("project file in a parent folder", func(t *testing.T) {
+		out := runSignupWithAccountOverride(t, false, func(t *testing.T) {
+			projectOverride(t)
+			require.NoError(t, os.Mkdir("sub", 0o700))
+			t.Chdir("sub")
+		})
+		assert.Contains(t, out, `dhq still uses account "old-project" from `)
+		assert.Contains(t, out, string(filepath.Separator)+".deployhq.toml, not \"newco\".")
+		assert.NotContains(t, out, "this folder's")
+	})
+}
+
+func TestSignup_NoAccountOverride_NoWarning(t *testing.T) {
+	noOverride := func(t *testing.T) {
+		require.NoError(t, config.Set(config.GlobalConfigPath(), "account", "older-account"))
+	}
+	sameAccount := func(t *testing.T) { t.Setenv("DEPLOYHQ_ACCOUNT", "newco") }
+
+	for name, setup := range map[string]func(*testing.T){"none": noOverride, "same account": sameAccount} {
+		t.Run(name+", text", func(t *testing.T) {
+			out := runSignupWithAccountOverride(t, false, setup)
+			assert.NotContains(t, out, "still uses account")
+		})
+		t.Run(name+", json", func(t *testing.T) {
+			next := runSignupWithAccountOverride(t, true, setup)
+			assert.NotContains(t, next, "still uses account")
+		})
+	}
+}
+
 func TestLaunchEnsureAuth_NonInteractive_HintNormalisesHostnameAccount(t *testing.T) {
 	isolateCredentialStore(t)
 	withTestCLIContext(t, true)
@@ -530,6 +686,47 @@ func TestSignup_JSON_ReportsCredentialSaveFailure(t *testing.T) {
 	assert.Contains(t, data["next_step"], "verification link", "the verify-email notice still applies")
 }
 
+func TestSignup_Text_CredentialSaveFailure_DoesNotClaimSaved(t *testing.T) {
+	for _, verified := range []bool{true, false} {
+		t.Run(fmt.Sprintf("email verified %v", verified), func(t *testing.T) {
+			// No keyring, and a home directory that is a file, so neither store works.
+			keyring.MockInitWithError(errors.New("keyring unavailable"))
+			home := filepath.Join(t.TempDir(), "home")
+			require.NoError(t, os.WriteFile(home, nil, 0o600))
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+
+			stderr := withTestCLIContext(t, true)
+			cliCtx.Envelope.IsTTY = true
+			orig := http.DefaultTransport
+			t.Cleanup(func() { http.DefaultTransport = orig })
+			http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusCreated,
+					Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"account":{"subdomain":"newco","name":"New"},`+
+						`"api_key":"new-key","email_verified":%v,`+
+						`"ssh_public_key":{"public_key":"ssh-ed25519 AAAA","fingerprint":"SHA256:x"}}`, verified))),
+					Header:  http.Header{"Content-Type": []string{"application/json"}},
+					Request: r,
+				}, nil
+			})
+
+			cmd := newSignupCmd()
+			cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--account-name", "newco", "--accept-terms"})
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			require.NoError(t, cmd.Execute())
+
+			out := stderr.String()
+			assert.NotContains(t, out, "Credentials saved")
+			assert.Contains(t, out, credentialsNotSavedNextStep)
+			if !verified {
+				assert.Contains(t, out, "verified your email")
+			}
+		})
+	}
+}
+
 func TestAuthStatus_JSON_NotLoggedIn_NamesConfiguredAccount(t *testing.T) {
 	isolateCredentialStore(t)
 	stdout := withJSONCLIContext(t)
@@ -547,4 +744,109 @@ func TestAuthStatus_JSON_NotLoggedIn_NamesConfiguredAccount(t *testing.T) {
 	assert.Equal(t, map[string]any{"account": "env"}, res["sources"])
 	assert.Contains(t, res["next_step"], "dhq auth login")
 	assert.Contains(t, res["next_step"], "DEPLOYHQ_ACCOUNT")
+}
+
+// ── auth login: account prompt ───────────────────────────────────────────────
+
+func TestPromptAccount_AsksAgainAfterEmptyAnswer(t *testing.T) {
+	stderr := withTestCLIContext(t, false)
+	account, err := promptAccount(cliCtx.Envelope, bufio.NewReader(strings.NewReader("\n  \nacme\n")))
+	require.NoError(t, err)
+	assert.Equal(t, "acme", account)
+	assert.Equal(t, 3, strings.Count(stderr.String(), "Account subdomain"))
+}
+
+func TestPromptAccount_GivesUpAfterThreeEmptyAnswers(t *testing.T) {
+	stderr := withTestCLIContext(t, false)
+	_, err := promptAccount(cliCtx.Envelope, bufio.NewReader(strings.NewReader("\n\n\n\n")))
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Equal(t, "Account is required", uerr.Message)
+	assert.Equal(t, 3, strings.Count(stderr.String(), "Account subdomain"))
+}
+
+func TestPromptAccount_StopsAtEndOfInput(t *testing.T) {
+	stderr := withTestCLIContext(t, false)
+	_, err := promptAccount(cliCtx.Envelope, bufio.NewReader(strings.NewReader("")))
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Equal(t, 1, strings.Count(stderr.String(), "Account subdomain"), "nothing more can be read")
+
+	// A last line without a newline is still an answer.
+	withTestCLIContext(t, false)
+	account, err := promptAccount(cliCtx.Envelope, bufio.NewReader(strings.NewReader("acme")))
+	require.NoError(t, err)
+	assert.Equal(t, "acme", account)
+}
+
+// ── signup: next steps ───────────────────────────────────────────────────────
+
+// A new account can't use the API until its email is verified, so sign-up
+// must not suggest commands that fail until then as if they worked now.
+func TestSignup_Unverified_NextStepsComeAfterVerification(t *testing.T) {
+	args := []string{"--email", "me@example.com", "--password", "pw", "--account-name", "newco", "--accept-terms"}
+
+	t.Run("text", func(t *testing.T) {
+		isolateCredentialStore(t)
+		stderr := withTestCLIContext(t, true)
+		cliCtx.Envelope.IsTTY = true
+		stubSignupAPI(t, "newco")
+
+		cmd := newSignupCmd()
+		cmd.SetArgs(args)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		require.NoError(t, cmd.Execute())
+
+		out := stderr.String()
+		assert.Contains(t, out, "Once you've verified your email")
+		assert.Contains(t, out, "dhq projects create --name my-app")
+		assert.NotContains(t, out, "Get started:")
+	})
+
+	t.Run("json", func(t *testing.T) {
+		isolateCredentialStore(t)
+		stdout := withJSONCLIContext(t)
+		stubSignupAPI(t, "newco")
+
+		cmd := newSignupCmd()
+		cmd.SetArgs(args)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		require.NoError(t, cmd.Execute())
+
+		var resp output.Response
+		require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp), "got %q", stdout.String())
+		// Status first; project commands wait for the email to be verified.
+		assert.Equal(t, []output.Breadcrumb{
+			{Action: "check_status", Cmd: "dhq auth status"},
+			{Action: "create_project_once_email_verified", Cmd: "dhq projects create --name <name>"},
+		}, resp.Breadcrumbs)
+	})
+}
+
+// An agent running 'dhq signup' must be told to hand it to the person, not
+// which flag to pass a password with.
+func TestSignup_NonInteractive_LeadsWithHandingOverToThePerson(t *testing.T) {
+	for name, args := range map[string][]string{
+		"nothing given": {},
+		"email only":    {"--email", "me@example.com"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			blockNetwork(t)
+			withTestCLIContext(t, true)
+
+			cmd := newSignupCmd()
+			cmd.SetArgs(args)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			err := cmd.Execute()
+
+			var uerr *output.UserError
+			require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+			assert.Equal(t, "Signing up needs the person at the keyboard: dhq can't ask for a password in non-interactive mode", uerr.Message)
+			assert.Equal(t, signupInOwnTerminalHint, uerr.Hint)
+			assert.NotContains(t, err.Error(), "--password", "must not suggest passing a password through the agent")
+		})
+	}
 }

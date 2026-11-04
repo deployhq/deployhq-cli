@@ -91,6 +91,28 @@ All handled by `FlexString` or `[]interface{}`.
 4. Register in `internal/commands/root.go`
 5. Add tests
 6. Add a `CHANGELOG.md` entry under `## [Unreleased]` (see Changelog & Releases)
+7. Check whether the user-facing documentation needs the change too (see User-Facing Documentation)
+
+## User-Facing Documentation
+
+The CLI's user-facing documentation (https://www.deployhq.com/support/cli) is
+**not** maintained in this repository: its support articles live in the
+`deployhq/deployhq` repository (private). The skill in `skills/` and `--help`
+ship with the binary; those articles do not, and they drift when nobody updates
+them.
+
+Whenever a change adds, removes or renames a command or flag, or changes
+behaviour those articles describe, treat updating them as part of the change
+and of the release:
+
+- **If you have access to `deployhq/deployhq`**, check it for the support
+  articles that cover what you changed and open a companion PR there. Link the
+  two PRs.
+- **If you don't have access**, say so in the PR description and list what the
+  documentation needs (commands, flags, behaviour), so a maintainer can follow up.
+
+Before tagging a release, confirm the documentation changes for everything in
+`## [Unreleased]` are merged or tracked.
 
 ## Changelog & Releases
 
@@ -102,6 +124,9 @@ or reference-doc correction ships to users and warrants an entry — only genuin
 internal changes (refactors, test-only work, CI config) can skip it.
 
 Releasing is **manual and tag-driven**. Merging to `main` publishes nothing.
+
+First check the user-facing documentation is up to date for this release (see
+User-Facing Documentation). Then:
 
 1. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`.
 2. Update the compare links at the bottom of the file:
