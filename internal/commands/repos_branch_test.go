@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,9 @@ type fakeRepoAPI struct {
 	updateStatus int // status for updating the repository; 0 means 200
 	// showBody is the body of GET /projects/my-app/repository.
 	showBody string
+	// sentBranch records the branch the CLI asked for when creating the
+	// repository.
+	sentBranch string
 }
 
 func installFakeRepoAPI(t *testing.T, api *fakeRepoAPI) {
@@ -41,6 +45,15 @@ func installFakeRepoAPI(t *testing.T, api *fakeRepoAPI) {
 		saved := `{"scm_type":"git","url":"git@github.com:acme/my-app.git","branch":"` + api.savedBranch + `"}`
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/projects/my-app/repository"):
+			var sent struct {
+				Repository struct {
+					Branch string `json:"branch"`
+				} `json:"repository"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&sent); err != nil {
+				return nil, err
+			}
+			api.sentBranch = sent.Repository.Branch
 			return respond(http.StatusCreated, saved)
 		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/projects/my-app/repository"):
 			if api.updateStatus != 0 {
@@ -68,11 +81,13 @@ func installFakeRepoAPI(t *testing.T, api *fakeRepoAPI) {
 
 func TestReposCreate_BranchReplacedByServerFails(t *testing.T) {
 	withResolvableContext(t)
-	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "main"})
+	api := &fakeRepoAPI{savedBranch: "main"}
+	installFakeRepoAPI(t, api)
 
 	err := runServersCmd(t, "repos", "create", "--scm-type", "git",
 		"--url", "git@github.com:acme/my-app.git", "--branch", "does-not-exist")
 	require.Error(t, err)
+	assert.Equal(t, "does-not-exist", api.sentBranch, "the requested branch is sent to DeployHQ")
 
 	var uerr *output.UserError
 	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
@@ -99,10 +114,12 @@ func TestReposCreate_BranchReplacedByServerFails(t *testing.T) {
 
 func TestReposCreate_BranchKeptSucceeds(t *testing.T) {
 	withResolvableContext(t)
-	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "main"})
+	api := &fakeRepoAPI{savedBranch: "main"}
+	installFakeRepoAPI(t, api)
 
 	require.NoError(t, runServersCmd(t, "repos", "create", "--scm-type", "git",
 		"--url", "git@github.com:acme/my-app.git", "--branch", "main"))
+	assert.Equal(t, "main", api.sentBranch, "the requested branch is sent to DeployHQ")
 }
 
 func TestReposCreate_NoBranchGivenSucceeds(t *testing.T) {
