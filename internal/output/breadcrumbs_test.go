@@ -132,6 +132,33 @@ func TestErrorResponseFromErr_NotLoggedIn_OffersSignup(t *testing.T) {
 	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
 }
 
+func TestErrorResponseFromErr_SignedInAuthErrorsDoNotOfferSignup(t *testing.T) {
+	// These people already have an account: a signup crumb would mislead.
+	for name, err := range map[string]error{
+		"api 403":             &sdk.APIError{StatusCode: 403, Message: "forbidden"},
+		"api 401":             &sdk.APIError{StatusCode: 401, Message: "unauthorized"},
+		"invalid credentials": &AuthError{Message: "Invalid credentials"},
+		"access denied":       &AuthError{Message: "Access denied"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			data := ErrorResponseFromErr(err).Data.(ErrorData)
+			assert.Equal(t, "auth_error", data.Code)
+			require.NotEmpty(t, data.Recovery)
+			assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
+			for _, b := range data.Recovery {
+				assert.NotEqual(t, "dhq signup", b.Cmd)
+			}
+		})
+	}
+}
+
+func TestErrorResponseFromErr_NonInteractiveLoginRefusal_OffersSignup(t *testing.T) {
+	err := &AuthError{Message: "Signing in needs your DeployHQ API key, which dhq can't ask for in non-interactive mode"}
+	data := ErrorResponseFromErr(err).Data.(ErrorData)
+	require.GreaterOrEqual(t, len(data.Recovery), 2)
+	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
+}
+
 func TestErrorResponseFromErr_EmailVerificationRequired(t *testing.T) {
 	// The exact shape the API returns for an account whose email is unverified.
 	apiErr := &sdk.APIError{StatusCode: 403, Message: "email_verification_required"}

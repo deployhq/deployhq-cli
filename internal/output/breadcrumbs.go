@@ -232,14 +232,18 @@ func recoveryActions(code, message string) []Breadcrumb {
 	switch {
 	// Signing in needs the person's API key, which must not pass through an AI
 	// agent: the person runs the login themselves in a separate terminal window.
-	// A person with no account signs up the same way (it asks for a password).
+	// A person with no account signs up the same way (it asks for a password),
+	// so signing up is only offered when nobody is signed in: rejected
+	// credentials or a refused request mean the person already has an account.
 	case code == "auth_error":
-		return []Breadcrumb{
+		crumbs := []Breadcrumb{
 			{Action: "ask_user_to_login_in_separate_terminal", Cmd: "dhq auth login"},
-			{Action: "ask_user_to_signup_in_separate_terminal", Cmd: "dhq signup"},
-			{Action: "check_status", Cmd: "dhq auth status"},
 		}
-	case strings.Contains(msg, "not logged in") || strings.Contains(msg, "not authenticated"):
+		if notSignedIn(msg) {
+			crumbs = append(crumbs, Breadcrumb{Action: "ask_user_to_signup_in_separate_terminal", Cmd: "dhq signup"})
+		}
+		return append(crumbs, Breadcrumb{Action: "check_status", Cmd: "dhq auth status"})
+	case notSignedIn(msg):
 		return []Breadcrumb{
 			{Action: "ask_user_to_login_in_separate_terminal", Cmd: "dhq auth login"},
 			{Action: "ask_user_to_signup_in_separate_terminal", Cmd: "dhq signup"},
@@ -255,6 +259,14 @@ func recoveryActions(code, message string) []Breadcrumb {
 		}
 	}
 	return nil
+}
+
+// notSignedIn reports whether a lowercased error message says nobody is
+// signed in yet (as opposed to credentials being rejected or refused).
+func notSignedIn(msg string) bool {
+	return strings.Contains(msg, "not logged in") ||
+		strings.Contains(msg, "not authenticated") ||
+		strings.HasPrefix(msg, "signing in needs your deployhq api key")
 }
 
 // apiErrorHint returns a suggestion for known API error patterns.
