@@ -308,6 +308,7 @@ func TestRootHelp_PointsAgentsToSetupInstructions(t *testing.T) {
 	cmd.SetArgs([]string{"--help"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, stdout.String(), "https://www.deployhq.com/agents.md")
+	assert.Contains(t, stdout.String(), "install DeployHQ's skill with 'dhq skills install' and follow it")
 }
 
 func TestDescribeCredentialSource(t *testing.T) {
