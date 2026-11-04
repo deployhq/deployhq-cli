@@ -9,6 +9,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-04
+
 ### Fixed
 
 - **Not signed in**: the sign-in guidance (error hints, `dhq auth status`,
@@ -19,9 +21,10 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq signup`** now switches the CLI to the new account, as `dhq auth login`
   does. Before, an account already named in the global config kept being used
   for every command after signing up. When the `DEPLOYHQ_ACCOUNT` environment
-  variable or the folder's `.deployhq.toml` still names another account, which
-  takes precedence over the global config, it now warns that dhq keeps using
-  that account and says how to change it (in `--json` output, at the start of
+  variable or a `.deployhq.toml` in the folder (or a parent folder) still names
+  another account, which takes precedence over the global config, it now warns
+  that dhq keeps using that account, names where it comes from and says how to
+  change it (in `--json` output, at the start of
   `next_step`).
 - **`dhq repos create` / `dhq repos update`**: when `--branch` names a branch
   that isn't in the repository, DeployHQ saves another branch instead. The
@@ -568,7 +571,8 @@ rather than regressed.
   flags are no longer sent, so they are left untouched server-side instead of
   being cleared.
 
-[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.24.0
 [0.23.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.23.0
 [0.22.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.22.0
 [0.21.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.21.0
