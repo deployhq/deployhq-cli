@@ -598,3 +598,36 @@ func TestAuthStatus_JSON_NotLoggedIn_NamesConfiguredAccount(t *testing.T) {
 	assert.Contains(t, res["next_step"], "dhq auth login")
 	assert.Contains(t, res["next_step"], "DEPLOYHQ_ACCOUNT")
 }
+
+// ── auth login: account prompt ───────────────────────────────────────────────
+
+func TestPromptAccount_AsksAgainAfterEmptyAnswer(t *testing.T) {
+	stderr := withTestCLIContext(t, false)
+	account, err := promptAccount(cliCtx.Envelope, bufio.NewReader(strings.NewReader("\n  \nacme\n")))
+	require.NoError(t, err)
+	assert.Equal(t, "acme", account)
+	assert.Equal(t, 3, strings.Count(stderr.String(), "Account subdomain"))
+}
+
+func TestPromptAccount_GivesUpAfterThreeEmptyAnswers(t *testing.T) {
+	stderr := withTestCLIContext(t, false)
+	_, err := promptAccount(cliCtx.Envelope, bufio.NewReader(strings.NewReader("\n\n\n\n")))
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Equal(t, "Account is required", uerr.Message)
+	assert.Equal(t, 3, strings.Count(stderr.String(), "Account subdomain"))
+}
+
+func TestPromptAccount_StopsAtEndOfInput(t *testing.T) {
+	stderr := withTestCLIContext(t, false)
+	_, err := promptAccount(cliCtx.Envelope, bufio.NewReader(strings.NewReader("")))
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Equal(t, 1, strings.Count(stderr.String(), "Account subdomain"), "nothing more can be read")
+
+	// A last line without a newline is still an answer.
+	withTestCLIContext(t, false)
+	account, err := promptAccount(cliCtx.Envelope, bufio.NewReader(strings.NewReader("acme")))
+	require.NoError(t, err)
+	assert.Equal(t, "acme", account)
+}

@@ -94,6 +94,30 @@ func normalizeAccount(input, host string) string {
 	return cli.NormalizeAccount(input, host)
 }
 
+// accountPromptAttempts is how many times 'dhq auth login' asks for the account
+// before giving up on empty answers.
+const accountPromptAttempts = 3
+
+// promptAccount asks for the account subdomain, asking again straight away
+// after an empty answer rather than going on to ask for the email and API key.
+// It stops at the end of the input or on a read error.
+func promptAccount(env *output.Envelope, reader *bufio.Reader) (string, error) {
+	for range accountPromptAttempts {
+		fmt.Fprint(env.Stderr, "Account subdomain (e.g. 'mycompany' for mycompany.deployhq.com): ") //nolint:errcheck // best-effort stderr
+		input, err := reader.ReadString('\n')
+		if account := strings.TrimSpace(input); account != "" {
+			return account, nil
+		}
+		if err != nil {
+			break
+		}
+	}
+	return "", &output.UserError{
+		Message: "Account is required",
+		Hint:    "Enter the account subdomain, e.g. 'mycompany' for mycompany.deployhq.com.",
+	}
+}
+
 func runAuthLogin(opts *AuthLoginOptions) error {
 	env := cliCtx.Envelope
 	reader := bufio.NewReader(os.Stdin)
@@ -110,9 +134,11 @@ func runAuthLogin(opts *AuthLoginOptions) error {
 
 	// Interactive prompts for missing values (two-tier: flag > prompt)
 	if opts.Account == "" {
-		fmt.Fprint(env.Stderr, "Account subdomain (e.g. 'mycompany' for mycompany.deployhq.com): ") //nolint:errcheck // best-effort stderr
-		input, _ := reader.ReadString('\n')
-		opts.Account = strings.TrimSpace(input)
+		account, err := promptAccount(env, reader)
+		if err != nil {
+			return err
+		}
+		opts.Account = account
 	}
 	opts.Account = normalizeAccount(opts.Account, cliCtx.Config.Host)
 
