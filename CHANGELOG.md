@@ -22,8 +22,10 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq repos create` / `dhq repos update`**: when `--branch` names a branch
   that isn't in the repository, DeployHQ saves another branch instead. The
   command now fails (exit 1) naming the branch that was saved, lists the
-  repository's branches and says how to pick one. In `--json` output the error
-  carries `set_branch` and `list_branches` recovery actions.
+  repository's branches (up to 20) and says how to pick one. In `--json` output
+  the error carries `set_branch` and `list_branches` recovery actions. A
+  repository with no branches yet (no commits) gets "push a commit, then set
+  the branch" instead.
 - **`dhq repos update`** on a project with no repository yet now says so and
   points at `dhq repos create` (exit 1), instead of failing with
   "500 Internal Server Error".
