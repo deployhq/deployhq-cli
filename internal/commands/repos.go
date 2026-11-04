@@ -414,6 +414,9 @@ func repoUpdateError(ctx context.Context, client *sdk.Client, projectID string, 
 	}
 }
 
+// maxBranchesShown caps the branch names listed when a branch wasn't kept.
+const maxBranchesShown = 20
+
 // branchNotKeptError returns an error when --branch was given and the saved
 // repository is on a different branch. DeployHQ does not refuse a branch that
 // isn't in the repository: it saves the first branch it finds instead, so a
@@ -445,7 +448,12 @@ func branchNotKeptError(ctx context.Context, client *sdk.Client, projectID, done
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		hint = "Branches: " + strings.Join(names, ", ") + ". " + hint
+		list := strings.Join(names, ", ")
+		if len(names) > maxBranchesShown {
+			list = strings.Join(names[:maxBranchesShown], ", ") +
+				fmt.Sprintf(" … and %d more (see: %s)", len(names)-maxBranchesShown, listBranches)
+		}
+		hint = "Branches: " + list + ". " + hint
 	} else {
 		hint = "See the branches with: " + listBranches + ". " + hint
 	}

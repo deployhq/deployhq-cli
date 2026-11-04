@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -18,7 +19,9 @@ import (
 type fakeRepoAPI struct {
 	savedBranch    string
 	branchesStatus int // status for the branch list; 0 means 200
-	updateStatus   int // status for updating the repository; 0 means 200
+	// branchesBody is the branch list; empty means main and develop.
+	branchesBody string
+	updateStatus int // status for updating the repository; 0 means 200
 	// showBody is the body of GET /projects/my-app/repository.
 	showBody string
 }
@@ -47,6 +50,9 @@ func installFakeRepoAPI(t *testing.T, api *fakeRepoAPI) {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/projects/my-app/repository/branches"):
 			if api.branchesStatus != 0 {
 				return respond(api.branchesStatus, `{"error":"Internal Server Error"}`)
+			}
+			if api.branchesBody != "" {
+				return respond(http.StatusOK, api.branchesBody)
 			}
 			return respond(http.StatusOK, `{"main":"abc123","develop":"def456"}`)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/projects/my-app/repository"):
@@ -152,6 +158,22 @@ func TestReposBranch_RepositoryWithNoBranchesYet(t *testing.T) {
 			assert.Equal(t, output.Breadcrumb{Action: "set_branch", Cmd: "dhq repos update -p my-app --branch main"}, data.Recovery[0])
 		})
 	}
+}
+
+func TestReposUpdate_LongBranchListIsCapped(t *testing.T) {
+	withResolvableContext(t)
+	var body []string
+	for i := 0; i < 25; i++ {
+		body = append(body, fmt.Sprintf(`"b%02d":"abc"`, i))
+	}
+	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "b00", branchesBody: "{" + strings.Join(body, ",") + "}"})
+
+	err := runServersCmd(t, "repos", "update", "--branch", "mian")
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Contains(t, uerr.Hint, "Branches: b00, b01, ")
+	assert.Contains(t, uerr.Hint, "b19 … and 5 more (see: dhq repos branches -p my-app).")
+	assert.NotContains(t, uerr.Hint, "b20")
 }
 
 func TestReposUpdate_BranchListUnavailablePointsAtBranchesCommand(t *testing.T) {
