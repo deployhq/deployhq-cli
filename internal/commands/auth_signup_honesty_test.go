@@ -631,3 +631,49 @@ func TestPromptAccount_StopsAtEndOfInput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "acme", account)
 }
+
+// ── signup: next steps ───────────────────────────────────────────────────────
+
+// A new account can't use the API until its email is verified, so sign-up
+// must not suggest commands that fail until then as if they worked now.
+func TestSignup_Unverified_NextStepsComeAfterVerification(t *testing.T) {
+	args := []string{"--email", "me@example.com", "--password", "pw", "--account-name", "newco", "--accept-terms"}
+
+	t.Run("text", func(t *testing.T) {
+		isolateCredentialStore(t)
+		stderr := withTestCLIContext(t, true)
+		cliCtx.Envelope.IsTTY = true
+		stubSignupAPI(t, "newco")
+
+		cmd := newSignupCmd()
+		cmd.SetArgs(args)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		require.NoError(t, cmd.Execute())
+
+		out := stderr.String()
+		assert.Contains(t, out, "Once you've verified your email")
+		assert.Contains(t, out, "dhq projects create --name my-app")
+		assert.NotContains(t, out, "Get started:")
+	})
+
+	t.Run("json", func(t *testing.T) {
+		isolateCredentialStore(t)
+		stdout := withJSONCLIContext(t)
+		stubSignupAPI(t, "newco")
+
+		cmd := newSignupCmd()
+		cmd.SetArgs(args)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		require.NoError(t, cmd.Execute())
+
+		var resp output.Response
+		require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp), "got %q", stdout.String())
+		require.NotEmpty(t, resp.Breadcrumbs)
+		assert.Equal(t, output.Breadcrumb{Action: "check_status", Cmd: "dhq auth status"}, resp.Breadcrumbs[0])
+		for _, b := range resp.Breadcrumbs[1:] {
+			assert.Contains(t, b.Action, "verified", "later steps wait for the email to be verified: %+v", b)
+		}
+	})
+}

@@ -75,14 +75,16 @@ func newHelloCmd() *cobra.Command {
 
 			projects, err := client.ListProjects(cliCtx.Background(), nil)
 			if err != nil {
+				nextSteps := "Get started:"
 				if output.IsEmailVerificationRequired(err) {
 					env.Warn("%s.", output.EmailNotVerifiedMessage)
 					env.Status("%s", output.EmailNotVerifiedHint)
+					nextSteps = "Once you've verified your email:"
 				} else {
 					env.Warn("Could not fetch projects: %v", err)
 				}
 				env.Status("")
-				env.Status("Get started:")
+				env.Status("%s", nextSteps)
 				env.Status("  dhq init              Create a project with repo and server")
 				env.Status("  dhq projects create   Create a project")
 				return nil

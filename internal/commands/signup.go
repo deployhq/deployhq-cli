@@ -137,9 +137,16 @@ run 'dhq signup' themselves in a separate terminal window.`,
 				if out.NextStep != "" {
 					summary += ". " + out.NextStep
 				}
+				// Until the email is verified the API refuses requests, so
+				// 'dhq auth status' (which says so) comes first and project
+				// commands wait for the verification.
+				next := output.Breadcrumb{Action: "projects", Cmd: "dhq projects list"}
+				if !result.EmailVerified {
+					next = output.Breadcrumb{Action: "create_project_once_email_verified", Cmd: "dhq projects create --name <name>"}
+				}
 				return env.WriteJSON(output.NewResponse(out, summary,
 					output.Breadcrumb{Action: "check_status", Cmd: "dhq auth status"},
-					output.Breadcrumb{Action: "projects", Cmd: "dhq projects list"},
+					next,
 				))
 			}
 
@@ -155,6 +162,12 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			env.Status("  SSH Key:     %s", result.SSHPublicKey.Fingerprint)
 			env.Status("")
 			reportSignupOutcome(env, accountName, result, email, host)
+			if !result.EmailVerified {
+				env.Status("Credentials saved. Once you've verified your email:")
+				env.Status("  dhq auth status")
+				env.Status("  dhq projects create --name my-app")
+				return nil
+			}
 			env.Status("Credentials saved. Get started:")
 			env.Status("  dhq projects list")
 			env.Status("  dhq projects create --name my-app")
