@@ -154,6 +154,20 @@ func TestReposUpdate_NoRepositoryYetPointsAtCreate(t *testing.T) {
 	assert.Equal(t, "dhq repos create -p my-app --scm-type git --url <url> [--branch <branch>]", uerr.Hint)
 }
 
+// Newer DeployHQ servers answer the same update with a 404 instead.
+func TestReposUpdate_NotFoundWithoutRepositoryPointsAtCreate(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{
+		updateStatus: http.StatusNotFound,
+		showBody:     `{"scm_type":"git","url":null,"branch":null}`,
+	})
+
+	err := runServersCmd(t, "repos", "update", "--branch", "main")
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Equal(t, "This project has no repository yet", uerr.Message)
+}
+
 func TestReposUpdate_ServerErrorWithRepositoryKeepsOriginalError(t *testing.T) {
 	withResolvableContext(t)
 	installFakeRepoAPI(t, &fakeRepoAPI{

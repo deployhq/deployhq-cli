@@ -394,12 +394,12 @@ func repoConnectError(ctx context.Context, client *sdk.Client, projectID, scmTyp
 }
 
 // repoUpdateError explains a failed repository update on a project that has no
-// repository yet: DeployHQ answers that update with a server error, and reading
-// the repository returns a placeholder with no URL. Other errors pass through
-// as-is.
+// repository yet: DeployHQ answers that update with a server error (or, on
+// newer servers, a 404), and reading the repository returns a placeholder with
+// no URL. Other errors pass through as-is.
 func repoUpdateError(ctx context.Context, client *sdk.Client, projectID string, err error) error {
 	var apiErr *sdk.APIError
-	if !errors.As(err, &apiErr) || apiErr.StatusCode < 500 {
+	if !errors.As(err, &apiErr) || (apiErr.StatusCode < 500 && apiErr.StatusCode != 404) {
 		return err
 	}
 	repo, getErr := client.GetRepository(ctx, projectID)
