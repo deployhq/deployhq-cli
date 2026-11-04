@@ -424,6 +424,17 @@ func branchNotKeptError(ctx context.Context, client *sdk.Client, projectID, done
 		return nil
 	}
 	project := quoteRerunArg(projectID)
+
+	// A repository with no commits has no branches, so none could be saved.
+	if repo.Branch == "" {
+		retry := fmt.Sprintf("dhq repos update -p %s --branch %s", project, quoteRerunArg(requested))
+		return &output.UserError{
+			Message:  fmt.Sprintf("The repository was %s, but it has no branches yet, so %q couldn't be set", done, requested),
+			Hint:     "Push a commit to the repository, then run: " + retry + "\nNothing has been deployed.",
+			Recovery: []output.Breadcrumb{{Action: "set_branch", Cmd: retry}},
+		}
+	}
+
 	setBranch := fmt.Sprintf("dhq repos update -p %s --branch <name>", project)
 	listBranches := fmt.Sprintf("dhq repos branches -p %s", project)
 

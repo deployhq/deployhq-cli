@@ -125,6 +125,35 @@ func TestReposUpdate_BranchReplacedByServerFails(t *testing.T) {
 	assert.Equal(t, "list_branches", data.Recovery[1].Action)
 }
 
+// A repository with no commits has no branches, so DeployHQ saves no branch:
+// the advice is to push a commit, not to pick another branch.
+func TestReposBranch_RepositoryWithNoBranchesYet(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		done string
+	}{
+		{[]string{"repos", "create", "--scm-type", "git", "--url", "git@github.com:acme/my-app.git", "--branch", "main"}, "connected"},
+		{[]string{"repos", "update", "--branch", "main"}, "updated"},
+	} {
+		t.Run(tc.done, func(t *testing.T) {
+			withResolvableContext(t)
+			installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: ""})
+
+			err := runServersCmd(t, tc.args...)
+			var uerr *output.UserError
+			require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+			assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+			assert.Equal(t, `The repository was `+tc.done+`, but it has no branches yet, so "main" couldn't be set`, uerr.Message)
+			assert.Contains(t, uerr.Hint, "Push a commit to the repository, then run: dhq repos update -p my-app --branch main")
+			assert.NotContains(t, uerr.Hint, "Pick one")
+
+			data := output.ErrorResponseFromErr(err).Data.(output.ErrorData)
+			require.NotEmpty(t, data.Recovery)
+			assert.Equal(t, output.Breadcrumb{Action: "set_branch", Cmd: "dhq repos update -p my-app --branch main"}, data.Recovery[0])
+		})
+	}
+}
+
 func TestReposUpdate_BranchListUnavailablePointsAtBranchesCommand(t *testing.T) {
 	withResolvableContext(t)
 	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "main", branchesStatus: http.StatusInternalServerError})
