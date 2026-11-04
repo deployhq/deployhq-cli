@@ -713,11 +713,11 @@ func TestSignup_Unverified_NextStepsComeAfterVerification(t *testing.T) {
 
 		var resp output.Response
 		require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp), "got %q", stdout.String())
-		require.NotEmpty(t, resp.Breadcrumbs)
-		assert.Equal(t, output.Breadcrumb{Action: "check_status", Cmd: "dhq auth status"}, resp.Breadcrumbs[0])
-		for _, b := range resp.Breadcrumbs[1:] {
-			assert.Contains(t, b.Action, "verified", "later steps wait for the email to be verified: %+v", b)
-		}
+		// Status first; project commands wait for the email to be verified.
+		assert.Equal(t, []output.Breadcrumb{
+			{Action: "check_status", Cmd: "dhq auth status"},
+			{Action: "create_project_once_email_verified", Cmd: "dhq projects create --name <name>"},
+		}, resp.Breadcrumbs)
 	})
 }
 
