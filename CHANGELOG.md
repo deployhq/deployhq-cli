@@ -49,6 +49,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq signup`** in non-interactive mode now leads with "Signing up needs the
   person at the keyboard: dhq can't ask for a password in non-interactive
   mode", instead of "--password is required in non-interactive mode".
+- **Help text**: `dhq templates commands create/update --timing` now lists the
+  values DeployHQ accepts (`all`, `first` or `after_first`) instead of
+  "before/after", and `dhq deployment-checks --fail-on-unfixed-only` now says
+  it fails only on findings that have a fix available, not on those without
+  one.
 
 ### Changed
 

@@ -664,7 +664,7 @@ func tcmdCreateCmd() *cobra.Command {
 	addTemplateFlag(cmd, &tmpl)
 	cmd.Flags().StringVar(&command, "command", "", "Command to run (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
-	cmd.Flags().StringVar(&timing, "timing", "", "Timing (before/after)")
+	cmd.Flags().StringVar(&timing, "timing", "", "When to run: all, first or after_first")
 	return cmd
 }
 
@@ -701,7 +701,7 @@ func tcmdUpdateCmd() *cobra.Command {
 	addTemplateFlag(cmd, &tmpl)
 	cmd.Flags().StringVar(&command, "command", "", "Command to run")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
-	cmd.Flags().StringVar(&timing, "timing", "", "Timing (before/after)")
+	cmd.Flags().StringVar(&timing, "timing", "", "When to run: all, first or after_first")
 	return cmd
 }
 
