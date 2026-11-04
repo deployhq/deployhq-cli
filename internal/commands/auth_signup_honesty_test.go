@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -579,6 +580,47 @@ func TestSignup_JSON_ReportsCredentialSaveFailure(t *testing.T) {
 	assert.Contains(t, data["next_step"], "could not be saved")
 	assert.Contains(t, data["next_step"], "dhq auth login")
 	assert.Contains(t, data["next_step"], "verification link", "the verify-email notice still applies")
+}
+
+func TestSignup_Text_CredentialSaveFailure_DoesNotClaimSaved(t *testing.T) {
+	for _, verified := range []bool{true, false} {
+		t.Run(fmt.Sprintf("email verified %v", verified), func(t *testing.T) {
+			// No keyring, and a home directory that is a file, so neither store works.
+			keyring.MockInitWithError(errors.New("keyring unavailable"))
+			home := filepath.Join(t.TempDir(), "home")
+			require.NoError(t, os.WriteFile(home, nil, 0o600))
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+
+			stderr := withTestCLIContext(t, true)
+			cliCtx.Envelope.IsTTY = true
+			orig := http.DefaultTransport
+			t.Cleanup(func() { http.DefaultTransport = orig })
+			http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusCreated,
+					Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"account":{"subdomain":"newco","name":"New"},`+
+						`"api_key":"new-key","email_verified":%v,`+
+						`"ssh_public_key":{"public_key":"ssh-ed25519 AAAA","fingerprint":"SHA256:x"}}`, verified))),
+					Header:  http.Header{"Content-Type": []string{"application/json"}},
+					Request: r,
+				}, nil
+			})
+
+			cmd := newSignupCmd()
+			cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--account-name", "newco", "--accept-terms"})
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			require.NoError(t, cmd.Execute())
+
+			out := stderr.String()
+			assert.NotContains(t, out, "Credentials saved")
+			assert.Contains(t, out, credentialsNotSavedNextStep)
+			if !verified {
+				assert.Contains(t, out, "verified your email")
+			}
+		})
+	}
 }
 
 func TestAuthStatus_JSON_NotLoggedIn_NamesConfiguredAccount(t *testing.T) {

@@ -167,6 +167,13 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			env.Status("  SSH Key:     %s", result.SSHPublicKey.Fingerprint)
 			env.Status("")
 			reportSignupOutcome(env, accountName, result, email, host)
+			if !credentialsSaved {
+				env.Status(credentialsNotSavedNextStep)
+				if !result.EmailVerified {
+					env.Status("Do that once you've verified your email.")
+				}
+				return nil
+			}
 			if !result.EmailVerified {
 				env.Status("Credentials saved. Once you've verified your email:")
 				env.Status("  dhq auth status")
