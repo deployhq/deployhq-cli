@@ -2,7 +2,9 @@ package commands
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -612,6 +614,9 @@ func newServersCreateCmd() *cobra.Command {
 				if err == nil {
 					break
 				}
+				if betaErr := betaNotEnrolledError(protocolType, err); betaErr != nil {
+					return betaErr
+				}
 
 				// Only handle login failures when DeployHQ connects with its own
 				// SSH key — that is the case where the key may simply not be on
@@ -949,5 +954,35 @@ func newServersMetricsCmd() *cobra.Command {
 			env.Status("\nMetrics are nested; run with --json for the full status/cpu/memory/disk/profile snapshot.")
 			return nil
 		},
+	}
+}
+
+// betaNotEnrolledError explains DeployHQ refusing a Static Hosting or Managed
+// VPS server because the account isn't enrolled in the beta (a 422 saying the
+// type is not available for the account). It returns nil for any other error.
+func betaNotEnrolledError(protocolType string, err error) *output.UserError {
+	if protocolType != "static_hosting" && protocolType != "managed_vps" {
+		return nil
+	}
+	var apiErr *sdk.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnprocessableEntity {
+		return nil
+	}
+	refused := false
+	for _, text := range append([]string{apiErr.Message, apiErr.Detail}, apiErr.Errors...) {
+		if strings.Contains(strings.ToLower(text), "not available for your account") {
+			refused = true
+			break
+		}
+	}
+	if !refused {
+		return nil
+	}
+	enroll := "dhq beta enroll --protocol " + protocolType
+	return &output.UserError{
+		Message: err.Error(),
+		Hint: fmt.Sprintf("The account has to be enrolled in the beta before it can use %s. "+
+			"Enroll it with '%s' (needs an account admin), then re-run this command.", hostingName(protocolType), enroll),
+		Recovery: []output.Breadcrumb{{Action: "enroll_in_beta", Cmd: enroll}},
 	}
 }
