@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
+	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/spf13/cobra"
@@ -118,6 +119,11 @@ run 'dhq signup' themselves in a separate terminal window.`,
 				credentialsSaved = false
 				env.Warn("Could not save credentials: %v", err)
 				env.Status("API key: %s", result.APIKey)
+			} else {
+				// Switch the CLI to the new account, as 'dhq auth login' does;
+				// otherwise an account already named in the global config
+				// keeps being used.
+				_ = config.Set(config.GlobalConfigPath(), "account", result.Account.Subdomain)
 			}
 
 			if env.WantsJSON() {

@@ -428,6 +428,40 @@ func TestSignup_JSON_OmitsAPIKey(t *testing.T) {
 	assert.Equal(t, "secret-signup-key", stored.APIKey, "the key is saved, not printed")
 }
 
+// stubSignupAPI answers the sign-up request with a new, unverified account
+// named subdomain.
+func stubSignupAPI(t *testing.T, subdomain string) {
+	t.Helper()
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Body: io.NopCloser(strings.NewReader(`{"account":{"subdomain":"` + subdomain + `","name":"New"},` +
+				`"api_key":"new-key","email_verified":false,` +
+				`"ssh_public_key":{"public_key":"ssh-ed25519 AAAA","fingerprint":"SHA256:x"}}`)),
+			Header:  http.Header{"Content-Type": []string{"application/json"}},
+			Request: r,
+		}, nil
+	})
+}
+
+func TestSignup_SwitchesGlobalConfigToNewAccount(t *testing.T) {
+	isolateCredentialStore(t)
+	withJSONCLIContext(t)
+	require.NoError(t, config.Set(config.GlobalConfigPath(), "account", "older-account"))
+	stubSignupAPI(t, "newco")
+
+	cmd := newSignupCmd()
+	cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--accept-terms"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, "newco", config.Get(config.GlobalConfigPath(), "account"),
+		"commands after sign-up must use the new account, not the one configured before")
+}
+
 func TestLaunchEnsureAuth_NonInteractive_HintNormalisesHostnameAccount(t *testing.T) {
 	isolateCredentialStore(t)
 	withTestCLIContext(t, true)
