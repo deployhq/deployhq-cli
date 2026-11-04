@@ -18,7 +18,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   (`dhq signup`) after the login action.
 - **`dhq signup`** now switches the CLI to the new account, as `dhq auth login`
   does. Before, an account already named in the global config kept being used
-  for every command after signing up.
+  for every command after signing up. When the `DEPLOYHQ_ACCOUNT` environment
+  variable or the folder's `.deployhq.toml` still names another account, which
+  takes precedence over the global config, it now warns that dhq keeps using
+  that account and says how to change it (in `--json` output, at the start of
+  `next_step`).
 - **`dhq repos create` / `dhq repos update`**: when `--branch` names a branch
   that isn't in the repository, DeployHQ saves another branch instead. The
   command now fails (exit 1) naming the branch that was saved, lists the

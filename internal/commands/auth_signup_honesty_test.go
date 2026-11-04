@@ -464,6 +464,94 @@ func TestSignup_SwitchesGlobalConfigToNewAccount(t *testing.T) {
 		"commands after sign-up must use the new account, not the one configured before")
 }
 
+const (
+	envAccountOverrideWarning = `dhq still uses account "old-env" from the DEPLOYHQ_ACCOUNT environment variable, not "newco". ` +
+		"Unset it to use the new account."
+	projectAccountOverrideWarning = `dhq still uses account "old-project" from this folder's .deployhq.toml, not "newco". ` +
+		"Change or remove the account line there to use the new account."
+)
+
+// runSignupWithAccountOverride signs up as "newco" from an empty folder with
+// an isolated home, after setup has put any overriding account in place. It
+// returns stderr in text mode, or the JSON next_step in JSON mode.
+func runSignupWithAccountOverride(t *testing.T, jsonMode bool, setup func(t *testing.T)) string {
+	t.Helper()
+	isolateCredentialStore(t)
+	t.Chdir(t.TempDir())
+	t.Setenv("DEPLOYHQ_ACCOUNT", "")
+	setup(t)
+	stubSignupAPI(t, "newco")
+
+	var stdout *bytes.Buffer
+	var stderr *bytes.Buffer
+	if jsonMode {
+		stdout = withJSONCLIContext(t)
+	} else {
+		stderr = withTestCLIContext(t, true)
+		cliCtx.Envelope.IsTTY = true // otherwise the output is JSON
+	}
+
+	cmd := newSignupCmd()
+	cmd.SetArgs([]string{"--email", "me@example.com", "--password", "pw", "--accept-terms"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.NoError(t, cmd.Execute())
+
+	if !jsonMode {
+		return stderr.String()
+	}
+	var resp struct {
+		Data struct {
+			NextStep string `json:"next_step"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp), "got %q", stdout.String())
+	return resp.Data.NextStep
+}
+
+func TestSignup_WarnsWhenAnotherAccountStillWins(t *testing.T) {
+	envOverride := func(t *testing.T) { t.Setenv("DEPLOYHQ_ACCOUNT", "old-env") }
+	projectOverride := func(t *testing.T) {
+		require.NoError(t, os.WriteFile(".deployhq.toml", []byte("account = \"old-project\"\n"), 0o600))
+	}
+
+	t.Run("env var, text", func(t *testing.T) {
+		out := runSignupWithAccountOverride(t, false, envOverride)
+		assert.Contains(t, out, "Warning: "+envAccountOverrideWarning)
+	})
+	t.Run("env var, json", func(t *testing.T) {
+		next := runSignupWithAccountOverride(t, true, envOverride)
+		assert.True(t, strings.HasPrefix(next, envAccountOverrideWarning+" "), "got %q", next)
+	})
+	t.Run("project file, text", func(t *testing.T) {
+		out := runSignupWithAccountOverride(t, false, projectOverride)
+		assert.Contains(t, out, "Warning: "+projectAccountOverrideWarning)
+	})
+	t.Run("project file, json", func(t *testing.T) {
+		next := runSignupWithAccountOverride(t, true, projectOverride)
+		assert.True(t, strings.HasPrefix(next, projectAccountOverrideWarning+" "), "got %q", next)
+	})
+}
+
+func TestSignup_NoAccountOverride_NoWarning(t *testing.T) {
+	noOverride := func(t *testing.T) {
+		require.NoError(t, config.Set(config.GlobalConfigPath(), "account", "older-account"))
+	}
+	// The same account in a different case is not an override.
+	sameAccount := func(t *testing.T) { t.Setenv("DEPLOYHQ_ACCOUNT", "NewCo") }
+
+	for name, setup := range map[string]func(*testing.T){"none": noOverride, "same account": sameAccount} {
+		t.Run(name+", text", func(t *testing.T) {
+			out := runSignupWithAccountOverride(t, false, setup)
+			assert.NotContains(t, out, "still uses account")
+		})
+		t.Run(name+", json", func(t *testing.T) {
+			next := runSignupWithAccountOverride(t, true, setup)
+			assert.NotContains(t, next, "still uses account")
+		})
+	}
+}
+
 func TestLaunchEnsureAuth_NonInteractive_HintNormalisesHostnameAccount(t *testing.T) {
 	isolateCredentialStore(t)
 	withTestCLIContext(t, true)

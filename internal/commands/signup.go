@@ -116,6 +116,7 @@ run 'dhq signup' themselves in a separate terminal window.`,
 
 			// Auto-save credentials
 			credentialsSaved := true
+			accountOverride := ""
 			if err := auth.Store(&auth.Credentials{
 				Account: result.Account.Subdomain,
 				Email:   email,
@@ -128,7 +129,9 @@ run 'dhq signup' themselves in a separate terminal window.`,
 				// Switch the CLI to the new account, as 'dhq auth login' does;
 				// otherwise an account already named in the global config
 				// keeps being used.
-				_ = config.Set(config.GlobalConfigPath(), "account", result.Account.Subdomain)
+				if err := config.Set(config.GlobalConfigPath(), "account", result.Account.Subdomain); err == nil {
+					accountOverride = accountStillOverridden(result.Account.Subdomain)
+				}
 			}
 
 			if env.WantsJSON() {
@@ -137,6 +140,9 @@ run 'dhq signup' themselves in a separate terminal window.`,
 				if !credentialsSaved {
 					// The key is not in the JSON, so the login has to be redone.
 					out.NextStep = strings.TrimSpace(credentialsNotSavedNextStep + " " + out.NextStep)
+				}
+				if accountOverride != "" {
+					out.NextStep = strings.TrimSpace(accountOverride + " " + out.NextStep)
 				}
 				summary := fmt.Sprintf("Account created: %s", result.Account.Subdomain)
 				if out.NextStep != "" {
@@ -167,6 +173,9 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			env.Status("  SSH Key:     %s", result.SSHPublicKey.Fingerprint)
 			env.Status("")
 			reportSignupOutcome(env, accountName, result, email, host)
+			if accountOverride != "" {
+				env.Warn("%s", accountOverride)
+			}
 			if !credentialsSaved {
 				env.Status(credentialsNotSavedNextStep)
 				if !result.EmailVerified {
@@ -237,6 +246,31 @@ type signupOutput struct {
 	// CredentialsSaved says whether dhq saved the new login on this machine.
 	CredentialsSaved bool   `json:"credentials_saved"`
 	NextStep         string `json:"next_step,omitempty"`
+}
+
+// accountStillOverridden reports when the account just written to the global
+// config is not the one later commands will use, because the DEPLOYHQ_ACCOUNT
+// environment variable or this folder's .deployhq.toml names another account.
+// It returns "" when the new account is in effect.
+func accountStillOverridden(newAccount string) string {
+	cfg, err := config.Load()
+	if err != nil || cfg.Account == "" || strings.EqualFold(cfg.Account, newAccount) {
+		return ""
+	}
+	var source, fix string
+	switch cfg.Sources["account"] {
+	case "env":
+		source = "the DEPLOYHQ_ACCOUNT environment variable"
+		fix = "Unset it to use the new account."
+	case "file":
+		// The global config now holds the new account, so a different
+		// value read from a file comes from the project config.
+		source = "this folder's .deployhq.toml"
+		fix = "Change or remove the account line there to use the new account."
+	default:
+		return ""
+	}
+	return fmt.Sprintf("dhq still uses account %q from %s, not %q. %s", cfg.Account, source, newAccount, fix)
 }
 
 // credentialsNotSavedNextStep is the next step when sign-up succeeded but the
