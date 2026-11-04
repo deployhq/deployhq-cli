@@ -25,6 +25,11 @@ const signupInOwnTerminalHint = "Ask the person to run 'dhq signup' themselves i
 	"(not through the AI agent): it asks for the password at a hidden prompt and asks them to accept the " +
 	"Terms of Service. Never ask for, or make up, a password in an AI chat."
 
+// signupNonInteractiveMessage is the refusal when sign-up can't prompt. It
+// leads with what to do (hand sign-up to the person) rather than naming a
+// password flag.
+const signupNonInteractiveMessage = "Signing up needs the person at the keyboard: dhq can't ask for a password in non-interactive mode"
+
 func newSignupCmd() *cobra.Command {
 	var email, password, accountName, fullName string
 	var acceptTerms bool
@@ -51,7 +56,7 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			if email == "" {
 				if env.NonInteractive {
 					return &output.UserError{
-						Message: "--email is required in non-interactive mode",
+						Message: signupNonInteractiveMessage,
 						Hint:    signupInOwnTerminalHint,
 					}
 				}
@@ -66,7 +71,7 @@ run 'dhq signup' themselves in a separate terminal window.`,
 			if password == "" {
 				if env.NonInteractive {
 					return &output.UserError{
-						Message: "--password is required in non-interactive mode",
+						Message: signupNonInteractiveMessage,
 						Hint:    signupInOwnTerminalHint,
 					}
 				}

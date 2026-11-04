@@ -677,3 +677,29 @@ func TestSignup_Unverified_NextStepsComeAfterVerification(t *testing.T) {
 		}
 	})
 }
+
+// An agent running 'dhq signup' must be told to hand it to the person, not
+// which flag to pass a password with.
+func TestSignup_NonInteractive_LeadsWithHandingOverToThePerson(t *testing.T) {
+	for name, args := range map[string][]string{
+		"nothing given": {},
+		"email only":    {"--email", "me@example.com"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			blockNetwork(t)
+			withTestCLIContext(t, true)
+
+			cmd := newSignupCmd()
+			cmd.SetArgs(args)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			err := cmd.Execute()
+
+			var uerr *output.UserError
+			require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+			assert.Equal(t, "Signing up needs the person at the keyboard: dhq can't ask for a password in non-interactive mode", uerr.Message)
+			assert.Equal(t, signupInOwnTerminalHint, uerr.Hint)
+			assert.NotContains(t, err.Error(), "--password", "must not suggest passing a password through the agent")
+		})
+	}
+}
