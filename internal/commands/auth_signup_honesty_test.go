@@ -531,14 +531,30 @@ func TestSignup_WarnsWhenAnotherAccountStillWins(t *testing.T) {
 		next := runSignupWithAccountOverride(t, true, projectOverride)
 		assert.True(t, strings.HasPrefix(next, projectAccountOverrideWarning+" "), "got %q", next)
 	})
+	// Stored logins are looked up by the exact account name, so an account
+	// that differs only in case is still another account.
+	t.Run("env var differing only in case", func(t *testing.T) {
+		out := runSignupWithAccountOverride(t, false, func(t *testing.T) { t.Setenv("DEPLOYHQ_ACCOUNT", "NewCo") })
+		assert.Contains(t, out, `dhq still uses account "NewCo" from the DEPLOYHQ_ACCOUNT environment variable, not "newco".`)
+	})
+	// The CLI also reads a .deployhq.toml from a parent folder: name the file.
+	t.Run("project file in a parent folder", func(t *testing.T) {
+		out := runSignupWithAccountOverride(t, false, func(t *testing.T) {
+			projectOverride(t)
+			require.NoError(t, os.Mkdir("sub", 0o700))
+			t.Chdir("sub")
+		})
+		assert.Contains(t, out, `dhq still uses account "old-project" from `)
+		assert.Contains(t, out, string(filepath.Separator)+".deployhq.toml, not \"newco\".")
+		assert.NotContains(t, out, "this folder's")
+	})
 }
 
 func TestSignup_NoAccountOverride_NoWarning(t *testing.T) {
 	noOverride := func(t *testing.T) {
 		require.NoError(t, config.Set(config.GlobalConfigPath(), "account", "older-account"))
 	}
-	// The same account in a different case is not an override.
-	sameAccount := func(t *testing.T) { t.Setenv("DEPLOYHQ_ACCOUNT", "NewCo") }
+	sameAccount := func(t *testing.T) { t.Setenv("DEPLOYHQ_ACCOUNT", "newco") }
 
 	for name, setup := range map[string]func(*testing.T){"none": noOverride, "same account": sameAccount} {
 		t.Run(name+", text", func(t *testing.T) {

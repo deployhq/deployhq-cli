@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/auth"
@@ -254,7 +255,8 @@ type signupOutput struct {
 // It returns "" when the new account is in effect.
 func accountStillOverridden(newAccount string) string {
 	cfg, err := config.Load()
-	if err != nil || cfg.Account == "" || strings.EqualFold(cfg.Account, newAccount) {
+	// Exact match: stored logins are looked up by the exact account name.
+	if err != nil || cfg.Account == "" || cfg.Account == newAccount {
 		return ""
 	}
 	var source, fix string
@@ -264,8 +266,14 @@ func accountStillOverridden(newAccount string) string {
 		fix = "Unset it to use the new account."
 	case "file":
 		// The global config now holds the new account, so a different
-		// value read from a file comes from the project config.
+		// value read from a file comes from the project config, which can
+		// be in this folder or a parent folder.
 		source = "this folder's .deployhq.toml"
+		if path := config.FindProjectConfig(); path != "" {
+			if wd, err := os.Getwd(); err != nil || filepath.Dir(path) != wd {
+				source = path
+			}
+		}
 		fix = "Change or remove the account line there to use the new account."
 	default:
 		return ""
