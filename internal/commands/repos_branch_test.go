@@ -80,6 +80,15 @@ func TestReposCreate_BranchReplacedByServerFails(t *testing.T) {
 	require.GreaterOrEqual(t, len(data.Recovery), 2)
 	assert.Equal(t, output.Breadcrumb{Action: "set_branch", Cmd: "dhq repos update -p my-app --branch <name>"}, data.Recovery[0])
 	assert.Equal(t, output.Breadcrumb{Action: "list_branches", Cmd: "dhq repos branches -p my-app"}, data.Recovery[1])
+
+	// The repository is connected, so the deploy key is still needed.
+	keyCrumb := false
+	for _, r := range data.Recovery {
+		if strings.Contains(r.Cmd, "gh repo deploy-key add") && strings.Contains(r.Cmd, projectPublicKey) {
+			keyCrumb = true
+		}
+	}
+	assert.True(t, keyCrumb, "deploy key recovery kept: %+v", data.Recovery)
 }
 
 func TestReposCreate_BranchKeptSucceeds(t *testing.T) {
