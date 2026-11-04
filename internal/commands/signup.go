@@ -210,7 +210,7 @@ type signupOutput struct {
 
 // credentialsNotSavedNextStep is the next step when sign-up succeeded but the
 // new login could not be saved.
-const credentialsNotSavedNextStep = "The credentials could not be saved on this machine. " + notLoggedInNextStep
+const credentialsNotSavedNextStep = "The credentials could not be saved on this machine. " + signInNextStep
 
 func newSignupOutput(result *sdk.SignupResponse, requestedName, email string) signupOutput {
 	out := signupOutput{SignupResponse: result}

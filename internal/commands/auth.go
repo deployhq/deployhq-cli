@@ -416,8 +416,12 @@ func invalidCredentialsNextStep(creds *cli.ResolvedCredentials, host string) str
 	return "Ask the person to sign in again by running 'dhq auth login' in a separate terminal window. " + keyAt
 }
 
-// notLoggedInNextStep is the next step when dhq has no credentials to use.
-const notLoggedInNextStep = "Ask the person to sign in by running 'dhq auth login' in a separate terminal window."
+// signInNextStep asks the person to sign in themselves.
+const signInNextStep = "Ask the person to sign in by running 'dhq auth login' in a separate terminal window."
+
+// notLoggedInNextStep is the next step when dhq has no credentials to use. The
+// person may not have an account yet, so it names sign-up too.
+const notLoggedInNextStep = signInNextStep + " If they have no DeployHQ account yet, they run 'dhq signup' there instead."
 
 // notLoggedInStatus is the not_logged_in result. It names the account dhq is
 // configured to use, if any, and where that setting came from, since a wrong

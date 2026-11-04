@@ -2,6 +2,7 @@ package output
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -109,6 +110,17 @@ func TestErrorResponseFromErr_AuthError(t *testing.T) {
 	assert.NotEmpty(t, data.Recovery)
 	assert.Equal(t, "ask_user_to_login_in_separate_terminal", data.Recovery[0].Action)
 	assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
+	require.GreaterOrEqual(t, len(data.Recovery), 2)
+	assert.Equal(t, "ask_user_to_signup_in_separate_terminal", data.Recovery[1].Action)
+	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
+}
+
+func TestErrorResponseFromErr_NotLoggedIn_OffersSignup(t *testing.T) {
+	data := ErrorResponseFromErr(errors.New("auth: not logged in")).Data.(ErrorData)
+	require.Len(t, data.Recovery, 2)
+	assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
+	assert.Equal(t, "ask_user_to_signup_in_separate_terminal", data.Recovery[1].Action)
+	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
 }
 
 func TestErrorResponseFromErr_EmailVerificationRequired(t *testing.T) {

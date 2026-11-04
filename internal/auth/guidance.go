@@ -18,10 +18,12 @@ func APIKeyLocation(account, host string) string {
 // SignInHint is the guidance shown whenever dhq needs credentials it cannot
 // prompt for (for example when run by an AI agent). The API key is a secret:
 // the person enters it themselves, in a terminal the agent does not drive, so
-// it never ends up in a chat transcript.
+// it never ends up in a chat transcript. A person without an account signs up
+// the same way, since sign-up asks for a password.
 func SignInHint(account, host string) string {
 	return "Ask the person to sign in themselves: run 'dhq auth login' in a separate terminal window " +
 		"(not through the AI agent). It prompts for the account, email and API key, and stores them securely.\n" +
+		"If the person has no DeployHQ account yet, they run 'dhq signup' themselves instead, also in a separate terminal window.\n" +
 		"The API key is under " + APIKeyLocation(account, host) + ".\n" +
 		"Never paste an API key into an AI chat.\n" +
 		"For CI, set DEPLOYHQ_ACCOUNT, DEPLOYHQ_EMAIL and DEPLOYHQ_API_KEY as secret environment variables instead."

@@ -75,6 +75,22 @@ func TestSignInHint_UsesAccountURL(t *testing.T) {
 	assert.Contains(t, auth.APIKeyLocation("acme", "deployhq.dev"), "https://acme.deployhq.dev/security")
 }
 
+func TestSignInHint_MentionsSignupForPeopleWithoutAnAccount(t *testing.T) {
+	hint := auth.SignInHint("", "")
+	assert.Contains(t, hint, "dhq signup")
+	assert.NotContains(t, hint, "dhq hello")
+	assert.Contains(t, hint, "Never paste an API key into an AI chat")
+}
+
+func TestNotLoggedInNextStep_MentionsSignup(t *testing.T) {
+	assert.Contains(t, notLoggedInNextStep, "dhq auth login")
+	assert.Contains(t, notLoggedInNextStep, "dhq signup")
+	// Sign-up just succeeded when the credentials could not be saved: signing
+	// up again is not the fix.
+	assert.NotContains(t, credentialsNotSavedNextStep, "dhq signup")
+	assert.Contains(t, credentialsNotSavedNextStep, "dhq auth login")
+}
+
 // ── auth status ──────────────────────────────────────────────────────────────
 
 func TestCheckAuthStatus(t *testing.T) {
