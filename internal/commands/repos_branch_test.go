@@ -127,3 +127,35 @@ func TestReposUpdate_BranchListUnavailablePointsAtBranchesCommand(t *testing.T) 
 	assert.Contains(t, uerr.Hint, "dhq repos branches -p my-app")
 	assert.Contains(t, uerr.Hint, "dhq repos update -p my-app --branch <name>")
 }
+
+// DeployHQ answers a repository update for a project with no repository with
+// a server error; reading the repository then returns a placeholder with no URL.
+func TestReposUpdate_NoRepositoryYetPointsAtCreate(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{
+		updateStatus: http.StatusInternalServerError,
+		showBody:     `{"scm_type":"git","url":null,"branch":null}`,
+	})
+
+	err := runServersCmd(t, "repos", "update", "--branch", "main")
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Equal(t, "This project has no repository yet", uerr.Message)
+	assert.Equal(t, "dhq repos create -p my-app --scm-type git --url <url> [--branch <branch>]", uerr.Hint)
+}
+
+func TestReposUpdate_ServerErrorWithRepositoryKeepsOriginalError(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{
+		updateStatus: http.StatusInternalServerError,
+		showBody:     `{"scm_type":"git","url":"git@github.com:acme/my-app.git","branch":"main"}`,
+	})
+
+	err := runServersCmd(t, "repos", "update", "--branch", "main")
+	require.Error(t, err)
+	var uerr *output.UserError
+	assert.False(t, errors.As(err, &uerr), "a server error on a project with a repository is not explained away")
+	assert.Equal(t, output.ExitInternalError, output.ClassifyError(err))
+	assert.Contains(t, err.Error(), "500")
+}

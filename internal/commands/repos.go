@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -179,7 +180,7 @@ func newReposUpdateCmd() *cobra.Command {
 			req := sdk.RepositoryCreateRequest{ScmType: scmType, URL: url, Branch: branch}
 			repo, err := client.UpdateRepository(cliCtx.Background(), projectID, req)
 			if err != nil {
-				return err
+				return repoUpdateError(cliCtx.Background(), client, projectID, err)
 			}
 			if branchErr := branchNotKeptError(cliCtx.Background(), client, projectID, "updated", branch, repo); branchErr != nil {
 				return branchErr
@@ -389,6 +390,27 @@ func repoConnectError(ctx context.Context, client *sdk.Client, projectID, scmTyp
 	return &output.UserError{
 		Message: err.Error(),
 		Hint:    deployKeyInstructions(url, project.PublicKey, rerun),
+	}
+}
+
+// repoUpdateError explains a failed repository update on a project that has no
+// repository yet: DeployHQ answers that update with a server error, and reading
+// the repository returns a placeholder with no URL. Other errors pass through
+// as-is.
+func repoUpdateError(ctx context.Context, client *sdk.Client, projectID string, err error) error {
+	var apiErr *sdk.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode < 500 {
+		return err
+	}
+	repo, getErr := client.GetRepository(ctx, projectID)
+	if getErr != nil || repo == nil || repo.URL != "" {
+		return err
+	}
+	create := fmt.Sprintf("dhq repos create -p %s --scm-type git --url <url> [--branch <branch>]", quoteRerunArg(projectID))
+	return &output.UserError{
+		Message:  "This project has no repository yet",
+		Hint:     create,
+		Recovery: []output.Breadcrumb{{Action: "create_repository", Cmd: create}},
 	}
 }
 
