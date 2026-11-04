@@ -100,6 +100,15 @@ func TestErrorResponseFromErr_UserError(t *testing.T) {
 	assert.False(t, data.Retryable)
 }
 
+func TestErrorResponseFromErr_UserErrorRecoveryReplacesGenericActions(t *testing.T) {
+	err := &UserError{
+		Message:  "Branch not found",
+		Recovery: []Breadcrumb{{Action: "list_branches", Cmd: "dhq repos branches -p app"}},
+	}
+	data := ErrorResponseFromErr(err).Data.(ErrorData)
+	assert.Equal(t, []Breadcrumb{{Action: "list_branches", Cmd: "dhq repos branches -p app"}}, data.Recovery)
+}
+
 func TestErrorResponseFromErr_AuthError(t *testing.T) {
 	err := &AuthError{Message: "Not logged in", Hint: "Run dhq auth login"}
 	resp := ErrorResponseFromErr(err)

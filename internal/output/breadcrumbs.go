@@ -130,12 +130,14 @@ func ErrorResponseFromErr(err error) *Response {
 	message := err.Error()
 	hint := ""
 	exitCode := ClassifyError(err)
+	var recovery []Breadcrumb
 
 	switch e := err.(type) {
 	case *UserError:
 		code = "user_error"
 		message = e.Message
 		hint = e.Hint
+		recovery = e.Recovery
 	case *AuthError:
 		code = "auth_error"
 		message = e.Message
@@ -177,6 +179,9 @@ func ErrorResponseFromErr(err error) *Response {
 	if hint == "" {
 		hint = cobraArgHint(message)
 	}
+	if recovery == nil {
+		recovery = recoveryActions(code, message)
+	}
 
 	return &Response{
 		OK: false,
@@ -186,7 +191,7 @@ func ErrorResponseFromErr(err error) *Response {
 			ExitCode:   exitCode,
 			Retryable:  isRetryable(code, message),
 			Suggestion: hint,
-			Recovery:   recoveryActions(code, message),
+			Recovery:   recovery,
 		},
 	}
 }
