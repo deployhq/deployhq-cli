@@ -110,6 +110,29 @@ dhq servers show srv-001 -p my-app --json=branch,preferred_branch
 | `--spa-mode` | Enable SPA routing (rewrites all paths to index.html) |
 | `--subdirectory` | Output subdirectory to publish (e.g. dist) |
 
+**Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;
+other server types return not-found):
+
+- At most 2 domains per site: an apex + www pair. The first added is the
+  primary; the other redirects to it.
+- After `add`, the person must create BOTH DNS records the command prints: the
+  CNAME (for an apex such as `example.com`, an ALIAS/ANAME record or CNAME
+  flattening instead) and the TXT ownership record. The TXT name/value can be
+  `null` for a moment after adding; re-check with `show`.
+- The domain goes live automatically once both records are detected (checked
+  every few minutes). Status: `pending` -> `active`, or `failed`; a domain not
+  verified within 7 days becomes `expired` (remove and add again).
+- `remove` happens in the background and needs `--yes` in non-interactive mode.
+  Check with the person first: the site stops answering on that domain.
+- A `paid_plan_required` error means the account must upgrade; relay its hint.
+
+```bash
+dhq domains add www.example.com -p my-site -s "My Site" --json   # dns_records to hand to the person
+dhq domains list -p my-site -s "My Site" --json
+dhq domains show www.example.com -p my-site -s "My Site" --json=status,dns_records,verification_errors
+dhq domains remove www.example.com -p my-site -s "My Site" --yes --json
+```
+
 **Managed VPS flags (beta, requires managed-resources beta on account):**
 
 | Flag | Description |

@@ -82,7 +82,7 @@ In non-interactive mode, any ambiguity (e.g. multiple servers, missing required 
 |-------|-------------|-----------|
 | **launch** | All-in-one setup for DeployHQ Static Hosting or a Managed VPS (an option when the person picks DeployHQ hosting) | [launch.md](references/launch.md) |
 | **projects** | Create, list, update, delete projects | [projects.md](references/projects.md) |
-| **servers** | Manage deployment targets (SSH, FTP, S3, etc.) | [servers.md](references/servers.md) |
+| **servers** | Manage deployment targets (SSH, FTP, S3, etc.); `dhq domains` adds custom domains to a Static Hosting site | [servers.md](references/servers.md) |
 | **deployments** | Create, monitor, rollback deployments | [deployments.md](references/deployments.md) |
 | **repos** | Repository configuration, branches, commits | [repos.md](references/repos.md) |
 | **configuration** | Env vars, config files, build commands, exclusions, deployment checks, cache files, build languages, known hosts | [configuration.md](references/configuration.md) |

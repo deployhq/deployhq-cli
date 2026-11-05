@@ -9,6 +9,23 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ## [Unreleased]
 
+### Added
+
+- **`dhq domains list | show | add | remove`**: custom domains for a Static
+  Hosting site, scoped by `-p <project>` and `-s <server>` (name or
+  identifier). `add` prints the two DNS records to create (the CNAME, with an
+  ALIAS/ANAME note for an apex domain, and the TXT ownership record); the
+  domain goes live automatically once both are detected. `show` repeats the
+  records and any verification errors. `remove` takes a hostname or
+  identifier and asks for confirmation unless `--yes`, which non-interactive
+  mode requires. Custom domains need a paid plan: that refusal now explains
+  itself (error code `paid_plan_required`, with the API's hint and a link to
+  the plans page).
+- **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`;
+  `APIError.Hint` and `APIError.IsPaidPlanRequired()`. Error responses with an
+  `error_code` but no `error` field now report the code rather than the raw
+  JSON body.
+
 ## [0.25.0] - 2026-11-06
 
 ### Added

@@ -462,6 +462,29 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"hosted_resource"},
 	},
 
+	// Static Hosting custom domains (all take -p <project> -s <server>)
+	"dhq domains list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+	"dhq domains show": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+	"dhq domains add": {
+		// Re-adding a hostname is refused (422), not duplicated, but it is not
+		// a no-op either; the person then has to create DNS records.
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+	"dhq domains remove": {
+		// The site stops answering on the domain. Prompts unless --yes, which
+		// non-interactive mode requires.
+		Interactive: true, Destructive: true, RequiresConfirmation: true,
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+
 	// Managed hosting catalog (read-only)
 	"dhq managed-hosting regions": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
