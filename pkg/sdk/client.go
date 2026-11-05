@@ -254,12 +254,14 @@ func parseAPIError(resp *http.Response) error {
 		ErrorCode  string `json:"error_code"`
 		Message    string `json:"message"`
 		UpgradeURL string `json:"upgrade_url"`
+		Hint       string `json:"hint"`
 	}
 	if json.Unmarshal(body, &singleErr) == nil && singleErr.Error != "" {
 		apiErr.Message = singleErr.Error
 		apiErr.ErrorCode = singleErr.ErrorCode
 		apiErr.Detail = singleErr.Message
 		apiErr.UpgradeURL = singleErr.UpgradeURL
+		apiErr.Hint = singleErr.Hint
 		return apiErr
 	}
 
@@ -273,6 +275,17 @@ func parseAPIError(resp *http.Response) error {
 		apiErr.Message = suspendedMessage
 		apiErr.SuspensionType = suspended.SuspensionType
 		apiErr.SuspensionReason = suspended.SuspensionReason
+		return apiErr
+	}
+
+	// {"status": "not_found", "error_code": "record_not_found", "hint": "..."}:
+	// a structured refusal with no `error` field. Keep the code as the message
+	// rather than falling through to the raw JSON body.
+	if json.Unmarshal(body, &singleErr) == nil && singleErr.ErrorCode != "" {
+		apiErr.Message = singleErr.ErrorCode
+		apiErr.ErrorCode = singleErr.ErrorCode
+		apiErr.Detail = singleErr.Message
+		apiErr.Hint = singleErr.Hint
 		return apiErr
 	}
 

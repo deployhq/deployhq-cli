@@ -136,3 +136,23 @@ func TestDo_SendsAcceptJSONAndSurfacesSuspension(t *testing.T) {
 	require.True(t, errors.As(err, &apiErr), "got %v", err)
 	assert.True(t, apiErr.IsPaymentSuspension())
 }
+
+func TestParseAPIError_ErrorCodeWithoutErrorField(t *testing.T) {
+	apiErr := apiErrorFor(t, http.StatusNotFound,
+		`{"status":"not_found","error_code":"record_not_found","hint":"Check the identifier"}`)
+	assert.Equal(t, "record_not_found", apiErr.ErrorCode)
+	assert.Equal(t, "Check the identifier", apiErr.Hint)
+	assert.True(t, apiErr.IsNotFound())
+	// The code, not the raw JSON body.
+	assert.Equal(t, "deployhq api: 404 record_not_found", apiErr.Error())
+}
+
+func TestParseAPIError_HintAlongsideError(t *testing.T) {
+	apiErr := apiErrorFor(t, http.StatusForbidden,
+		`{"error":"Custom domains are available on paid plans","error_code":"paid_plan_required","hint":"Upgrade your plan"}`)
+	assert.Equal(t, "Upgrade your plan", apiErr.Hint)
+	assert.True(t, apiErr.IsPaidPlanRequired())
+
+	other := apiErrorFor(t, http.StatusForbidden, `{"error":"Access denied","error_code":"access_denied","hint":"Ask an admin"}`)
+	assert.False(t, other.IsPaidPlanRequired())
+}
