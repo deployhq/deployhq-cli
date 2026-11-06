@@ -397,6 +397,11 @@ func newDeploymentsLogsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs <deployment-id>",
 		Short: "Show deployment step logs",
+		Long: `Show a deployment's step logs: each entry's message and, under it, its detail
+(command output, the list of excluded files, an error's cause).
+
+Without --step, the logs of every step are printed as text, also when piped;
+add --json for JSON. With --step, piped output is JSON, as for other commands.`,
 		Example: `  # Show logs for every step of a deployment
   dhq deployments logs dep-abc123 -p my-app
 
@@ -425,7 +430,7 @@ func newDeploymentsLogsCmd() *cobra.Command {
 				// piped, and scripts grep it. In JSON, always an array (empty
 				// when there are no steps yet), and a step whose logs couldn't
 				// be read says so rather than being left out.
-				asJSON := cliCtx.Envelope.JSONMode
+				asJSON := cliCtx.Envelope.JSONMode && cliCtx.Envelope.WantsJSON() // --table / --quiet still win
 				all := []stepLogs{}
 				if len(dep.Steps) == 0 && !asJSON {
 					cliCtx.Envelope.Status("No steps found for deployment %s", args[0])

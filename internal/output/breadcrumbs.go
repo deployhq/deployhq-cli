@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/deployhq/deployhq-cli/internal/auth"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
 
@@ -232,8 +231,13 @@ func isRetryable(code, message string) bool {
 // since agents act on these but rarely run 'dhq --help'. It reads the skill
 // rather than installing it: an installed skill only loads in a new session.
 func readSkillCrumb() Breadcrumb {
-	return Breadcrumb{Action: "read_setup_skill", Cmd: auth.SkillReadCommand}
+	return Breadcrumb{Action: "read_setup_skill", Cmd: SkillReadCommand}
 }
+
+// SkillReadCommand prints DeployHQ's skill. An agent reads it in the session
+// it is working in: a skill installed mid-session is not loaded until the
+// agent's next session.
+const SkillReadCommand = "dhq skills show"
 
 // recoveryActions returns suggested next commands for common errors.
 func recoveryActions(code, message string) []Breadcrumb {

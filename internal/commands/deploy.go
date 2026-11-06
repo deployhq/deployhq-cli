@@ -190,7 +190,9 @@ func resolveDeployProject(ctx context.Context, client *sdk.Client, configured st
 	case 0:
 		return "", &output.UserError{
 			Message: "No project specified",
-			Hint: "This account has no projects yet.\nTo provision and deploy in one step: dhq launch\nOr create a project in the DeployHQ dashboard, then re-run with --project <identifier>.\n" +
+			Hint: "This account has no projects yet.\n" +
+				"To provision and deploy in one step: dhq launch. It deploys straight away, so exclude files that must not be published first: dhq skills show launch\n" +
+				"Or create a project in the DeployHQ dashboard, then re-run with --project <identifier>.\n" +
 				auth.SkillPointer(),
 		}
 	case 1:
@@ -220,8 +222,8 @@ func resolveDeployProject(ctx context.Context, client *sdk.Client, configured st
 		}
 		return "", &output.UserError{
 			Message: "No project specified",
-			Hint: fmt.Sprintf("Account has %d projects — pass --project <identifier>. Available: %s\n%s",
-				len(projects), strings.Join(items, ", "), auth.SkillPointer()),
+			Hint: fmt.Sprintf("Account has %d projects — pass --project <identifier>. Available: %s",
+				len(projects), strings.Join(items, ", ")),
 		}
 	}
 }

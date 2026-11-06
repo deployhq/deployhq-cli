@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/harness"
+	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/internal/skillinstaller"
 )
 
@@ -37,10 +38,8 @@ func SkillInstallCommand() string {
 	return skillinstaller.InstallCommandFor(harness.Detect().Name)
 }
 
-// SkillReadCommand prints DeployHQ's skill. An agent reads it in the session
-// it is working in: a skill installed mid-session is not loaded until the
-// agent's next session.
-const SkillReadCommand = "dhq skills show"
+// SkillReadCommand prints DeployHQ's skill (see output.SkillReadCommand).
+const SkillReadCommand = output.SkillReadCommand
 
 // SkillPointer sends an agent to DeployHQ's skill. Agents act on the CLI's
 // errors but rarely run 'dhq --help', so the messages they meet first (not

@@ -23,7 +23,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   run `dhq --help`, and a skill they install mid-session isn't loaded until
   their next one. The first messages of a new setup (the "not signed in"
   guidance, `next_step` in `dhq auth status --json`, `dhq doctor`, and the
-  "No project specified" errors, including `dhq deploy`'s) now ask the agent
+  "No project specified" errors, including `dhq deploy`'s for an account with
+  no projects yet) now ask the agent
   to read the setup steps with `dhq skills show` before going on. In `--json`
   output their recovery actions add `read_setup_skill` (`dhq skills show`).
   `dhq --help` says the same. Installing for future sessions is offered for the
@@ -33,7 +34,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   the repository is uploaded unless excluded; the setup steps now say to check
   the files and exclude deploy scripts or local config first, and, since
   `dhq launch` deploys straight away, to create the project, add the
-  exclusions, then run `dhq launch --project <permalink>`.
+  exclusions, then run `dhq launch --project <permalink>`. `dhq deploy`'s hint
+  for an account with no projects, which suggests `dhq launch`, says the same.
 - **`dhq deployments logs`** prints each log entry's detail under its message,
   as the DeployHQ web app does (command output, the list of excluded files, an
   error's cause). Without it, "Excluded files for server ..." showed no files.
