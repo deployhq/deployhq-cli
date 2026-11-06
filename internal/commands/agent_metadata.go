@@ -149,7 +149,7 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq deployments logs": {
-		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq deployments watch": {

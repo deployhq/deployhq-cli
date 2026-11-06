@@ -17,6 +17,15 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   only loaded by the agent's next session. Plain Markdown, also when piped;
   `--json` gives `{name, content, references}`.
 
+### Changed
+
+- **`dhq deployments logs` without `--step`** now honours `--json`, and so, like
+  other commands, returns JSON when its output is piped: one entry per step
+  with its logs (an empty array before a deployment has steps, and an `error`
+  for a step whose logs couldn't be read). It used to print text whatever the
+  output was, so scripts that grep the piped text should pass `--table` or
+  read the JSON.
+
 ### Fixed
 
 - **Getting AI agents to the skill**: agents act on the CLI's errors but rarely
@@ -37,8 +46,6 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`dhq deployments logs`** prints each log entry's detail under its message,
   as the DeployHQ web app does (command output, the list of excluded files, an
   error's cause). Without it, "Excluded files for server ..." showed no files.
-  Without `--step`, `--json` (or piped output) now returns every step's logs as
-  JSON instead of text.
 - **Signing in or signing up "in a separate terminal window"** now says
   "not with the agent's `!` shortcut, which gives dhq no terminal to prompt in"
   as well. Agents read "not through the AI agent" as allowing it, and suggested

@@ -67,7 +67,8 @@ func TestSkillsShow_UnknownReference(t *testing.T) {
 	assert.Contains(t, uerr.Hint, "launch")
 
 	_, err = runSkillsShow(t, false, "../SKILL")
-	require.Error(t, err, "only reference documents can be printed")
+	require.True(t, errors.As(err, &uerr), "only reference documents can be printed: got %T: %v", err, err)
+	assert.Contains(t, uerr.Message, "Unknown skill reference")
 }
 
 func TestSkillsShow_JSON(t *testing.T) {

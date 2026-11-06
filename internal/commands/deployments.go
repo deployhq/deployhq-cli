@@ -420,18 +420,26 @@ func newDeploymentsLogsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if len(dep.Steps) == 0 {
+				// Show logs for all steps that have logs. In JSON, always an
+				// array (empty when there are no steps yet), and a step whose
+				// logs couldn't be read says so rather than being left out.
+				all := []stepLogs{}
+				if len(dep.Steps) == 0 && !cliCtx.Envelope.WantsJSON() {
 					cliCtx.Envelope.Status("No steps found for deployment %s", args[0])
 					return nil
 				}
-				// Show logs for all steps that have logs
-				var all []stepLogs
 				for _, step := range dep.Steps {
 					if !step.Logs {
 						continue
 					}
 					logs, err := client.GetDeploymentStepLogs(cliCtx.Background(), projectID, args[0], step.Identifier)
 					if err != nil {
+						if cliCtx.Envelope.WantsJSON() {
+							all = append(all, stepLogs{Step: step.Identifier, Description: step.Description, Status: step.Status,
+								Logs: []sdk.DeploymentStepLog{}, Error: err.Error()})
+						} else {
+							cliCtx.Envelope.Warn("Could not read the logs of %q: %v", step.Description, err)
+						}
 						continue
 					}
 					if cliCtx.Envelope.WantsJSON() {
@@ -509,4 +517,5 @@ type stepLogs struct {
 	Description string                  `json:"description"`
 	Status      string                  `json:"status"`
 	Logs        []sdk.DeploymentStepLog `json:"logs"`
+	Error       string                  `json:"error,omitempty"` // set when the logs couldn't be read
 }
