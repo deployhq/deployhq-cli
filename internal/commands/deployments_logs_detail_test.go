@@ -66,19 +66,35 @@ func runLogsCapture(t *testing.T, args ...string) string {
 	return string(b)
 }
 
-// Without --step, --json (or piped output, as here: the test's stdout is not
-// a terminal) returns every step's logs, with their detail, as JSON.
+// Without --step, --json returns every step's logs, with their detail, as JSON.
 func TestDeploymentsLogs_AllStepsJSON(t *testing.T) {
-	for name, args := range map[string][]string{"--json": {"--json"}, "piped": nil} {
-		t.Run(name, func(t *testing.T) {
-			withResolvableContext(t)
-			fakeDeploymentLogsAPI(t, twoSteps, 0)
-			got := runLogsCapture(t, args...)
-			assert.Contains(t, got, `"description":"Generating manifest"`)
-			assert.Contains(t, got, `deploy.sh (1 file)`)
-			assert.NotContains(t, got, "Transferring files", "steps without logs are left out")
-		})
-	}
+	withResolvableContext(t)
+	fakeDeploymentLogsAPI(t, twoSteps, 0)
+	got := runLogsCapture(t, "--json")
+	assert.Contains(t, got, `"description":"Generating manifest"`)
+	assert.Contains(t, got, `deploy.sh (1 file)`)
+	assert.NotContains(t, got, "Transferring files", "steps without logs are left out")
+}
+
+// Piped without --json (the test's stdout is not a terminal), it still prints
+// text, as it always has, so scripts that grep it keep working; the detail is
+// now part of that text.
+func TestDeploymentsLogs_PipedStaysText(t *testing.T) {
+	withResolvableContext(t)
+	fakeDeploymentLogsAPI(t, twoSteps, 0)
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStdout := os.Stdout
+	os.Stdout = w
+	runErr := runServersCmd(t, "deployments", "logs", "dep1")
+	os.Stdout = origStdout
+	require.NoError(t, w.Close())
+	b, err := io.ReadAll(r)
+	require.NoError(t, err)
+	require.NoError(t, runErr)
+
+	assert.Equal(t, "Excluded files for server 'site'\n  - deploy.sh (1 file)\n", string(b))
 }
 
 // A deployment with no steps yet (queued) still gives JSON: an empty array.

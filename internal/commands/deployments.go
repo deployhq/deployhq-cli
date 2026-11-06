@@ -420,11 +420,14 @@ func newDeploymentsLogsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				// Show logs for all steps that have logs. In JSON, always an
-				// array (empty when there are no steps yet), and a step whose
-				// logs couldn't be read says so rather than being left out.
+				// Show logs for all steps that have logs. JSON only with an
+				// explicit --json: this has always printed text, also when
+				// piped, and scripts grep it. In JSON, always an array (empty
+				// when there are no steps yet), and a step whose logs couldn't
+				// be read says so rather than being left out.
+				asJSON := cliCtx.Envelope.JSONMode
 				all := []stepLogs{}
-				if len(dep.Steps) == 0 && !cliCtx.Envelope.WantsJSON() {
+				if len(dep.Steps) == 0 && !asJSON {
 					cliCtx.Envelope.Status("No steps found for deployment %s", args[0])
 					return nil
 				}
@@ -434,7 +437,7 @@ func newDeploymentsLogsCmd() *cobra.Command {
 					}
 					logs, err := client.GetDeploymentStepLogs(cliCtx.Background(), projectID, args[0], step.Identifier)
 					if err != nil {
-						if cliCtx.Envelope.WantsJSON() {
+						if asJSON {
 							all = append(all, stepLogs{Step: step.Identifier, Description: step.Description, Status: step.Status,
 								Logs: []sdk.DeploymentStepLog{}, Error: err.Error()})
 						} else {
@@ -442,14 +445,14 @@ func newDeploymentsLogsCmd() *cobra.Command {
 						}
 						continue
 					}
-					if cliCtx.Envelope.WantsJSON() {
+					if asJSON {
 						all = append(all, stepLogs{Step: step.Identifier, Description: step.Description, Status: step.Status, Logs: logs})
 						continue
 					}
 					cliCtx.Envelope.Status("\n--- %s (%s) ---", step.Description, step.Status)
 					printStepLogs(cliCtx.Envelope.Stdout, logs)
 				}
-				if cliCtx.Envelope.WantsJSON() {
+				if asJSON {
 					return cliCtx.Envelope.WriteJSON(output.NewResponse(all, fmt.Sprintf("Logs for %d steps", len(all))))
 				}
 				return nil
