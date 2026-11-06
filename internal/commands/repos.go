@@ -120,10 +120,14 @@ func newReposCreateCmd() *cobra.Command {
 			project, projErr := client.GetProject(cliCtx.Background(), projectID)
 
 			env := cliCtx.Envelope
-			if branchErr := branchNotKeptError(cliCtx.Background(), client, projectID, "connected", branch, repo); branchErr != nil {
+			branchErr := branchNotKeptError(cliCtx.Background(), client, projectID, "connected", branch, repo)
+			if branchErr == nil {
+				branchErr = httpBranchMissingError(cliCtx.Background(), client, projectID, "connected", branch, repo)
+			}
+			if branchErr != nil {
 				// The repository is connected, so the deploy key is still
 				// needed once the branch is fixed.
-				if projErr == nil && project.PublicKey != "" {
+				if projErr == nil && project.PublicKey != "" && !isHTTPRepoURL(url) {
 					if env.WantsJSON() {
 						branchErr.Recovery = append(branchErr.Recovery, deployKeyBreadcrumbs(url, project.PublicKey, projectID)...)
 					} else {
@@ -137,14 +141,14 @@ func newReposCreateCmd() *cobra.Command {
 			}
 			if env.WantsJSON() {
 				breadcrumbs := []output.Breadcrumb{}
-				if projErr == nil && project.PublicKey != "" {
+				if projErr == nil && project.PublicKey != "" && !isHTTPRepoURL(url) {
 					breadcrumbs = append(breadcrumbs, deployKeyBreadcrumbs(url, project.PublicKey, projectID)...)
 				}
 				return env.WriteJSON(output.NewResponse(repo, fmt.Sprintf("Repository created: %s", repo.URL), breadcrumbs...))
 			}
 
 			env.Status("Repository created: %s (%s)", repo.URL, repo.ScmType)
-			if projErr == nil && project.PublicKey != "" {
+			if projErr == nil && project.PublicKey != "" && !isHTTPRepoURL(url) {
 				env.Status("")
 				env.Status("Deploy key (add to your repo for DeployHQ to pull):")
 				env.Status("  %s", project.PublicKey)
@@ -183,6 +187,9 @@ func newReposUpdateCmd() *cobra.Command {
 				return repoUpdateError(cliCtx.Background(), client, projectID, err)
 			}
 			if branchErr := branchNotKeptError(cliCtx.Background(), client, projectID, "updated", branch, repo); branchErr != nil {
+				return branchErr
+			}
+			if branchErr := httpBranchMissingError(cliCtx.Background(), client, projectID, "updated", branch, repo); branchErr != nil {
 				return branchErr
 			}
 
@@ -438,11 +445,50 @@ func branchNotKeptError(ctx context.Context, client *sdk.Client, projectID, done
 		}
 	}
 
+	var branches map[string]string
+	if b, err := client.ListBranches(ctx, projectID, nil); err == nil {
+		branches = b
+	}
+	return pickBranchError(projectID,
+		fmt.Sprintf("The repository was %s, but on branch %q: %q isn't in it", done, repo.Branch, requested),
+		branches)
+}
+
+// httpBranchMissingError reports a requested branch that is not in a git
+// repository connected over HTTP(S). DeployHQ checks the branch of an SSH
+// repository when it saves it (see branchNotKeptError), but for a git URL
+// starting with http it skips that check and saves the branch as given, so
+// the first deployment would fail. dhq checks it against the repository's
+// branch list instead. When the list can't be read (a private repository
+// whose credentials don't work yet, a network error) or is empty, nothing is
+// reported: the branch can't be shown to be wrong.
+func httpBranchMissingError(ctx context.Context, client *sdk.Client, projectID, done, requested string, repo *sdk.Repository) *output.UserError {
+	if requested == "" || repo == nil || repo.Branch != requested ||
+		repo.ScmType != "git" || !strings.HasPrefix(repo.URL, "http") {
+		return nil
+	}
+	branches, err := client.ListBranches(ctx, projectID, nil)
+	if err != nil || len(branches) == 0 {
+		return nil
+	}
+	if _, ok := branches[requested]; ok {
+		return nil
+	}
+	return pickBranchError(projectID,
+		fmt.Sprintf("The repository was %s on branch %q, but %q isn't in it", done, requested, requested),
+		branches)
+}
+
+// pickBranchError is the error for a saved branch that isn't in the
+// repository: it lists the branches (at most maxBranchesShown) and gives the
+// command to pick one. branches may be nil when the list couldn't be read.
+func pickBranchError(projectID, message string, branches map[string]string) *output.UserError {
+	project := quoteRerunArg(projectID)
 	setBranch := fmt.Sprintf("dhq repos update -p %s --branch <name>", project)
 	listBranches := fmt.Sprintf("dhq repos branches -p %s", project)
 
 	hint := "Pick one with: " + setBranch
-	if branches, err := client.ListBranches(ctx, projectID, nil); err == nil && len(branches) > 0 {
+	if len(branches) > 0 {
 		names := make([]string, 0, len(branches))
 		for name := range branches {
 			names = append(names, name)
@@ -459,13 +505,21 @@ func branchNotKeptError(ctx context.Context, client *sdk.Client, projectID, done
 	}
 
 	return &output.UserError{
-		Message: fmt.Sprintf("The repository was %s, but on branch %q: %q isn't in it", done, repo.Branch, requested),
+		Message: message,
 		Hint:    hint + "\nNothing has been deployed.",
 		Recovery: []output.Breadcrumb{
 			{Action: "set_branch", Cmd: setBranch},
 			{Action: "list_branches", Cmd: listBranches},
 		},
 	}
+}
+
+// isHTTPRepoURL reports whether repoURL is an HTTP(S) URL. Such a repository
+// is read with a username and password (or none, when public), never with
+// the project's deploy key.
+func isHTTPRepoURL(repoURL string) bool {
+	u := strings.ToLower(repoURL)
+	return strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")
 }
 
 // rerunArgSafe matches values that can be pasted into a shell unquoted.

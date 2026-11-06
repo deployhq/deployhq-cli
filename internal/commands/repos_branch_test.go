@@ -28,6 +28,8 @@ type fakeRepoAPI struct {
 	// sentBranch records the branch the CLI asked for when creating the
 	// repository.
 	sentBranch string
+	// savedURL is the URL of the saved repository; empty means an SSH URL.
+	savedURL string
 }
 
 func installFakeRepoAPI(t *testing.T, api *fakeRepoAPI) {
@@ -42,7 +44,11 @@ func installFakeRepoAPI(t *testing.T, api *fakeRepoAPI) {
 				Request:    r,
 			}, nil
 		}
-		saved := `{"scm_type":"git","url":"git@github.com:acme/my-app.git","branch":"` + api.savedBranch + `"}`
+		url := api.savedURL
+		if url == "" {
+			url = "git@github.com:acme/my-app.git"
+		}
+		saved := `{"scm_type":"git","url":"` + url + `","branch":"` + api.savedBranch + `"}`
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/projects/my-app/repository"):
 			var sent struct {
@@ -249,4 +255,68 @@ func TestReposUpdate_ServerErrorWithRepositoryKeepsOriginalError(t *testing.T) {
 	assert.False(t, errors.As(err, &uerr), "a server error on a project with a repository is not explained away")
 	assert.Equal(t, output.ExitInternalError, output.ClassifyError(err))
 	assert.Contains(t, err.Error(), "500")
+}
+
+// DeployHQ doesn't check the branch of a git repository connected over
+// HTTP(S): it saves the branch as given. dhq checks it against the branch list.
+func TestReposBranch_HTTPSBranchMissingFails(t *testing.T) {
+	const httpsURL = "https://github.com/acme/my-app.git"
+	for _, tc := range []struct {
+		args []string
+		done string
+	}{
+		{[]string{"repos", "create", "--scm-type", "git", "--url", httpsURL, "--branch", "does-not-exist"}, "connected"},
+		{[]string{"repos", "update", "--branch", "does-not-exist"}, "updated"},
+	} {
+		t.Run(tc.done, func(t *testing.T) {
+			withResolvableContext(t)
+			installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "does-not-exist", savedURL: httpsURL})
+
+			err := runServersCmd(t, tc.args...)
+			var uerr *output.UserError
+			require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+			assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+			assert.Equal(t, `The repository was `+tc.done+` on branch "does-not-exist", but "does-not-exist" isn't in it`, uerr.Message)
+			assert.Contains(t, uerr.Hint, "Branches: develop, main.")
+			assert.Contains(t, uerr.Hint, "Pick one with: dhq repos update -p my-app --branch <name>")
+
+			data := output.ErrorResponseFromErr(err).Data.(output.ErrorData)
+			require.Len(t, data.Recovery, 2, "no deploy key for an HTTPS repository: %+v", data.Recovery)
+			assert.Equal(t, "set_branch", data.Recovery[0].Action)
+			assert.Equal(t, "list_branches", data.Recovery[1].Action)
+		})
+	}
+}
+
+func TestReposBranch_HTTPSBranchPresentSucceeds(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "develop", savedURL: "https://github.com/acme/my-app.git"})
+
+	require.NoError(t, runServersCmd(t, "repos", "create", "--scm-type", "git",
+		"--url", "https://github.com/acme/my-app.git", "--branch", "develop"))
+}
+
+// When the branch list can't be read (a private repository whose credentials
+// don't work yet, a network error), the branch can't be shown to be wrong.
+func TestReposBranch_HTTPSBranchListUnavailableSucceeds(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{
+		savedBranch:    "does-not-exist",
+		savedURL:       "https://github.com/acme/my-app.git",
+		branchesStatus: http.StatusInternalServerError,
+	})
+
+	require.NoError(t, runServersCmd(t, "repos", "update", "--branch", "does-not-exist"))
+}
+
+func TestIsHTTPRepoURL(t *testing.T) {
+	for url, want := range map[string]bool{
+		"https://github.com/acme/app.git":   true,
+		"HTTP://git.example.com/app.git":    true,
+		"git@github.com:acme/app.git":       false,
+		"ssh://git@github.com/acme/app.git": false,
+		"svn+ssh://svn.example.com/app":     false,
+	} {
+		assert.Equal(t, want, isHTTPRepoURL(url), url)
+	}
 }
