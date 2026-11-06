@@ -54,6 +54,12 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"project", "server", "deployment"},
 	},
 
+	// Skills
+	"dhq skills show": {
+		// Prints the embedded skill; changes nothing.
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+	},
+
 	// Projects
 	"dhq projects list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
@@ -143,7 +149,7 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq deployments logs": {
-		Idempotent: true, SupportsJSON: false, SafeForAutomation: true,
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"deployment"},
 	},
 	"dhq deployments watch": {

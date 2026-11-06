@@ -62,6 +62,9 @@ func TestAuthLogin_NonInteractive_PointsToOwnTerminalNotKeyFlag(t *testing.T) {
 			var authErr *output.AuthError
 			require.True(t, errors.As(err, &authErr), "got %T", err)
 			assert.Contains(t, authErr.Hint, "separate terminal window")
+			assert.Contains(t, authErr.Hint, "not with its '!' shortcut", "agents read 'not through the agent' as allowing '!'")
+			assert.Contains(t, authErr.Hint, "read DeployHQ's setup steps with 'dhq skills show'", "agents rarely run --help, so the first errors point at the skill")
+			assert.Regexp(t, `dhq signup'[^\n]*not with its '!' shortcut`, authErr.Hint, "the signup line carries the '!' warning too")
 			assert.Contains(t, authErr.Hint, "Settings → Security → API Credentials")
 			assert.Contains(t, authErr.Hint, "DEPLOYHQ_API_KEY")
 			assert.NotContains(t, authErr.Hint, "--api-key", "must not suggest passing the key through the agent")
@@ -84,8 +87,8 @@ func TestSignInHint_MentionsSignupForPeopleWithoutAnAccount(t *testing.T) {
 }
 
 func TestNotLoggedInNextStep_MentionsSignup(t *testing.T) {
-	assert.Contains(t, notLoggedInNextStep, "dhq auth login")
-	assert.Contains(t, notLoggedInNextStep, "dhq signup")
+	assert.Contains(t, notLoggedInNextStep(), "dhq auth login")
+	assert.Contains(t, notLoggedInNextStep(), "dhq signup")
 	// Sign-up just succeeded when the credentials could not be saved: signing
 	// up again is not the fix.
 	assert.NotContains(t, credentialsNotSavedNextStep, "dhq signup")
@@ -303,13 +306,15 @@ func TestNewSignupOutput_JSON(t *testing.T) {
 // ── Root help ────────────────────────────────────────────────────────────────
 
 func TestRootHelp_PointsAgentsToSetupInstructions(t *testing.T) {
+	t.Setenv("DEPLOYHQ_AGENT", "claude-code")
 	cmd := NewRootCmd("test")
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"--help"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, stdout.String(), "https://www.deployhq.com/agents.md")
-	assert.Contains(t, stdout.String(), "install DeployHQ's skill with 'dhq skills install' and follow it")
+	assert.Contains(t, stdout.String(), "read DeployHQ's setup steps with 'dhq skills show'")
+	assert.Contains(t, stdout.String(), "'dhq skills install --agent claude-code'")
 }
 
 func TestDescribeCredentialSource(t *testing.T) {
@@ -380,6 +385,9 @@ func TestAuthStatus_JSON_NotLoggedIn(t *testing.T) {
 	assert.NotEmpty(t, res["message"])
 	assert.Contains(t, res["next_step"], "dhq auth login")
 	assert.Contains(t, res["next_step"], "separate terminal window")
+	assert.Contains(t, res["next_step"], "not with its '!' shortcut")
+	assert.Contains(t, res["next_step"], "dhq skills show")
+	assert.Contains(t, res["next_step"], "dhq skills install --agent")
 }
 
 func TestCheckAuthStatus_NetworkFailureIsUnconfirmed(t *testing.T) {

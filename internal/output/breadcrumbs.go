@@ -226,6 +226,19 @@ func isRetryable(code, message string) bool {
 	return false
 }
 
+// readSkillCrumb points an agent at DeployHQ's skill. It is offered on the
+// errors an agent meets first in a new setup (not signed in, no project),
+// since agents act on these but rarely run 'dhq --help'. It reads the skill
+// rather than installing it: an installed skill only loads in a new session.
+func readSkillCrumb() Breadcrumb {
+	return Breadcrumb{Action: "read_setup_skill", Cmd: SkillReadCommand}
+}
+
+// SkillReadCommand prints DeployHQ's skill. An agent reads it in the session
+// it is working in: a skill installed mid-session is not loaded until the
+// agent's next session.
+const SkillReadCommand = "dhq skills show"
+
 // recoveryActions returns suggested next commands for common errors.
 func recoveryActions(code, message string) []Breadcrumb {
 	msg := strings.ToLower(message)
@@ -240,18 +253,22 @@ func recoveryActions(code, message string) []Breadcrumb {
 			{Action: "ask_user_to_login_in_separate_terminal", Cmd: "dhq auth login"},
 		}
 		if notSignedIn(msg) {
-			crumbs = append(crumbs, Breadcrumb{Action: "ask_user_to_signup_in_separate_terminal", Cmd: "dhq signup"})
+			crumbs = append(crumbs,
+				Breadcrumb{Action: "ask_user_to_signup_in_separate_terminal", Cmd: "dhq signup"},
+				readSkillCrumb())
 		}
 		return append(crumbs, Breadcrumb{Action: "check_status", Cmd: "dhq auth status"})
 	case notSignedIn(msg):
 		return []Breadcrumb{
 			{Action: "ask_user_to_login_in_separate_terminal", Cmd: "dhq auth login"},
 			{Action: "ask_user_to_signup_in_separate_terminal", Cmd: "dhq signup"},
+			readSkillCrumb(),
 		}
 	case strings.Contains(msg, "no project"):
 		return []Breadcrumb{
 			{Action: "list_projects", Cmd: "dhq projects list --json"},
 			{Action: "set_project", Cmd: "dhq config set project <permalink>"},
+			readSkillCrumb(),
 		}
 	case strings.Contains(msg, "not found"):
 		return []Breadcrumb{

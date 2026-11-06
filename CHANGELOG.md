@@ -9,6 +9,64 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ## [Unreleased]
 
+### Added
+
+- **`dhq skills show [reference]`** prints DeployHQ's skill for AI agents (or
+  one of its references) without installing anything. An agent can read it in
+  the session it is working in: a skill installed with `dhq skills install` is
+  only loaded by the agent's next session. Plain Markdown, also when piped;
+  `--json` gives `{name, content, references}`.
+
+### Fixed
+
+- **Getting AI agents to the skill**: agents act on the CLI's errors but rarely
+  run `dhq --help`, and a skill they install mid-session isn't loaded until
+  their next one. The first messages of a new setup (the "not signed in"
+  guidance, `next_step` in `dhq auth status --json`, `dhq doctor`, and the
+  "No project specified" errors, including `dhq deploy`'s for an account with
+  no projects yet) now ask the agent
+  to read the setup steps with `dhq skills show` before going on. In `--json`
+  output their recovery actions add `read_setup_skill` (`dhq skills show`).
+  `dhq --help` says the same. Installing for future sessions is offered for the
+  running agent only (for example `dhq skills install --agent claude-code`),
+  not for every AI tool on the machine.
+- **The skill says to exclude files before the first deploy.** Every file in
+  the repository is uploaded unless excluded; the setup steps now say to check
+  the files on the branch DeployHQ deploys (the remote's, not the local
+  checkout) and exclude deploy scripts or local config first, and, since
+  `dhq launch` deploys straight away, to create the project, add the
+  exclusions, then run `dhq launch --project <permalink>`. `dhq deploy`'s hint
+  for an account with no projects, which suggests `dhq launch`, says the same.
+- **The skill says DeployHQ hosting is free during the beta** and may be billed
+  once it ends. It said "billed once the beta ends", which agents passed on as
+  "may be a paid resource".
+- **Installed copies of the skill are now reported as outdated**, so
+  `dhq skills list` shows them and `dhq hello` refreshes the running agent's
+  copy (the skill's version is now 2; it hadn't changed since the skill was
+  added, so older installs were never flagged). `dhq skills install` always
+  rewrites it.
+- **`dhq deployments logs`** prints each log entry's detail under its message,
+  as the DeployHQ web app does (command output, the list of excluded files, an
+  error's cause). Without it, "Excluded files for server ..." showed no files.
+  Without `--step`, `--json` now returns every step's logs as JSON (an empty
+  array before a deployment has steps, and an `error` for a step whose logs
+  couldn't be read); without `--json` it prints text as before, also when piped.
+- **Signing in or signing up "in a separate terminal window"** now says
+  "not with the agent's `!` shortcut, which gives dhq no terminal to prompt in"
+  as well. Agents read "not through the AI agent" as allowing it, and suggested
+  `! dhq auth login` / `! dhq signup`, which always refuse there. The hint for
+  adding a password-only server with `--password-stdin` says the same.
+- **`dhq repos create` / `dhq repos update` with an HTTPS git URL**: DeployHQ
+  saves the branch of such a repository without checking it, so a branch that
+  isn't in the repository was accepted and the first deployment failed. dhq now
+  checks the branch against the repository's branch list and fails (exit code 1)
+  with the branches and the command to pick one. When the list can't be read,
+  it carries on as before. Branch names in these messages are now quoted when
+  they contain shell syntax, as they may be pasted into a command.
+- **`dhq repos create` with an HTTPS URL** no longer suggests adding the
+  project's deploy key: such a repository is read with a username and password
+  (or nothing, when public), never with the key.
+
 ## [0.24.0] - 2026-11-04
 
 ### Fixed

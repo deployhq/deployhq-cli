@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/deployhq/deployhq-cli/internal/auth"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/spf13/cobra"
@@ -50,7 +51,7 @@ func serverUsesSSHKeys(protocolType string, useSSHKeys bool) bool {
 const passwordAgentHint = "Use key-based access instead (--use-ssh-keys) if the server supports it. " +
 	"For password-only servers (FTP/FTPS, or SFTP with a password), the person who owns the password " +
 	"should add the server themselves rather than give the password to an AI agent: either run this " +
-	"command in their own terminal with --password-stdin (it asks for the password with hidden input), " +
+	"command " + auth.SeparateTerminal + " with --password-stdin (it asks for the password with hidden input), " +
 	"or add the server in the DeployHQ web app."
 
 // readServerPassword resolves the server password for `dhq servers create`.

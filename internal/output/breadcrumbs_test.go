@@ -125,11 +125,31 @@ func TestErrorResponseFromErr_AuthError(t *testing.T) {
 }
 
 func TestErrorResponseFromErr_NotLoggedIn_OffersSignup(t *testing.T) {
+	t.Setenv("DEPLOYHQ_AGENT", "claude-code")
 	data := ErrorResponseFromErr(errors.New("auth: not logged in")).Data.(ErrorData)
-	require.Len(t, data.Recovery, 2)
+	require.Len(t, data.Recovery, 3)
 	assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
 	assert.Equal(t, "ask_user_to_signup_in_separate_terminal", data.Recovery[1].Action)
 	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
+	assert.Equal(t, Breadcrumb{Action: "read_setup_skill", Cmd: "dhq skills show"}, data.Recovery[2])
+}
+
+// Agents act on these errors but rarely run 'dhq --help', so the first
+// errors of a new setup point at DeployHQ's skill.
+func TestErrorResponseFromErr_FirstSetupErrorsOfferSkill(t *testing.T) {
+	t.Setenv("DEPLOYHQ_AGENT", "claude-code")
+	skill := Breadcrumb{Action: "read_setup_skill", Cmd: "dhq skills show"}
+	for name, err := range map[string]error{
+		"not logged in":      errors.New("auth: not logged in"),
+		"auth not signed in": &AuthError{Message: "Not logged in"},
+		"no project":         &UserError{Message: "No project specified"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Contains(t, ErrorResponseFromErr(err).Data.(ErrorData).Recovery, skill)
+		})
+	}
+	// A rejected login is not a new setup: the person is already signed up.
+	assert.NotContains(t, ErrorResponseFromErr(&AuthError{Message: "Invalid credentials"}).Data.(ErrorData).Recovery, skill)
 }
 
 func TestErrorResponseFromErr_SignedInAuthErrorsDoNotOfferSignup(t *testing.T) {
@@ -258,4 +278,19 @@ func TestBreadcrumb_ResourceFields(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `"resource":"deployment"`)
 	assert.Contains(t, string(data), `"id":"abc"`)
+}
+
+// The crumb reads the skill (it changes nothing) rather than installing it:
+// an installed skill only loads in the agent's next session.
+func TestErrorResponseFromErr_SkillCrumbReadsNotInstalls(t *testing.T) {
+	for _, agent := range []string{"claude-code", "codex", ""} {
+		t.Run(agent, func(t *testing.T) {
+			t.Setenv("DEPLOYHQ_AGENT", agent)
+			rec := ErrorResponseFromErr(errors.New("auth: not logged in")).Data.(ErrorData).Recovery
+			assert.Contains(t, rec, Breadcrumb{Action: "read_setup_skill", Cmd: "dhq skills show"})
+			for _, b := range rec {
+				assert.NotContains(t, b.Cmd, "skills install")
+			}
+		})
+	}
 }

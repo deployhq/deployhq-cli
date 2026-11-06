@@ -160,6 +160,19 @@ func Find(name string) Target {
 	return nil
 }
 
+// InstallCommandFor returns the command that installs the DeployHQ skill for
+// the named agent only. A bare 'dhq skills install' installs for every agent
+// found on the machine, which an agent must not do on its own. When the name
+// isn't a supported agent, or its skill lives in the current repository
+// (project scope, which changes the repo), the agent is left as a placeholder
+// for the agent to fill in, with 'dhq skills list' naming the choices.
+func InstallCommandFor(agentName string) string {
+	if t := Find(agentName); t != nil && t.Scope() == ScopeUser {
+		return "dhq skills install --agent " + agentName
+	}
+	return "dhq skills install --agent <your agent>"
+}
+
 // Needed reports whether the skill needs to be (re)installed for this target.
 // Returns true for StatusAvailable and StatusOutdated; false for
 // StatusInstalled and StatusNotInstalled.

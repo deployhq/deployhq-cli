@@ -28,7 +28,7 @@ func newHelloCmd() *cobra.Command {
 			if env.NonInteractive {
 				return &output.UserError{
 					Message: "'dhq hello' is interactive-only and cannot run in non-interactive mode",
-					Hint:    "Ask the person to run 'dhq hello' (or 'dhq auth login') themselves in a separate terminal window, not through the AI agent; never paste an API key into an AI chat. Then set a default project with: dhq config set project <permalink>",
+					Hint:    "Ask the person to run 'dhq hello' (or 'dhq auth login') themselves " + auth.SeparateTerminal + "; never paste an API key into an AI chat. Then set a default project with: dhq config set project <permalink>",
 				}
 			}
 			if !env.IsTTY {

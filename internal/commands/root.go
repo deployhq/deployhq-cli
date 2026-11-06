@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/deployhq/deployhq-cli/internal/auth"
 	"github.com/deployhq/deployhq-cli/internal/cli"
 	"github.com/deployhq/deployhq-cli/internal/config"
 	"github.com/deployhq/deployhq-cli/internal/harness"
@@ -51,8 +52,9 @@ func NewRootCmd(version string) *cobra.Command {
 		Short:   "DeployHQ CLI — deploy from your terminal",
 		Long: `The official DeployHQ command-line interface for managing projects, servers, and deployments.
 
-AI agents: install DeployHQ's skill with 'dhq skills install' and follow it, or read
-https://www.deployhq.com/agents.md.
+AI agents: read DeployHQ's setup steps with '` + auth.SkillReadCommand + `' and follow them
+(install them for future sessions with '` + auth.SkillInstallCommand() + `'),
+or read https://www.deployhq.com/agents.md.
 
 Feedback & feature requests: https://changelog.deployhq.com
 Support: support@deployhq.com`,

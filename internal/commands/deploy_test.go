@@ -619,6 +619,8 @@ func TestResolveDeployProject_MultipleProjectsListsThem(t *testing.T) {
 	assert.Contains(t, msg, "a-id (Alpha)")
 	assert.Contains(t, msg, "b-id (Beta)")
 	assert.Contains(t, msg, "c-id (Gamma)")
+	// An account with projects is set up already: no setup-steps pointer.
+	assert.NotContains(t, msg, "dhq skills show")
 }
 
 // TestResolveDeployProject_JSONModeSkipsPicker guards the stdout=data contract:
@@ -659,6 +661,10 @@ func TestResolveDeployProject_ZeroProjects(t *testing.T) {
 	assert.Empty(t, id)
 	assert.Contains(t, err.Error(), "No project specified")
 	assert.Contains(t, err.Error(), "no projects yet")
+	// A new account: dhq launch deploys at once, so the hint says to exclude
+	// files first, and agents are pointed at the setup steps.
+	assert.Contains(t, err.Error(), "exclude files that must not be published first: dhq skills show launch")
+	assert.Contains(t, err.Error(), "read DeployHQ's setup steps with 'dhq skills show'")
 }
 
 func TestResolveDeployProject_APIErrorKeepsHeadline(t *testing.T) {

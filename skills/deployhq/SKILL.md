@@ -41,7 +41,7 @@ Check first: `dhq auth status --json`. If it reports a signed-in account, setup 
 
 If not, the first question is **"Do you already have a DeployHQ account?"**
 
-- **Yes:** the person signs in by running `dhq auth login` in a separate terminal window of their own (not through the agent). It prompts for the account name, the login email and an API key, and hides the key as it is typed. When they say they are done, the agent runs `dhq auth status --json` to confirm.
+- **Yes:** the person signs in by running `dhq auth login` in a separate terminal window of their own (not through the agent, and not with its `!` shortcut, which gives dhq no terminal to prompt in). It prompts for the account name, the login email and an API key, and hides the key as it is typed. When they say they are done, the agent runs `dhq auth status --json` to confirm.
 - **No:** with the person's OK, they create an account either on the DeployHQ website or by running `dhq signup` in their own terminal (it prompts for the email and password, hiding the password, asks them to accept the Terms of Service, and saves the new credentials). DeployHQ then sends a verification email; the person verifies before anything else will work. Signing up on the website does not sign in the CLI, so after verifying, that person also runs `dhq auth login` in their own terminal. The agent runs `dhq auth status --json` afterwards.
 
 `dhq auth login` and `dhq signup` cannot prompt inside an agent (non-interactive mode), so run there they would need the key or password on the command line. That is why the person runs them.
@@ -98,17 +98,17 @@ Small steps, each one something the person can approve on its own:
 2. **Existing project?** `dhq projects list --json`, and check for a `.deployhq.toml` in the folder. If a matching project exists, ask whether to reuse it rather than creating a second one.
 3. **Where to deploy.** Ask, and wait for the answer. The usual options:
    - **Their own server** (SSH/SFTP, FTP, S3 and others): most DeployHQ customers deploy this way.
-   - **DeployHQ hosting**: Static Hosting for static sites, or a Managed VPS. These are beta features that the account has to be enrolled in, and are billed once the beta ends. A Managed VPS needs a payment method on the account; Static Hosting does not (an account that isn't paying yet can have one site, paying accounts get more).
+   - **DeployHQ hosting**: Static Hosting for static sites, or a Managed VPS. These are beta features that the account has to be enrolled in. They are free during the beta and may be billed once it ends. A Managed VPS needs a payment method on the account; Static Hosting does not (an account that isn't paying yet can have one site, paying accounts get more).
 4. **Create the project** (after the person agrees): `dhq projects create --name "<name>" --json`, then `dhq config set project <permalink>` so later sessions find it.
 5. **Connect the repository** (after the person agrees; for a private repository this gives DeployHQ read access): `dhq repos create -p <project> --scm-type git --url <repo-url> --json`. See [repos.md](references/repos.md) for the access key a private repository needs.
 6. **Add the target.**
    - Own server: DeployHQ connects with the project's access key (`dhq projects show <project> --json=public_key`). Installing that key on the server changes who can log in to it, so the agent shows the key and asks before adding it, or the person adds it themselves. Then `dhq servers create ...` (see [servers.md](references/servers.md)). If the server only accepts a password, the person adds it in the DeployHQ web app so the password never passes through the chat.
    - DeployHQ hosting: `dhq beta enroll --protocol static_hosting` (needs an account admin) and `dhq servers create -p <project> --protocol-type static_hosting --subdomain <name> ...`, or a `managed_vps` server. Check with the person before each.
-7. **Configure** build commands, excluded files, env vars as the project needs (see "Configure deployment").
+7. **Configure** build commands, excluded files, env vars as the project needs (see "Configure deployment"). Every file in the repository is uploaded unless it is excluded, so before the first deploy check the files on the branch DeployHQ deploys, which is what the remote repository has, not the local checkout (`git fetch`, then `git ls-tree -r --name-only origin/<branch>`), and exclude what must not be published, such as deploy scripts or local config: `dhq excluded-files create -p <project> --path <path>` (all servers unless `--server`).
 8. **First deploy.** Summarise the project, branch and target, ask, then `dhq deploy -p <project> -s <server> --wait --json`, which waits for the deployment to finish (a new one may start as `queued`).
 9. **Confirm.** Report success only when the JSON shows `"status": "completed"`. A non-zero exit means the command failed: if a deployment was created, its `status` says how it ended; otherwise read the error. (`dhq deployments watch <id> -p <project>` is a live view for a person following along in their own terminal, not a step for the agent.)
 
-`dhq launch` does steps 4 to 9 for DeployHQ hosting in a single command. It is an option when the person has chosen DeployHQ hosting and wants it done in one go, not the default; see [launch.md](references/launch.md).
+`dhq launch` does steps 4 to 9 for DeployHQ hosting in a single command. It is an option when the person has chosen DeployHQ hosting and wants it done in one go, not the default; see [launch.md](references/launch.md). It deploys straight away, so files that must not be published are excluded first: create the project (`dhq projects create`), add the exclusions, then run `dhq launch --project <permalink>`.
 
 ### "Deploy code"
 1. `dhq projects list --json` — find project permalink
