@@ -9,6 +9,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-06
+
 ### Added
 
 - **`dhq skills show [reference]`** prints DeployHQ's skill for AI agents (or
@@ -629,7 +631,8 @@ rather than regressed.
   flags are no longer sent, so they are left untouched server-side instead of
   being cleared.
 
-[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/deployhq/deployhq-cli/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.25.0
 [0.24.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.24.0
 [0.23.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.23.0
 [0.22.0]: https://github.com/deployhq/deployhq-cli/releases/tag/v0.22.0
