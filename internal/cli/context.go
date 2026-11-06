@@ -226,7 +226,8 @@ func (c *Context) RequireProject() (string, error) {
 		Hint: "Find your project identifier with 'dhq projects list', then set it:\n" +
 			"  dhq config set project <identifier>      (persist for this directory)\n" +
 			"  --project <identifier>                   (pass per command)\n" +
-			"  export DEPLOYHQ_PROJECT=<identifier>     (set for the shell session)",
+			"  export DEPLOYHQ_PROJECT=<identifier>     (set for the shell session)\n" +
+			auth.SkillPointer,
 	}
 }
 

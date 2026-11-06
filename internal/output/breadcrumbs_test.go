@@ -126,10 +126,28 @@ func TestErrorResponseFromErr_AuthError(t *testing.T) {
 
 func TestErrorResponseFromErr_NotLoggedIn_OffersSignup(t *testing.T) {
 	data := ErrorResponseFromErr(errors.New("auth: not logged in")).Data.(ErrorData)
-	require.Len(t, data.Recovery, 2)
+	require.Len(t, data.Recovery, 3)
 	assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
 	assert.Equal(t, "ask_user_to_signup_in_separate_terminal", data.Recovery[1].Action)
 	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
+	assert.Equal(t, Breadcrumb{Action: "install_and_read_skill", Cmd: "dhq skills install"}, data.Recovery[2])
+}
+
+// Agents act on these errors but rarely run 'dhq --help', so the first
+// errors of a new setup point at DeployHQ's skill.
+func TestErrorResponseFromErr_FirstSetupErrorsOfferSkill(t *testing.T) {
+	skill := Breadcrumb{Action: "install_and_read_skill", Cmd: "dhq skills install"}
+	for name, err := range map[string]error{
+		"not logged in":      errors.New("auth: not logged in"),
+		"auth not signed in": &AuthError{Message: "Not logged in"},
+		"no project":         &UserError{Message: "No project specified"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Contains(t, ErrorResponseFromErr(err).Data.(ErrorData).Recovery, skill)
+		})
+	}
+	// A rejected login is not a new setup: the person is already signed up.
+	assert.NotContains(t, ErrorResponseFromErr(&AuthError{Message: "Invalid credentials"}).Data.(ErrorData).Recovery, skill)
 }
 
 func TestErrorResponseFromErr_SignedInAuthErrorsDoNotOfferSignup(t *testing.T) {

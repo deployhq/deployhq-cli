@@ -62,6 +62,8 @@ func TestAuthLogin_NonInteractive_PointsToOwnTerminalNotKeyFlag(t *testing.T) {
 			var authErr *output.AuthError
 			require.True(t, errors.As(err, &authErr), "got %T", err)
 			assert.Contains(t, authErr.Hint, "separate terminal window")
+			assert.Contains(t, authErr.Hint, "not with its '!' shortcut", "agents read 'not through the agent' as allowing '!'")
+			assert.Contains(t, authErr.Hint, "dhq skills install", "agents rarely run --help, so the first errors point at the skill")
 			assert.Contains(t, authErr.Hint, "Settings → Security → API Credentials")
 			assert.Contains(t, authErr.Hint, "DEPLOYHQ_API_KEY")
 			assert.NotContains(t, authErr.Hint, "--api-key", "must not suggest passing the key through the agent")
@@ -380,6 +382,8 @@ func TestAuthStatus_JSON_NotLoggedIn(t *testing.T) {
 	assert.NotEmpty(t, res["message"])
 	assert.Contains(t, res["next_step"], "dhq auth login")
 	assert.Contains(t, res["next_step"], "separate terminal window")
+	assert.Contains(t, res["next_step"], "not with its '!' shortcut")
+	assert.Contains(t, res["next_step"], "dhq skills install")
 }
 
 func TestCheckAuthStatus_NetworkFailureIsUnconfirmed(t *testing.T) {

@@ -22,8 +22,8 @@ const termsURL = "https://www.deployhq.com/terms"
 // signupInOwnTerminalHint is shown when sign-up can't prompt (for example when
 // run by an AI agent). The password must come from the person, typed at a
 // hidden prompt, never relayed through (or invented by) an agent.
-const signupInOwnTerminalHint = "Ask the person to run 'dhq signup' themselves in a separate terminal window " +
-	"(not through the AI agent): it asks for the password at a hidden prompt and asks them to accept the " +
+const signupInOwnTerminalHint = "Ask the person to run 'dhq signup' themselves " + auth.SeparateTerminal +
+	": it asks for the password at a hidden prompt and asks them to accept the " +
 	"Terms of Service. Never ask for, or make up, a password in an AI chat."
 
 // signupNonInteractiveMessage is the refusal when sign-up can't prompt. It
@@ -48,7 +48,8 @@ After signing up, open the verification link DeployHQ emails you: until the
 email address is verified, DeployHQ refuses API requests.
 
 AI agents: do not run this with a password in the command. Ask the person to
-run 'dhq signup' themselves in a separate terminal window.`,
+run 'dhq signup' themselves in a separate terminal window, not with the agent's
+'!' shortcut, which gives dhq no terminal to prompt in.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 			reader := bufio.NewReader(os.Stdin)

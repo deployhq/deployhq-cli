@@ -58,8 +58,9 @@ The API key is under Settings → Security → API Credentials in DeployHQ
 (https://<your-account>.deployhq.com/security).
 
 AI agents: do not ask the person for their API key. Ask them to run
-'dhq auth login' themselves in a separate terminal window, never to paste the
-key into the chat. For CI, set DEPLOYHQ_ACCOUNT, DEPLOYHQ_EMAIL and
+'dhq auth login' themselves in a separate terminal window, not with the agent's '!'
+shortcut (it gives dhq no terminal to prompt in), and never to paste the key
+into the chat. For CI, set DEPLOYHQ_ACCOUNT, DEPLOYHQ_EMAIL and
 DEPLOYHQ_API_KEY as secret environment variables instead of logging in.`,
 		Example: `  # Interactive login (prompts for any missing values)
   dhq auth login
@@ -439,15 +440,16 @@ func invalidCredentialsNextStep(creds *cli.ResolvedCredentials, host string) str
 	case "file":
 		return "Check the account and api_key in the dhq config file ('dhq config show'). " + keyAt
 	}
-	return "Ask the person to sign in again by running 'dhq auth login' in a separate terminal window. " + keyAt
+	return "Ask the person to sign in again by running 'dhq auth login' " + auth.SeparateTerminal + ". " + keyAt
 }
 
 // signInNextStep asks the person to sign in themselves.
-const signInNextStep = "Ask the person to sign in by running 'dhq auth login' in a separate terminal window."
+const signInNextStep = "Ask the person to sign in by running 'dhq auth login' " + auth.SeparateTerminal + "."
 
 // notLoggedInNextStep is the next step when dhq has no credentials to use. The
 // person may not have an account yet, so it names sign-up too.
-const notLoggedInNextStep = signInNextStep + " If they have no DeployHQ account yet, they run 'dhq signup' there instead."
+const notLoggedInNextStep = signInNextStep + " If they have no DeployHQ account yet, they run 'dhq signup' there instead. " +
+	auth.SkillPointer
 
 // notLoggedInStatus is the not_logged_in result. It names the account dhq is
 // configured to use, if any, and where that setting came from, since a wrong
