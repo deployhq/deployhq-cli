@@ -20,6 +20,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   agent running dhq (for example `dhq skills install --agent claude-code`), so
   the skill is installed for that agent only, not for every AI tool on the
   machine; when dhq can't tell which agent it is, the agent fills in its name.
+  `dhq --help` names the agent the same way.
 - **Signing in or signing up "in a separate terminal window"** now says
   "not with the agent's `!` shortcut, which gives dhq no terminal to prompt in"
   as well. Agents read "not through the AI agent" as allowing it, and suggested

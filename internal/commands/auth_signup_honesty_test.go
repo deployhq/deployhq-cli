@@ -306,13 +306,14 @@ func TestNewSignupOutput_JSON(t *testing.T) {
 // ── Root help ────────────────────────────────────────────────────────────────
 
 func TestRootHelp_PointsAgentsToSetupInstructions(t *testing.T) {
+	t.Setenv("DEPLOYHQ_AGENT", "claude-code")
 	cmd := NewRootCmd("test")
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"--help"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, stdout.String(), "https://www.deployhq.com/agents.md")
-	assert.Contains(t, stdout.String(), "install DeployHQ's skill with 'dhq skills install' and follow it")
+	assert.Contains(t, stdout.String(), "install DeployHQ's skill for yourself with 'dhq skills install --agent claude-code'")
 }
 
 func TestDescribeCredentialSource(t *testing.T) {
