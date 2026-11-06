@@ -19,7 +19,8 @@ func TestRequireProject_PointsAgentsAtSkill(t *testing.T) {
 
 	var uerr *output.UserError
 	require.ErrorAs(t, err, &uerr)
-	assert.Contains(t, uerr.Hint, "dhq skills install --agent claude-code")
+	assert.Contains(t, uerr.Hint, "read DeployHQ's setup steps with 'dhq skills show'")
+	assert.Contains(t, uerr.Hint, "dhq skills install --agent claude-code", "install is scoped to the running agent")
 	assert.Contains(t, output.ErrorResponseFromErr(err).Data.(output.ErrorData).Recovery,
-		output.Breadcrumb{Action: "install_and_read_skill", Cmd: "dhq skills install --agent claude-code"})
+		output.Breadcrumb{Action: "read_setup_skill", Cmd: "dhq skills show"})
 }

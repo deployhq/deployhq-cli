@@ -104,11 +104,11 @@ Small steps, each one something the person can approve on its own:
 6. **Add the target.**
    - Own server: DeployHQ connects with the project's access key (`dhq projects show <project> --json=public_key`). Installing that key on the server changes who can log in to it, so the agent shows the key and asks before adding it, or the person adds it themselves. Then `dhq servers create ...` (see [servers.md](references/servers.md)). If the server only accepts a password, the person adds it in the DeployHQ web app so the password never passes through the chat.
    - DeployHQ hosting: `dhq beta enroll --protocol static_hosting` (needs an account admin) and `dhq servers create -p <project> --protocol-type static_hosting --subdomain <name> ...`, or a `managed_vps` server. Check with the person before each.
-7. **Configure** build commands, excluded files, env vars as the project needs (see "Configure deployment").
+7. **Configure** build commands, excluded files, env vars as the project needs (see "Configure deployment"). Every file in the repository is uploaded unless it is excluded, so before the first deploy check the files (`git ls-files`) and exclude what must not be published, such as deploy scripts or local config: `dhq excluded-files create -p <project> --path <path>` (all servers unless `--server`).
 8. **First deploy.** Summarise the project, branch and target, ask, then `dhq deploy -p <project> -s <server> --wait --json`, which waits for the deployment to finish (a new one may start as `queued`).
 9. **Confirm.** Report success only when the JSON shows `"status": "completed"`. A non-zero exit means the command failed: if a deployment was created, its `status` says how it ended; otherwise read the error. (`dhq deployments watch <id> -p <project>` is a live view for a person following along in their own terminal, not a step for the agent.)
 
-`dhq launch` does steps 4 to 9 for DeployHQ hosting in a single command. It is an option when the person has chosen DeployHQ hosting and wants it done in one go, not the default; see [launch.md](references/launch.md).
+`dhq launch` does steps 4 to 9 for DeployHQ hosting in a single command. It is an option when the person has chosen DeployHQ hosting and wants it done in one go, not the default; see [launch.md](references/launch.md). It deploys straight away, so files that must not be published are excluded first: create the project (`dhq projects create`), add the exclusions, then run `dhq launch --project <permalink>`.
 
 ### "Deploy code"
 1. `dhq projects list --json` — find project permalink

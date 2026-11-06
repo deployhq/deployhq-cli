@@ -37,17 +37,24 @@ func SkillInstallCommand() string {
 	return skillinstaller.InstallCommandFor(harness.Detect().Name)
 }
 
+// SkillReadCommand prints DeployHQ's skill. An agent reads it in the session
+// it is working in: a skill installed mid-session is not loaded until the
+// agent's next session.
+const SkillReadCommand = "dhq skills show"
+
 // SkillPointer sends an agent to DeployHQ's skill. Agents act on the CLI's
 // errors but rarely run 'dhq --help', so the messages they meet first (not
-// signed in, no project) carry it.
+// signed in, no project) carry it. It asks the agent to read the skill now,
+// not to install it: an installed skill only loads in a new session.
 func SkillPointer() string {
 	cmd := SkillInstallCommand()
 	names := ""
 	if strings.Contains(cmd, "<") {
-		names = " ('dhq skills list' names the agents)"
+		names = ", 'dhq skills list' names the agents"
 	}
-	return "AI agents: install DeployHQ's skill for yourself with '" + cmd + "'" + names +
-		", then read and follow it: it has the setup steps, including when to ask the person."
+	return "AI agents: before going on, read DeployHQ's setup steps with '" + SkillReadCommand + "' and follow them: " +
+		"they say what to set up before the first deploy and when to ask the person. " +
+		"(To have them in future sessions too: '" + cmd + "'" + names + ".)"
 }
 
 // SignInHint is the guidance shown whenever dhq needs credentials it cannot

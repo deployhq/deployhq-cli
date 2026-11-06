@@ -2,6 +2,8 @@ package commands
 
 import (
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
@@ -423,6 +425,7 @@ func newDeploymentsLogsCmd() *cobra.Command {
 					return nil
 				}
 				// Show logs for all steps that have logs
+				var all []stepLogs
 				for _, step := range dep.Steps {
 					if !step.Logs {
 						continue
@@ -431,10 +434,15 @@ func newDeploymentsLogsCmd() *cobra.Command {
 					if err != nil {
 						continue
 					}
-					cliCtx.Envelope.Status("\n--- %s (%s) ---", step.Description, step.Status)
-					for _, log := range logs {
-						fmt.Fprintln(cliCtx.Envelope.Stdout, log.Message) //nolint:errcheck
+					if cliCtx.Envelope.WantsJSON() {
+						all = append(all, stepLogs{Step: step.Identifier, Description: step.Description, Status: step.Status, Logs: logs})
+						continue
 					}
+					cliCtx.Envelope.Status("\n--- %s (%s) ---", step.Description, step.Status)
+					printStepLogs(cliCtx.Envelope.Stdout, logs)
+				}
+				if cliCtx.Envelope.WantsJSON() {
+					return cliCtx.Envelope.WriteJSON(output.NewResponse(all, fmt.Sprintf("Logs for %d steps", len(all))))
 				}
 				return nil
 			}
@@ -449,9 +457,7 @@ func newDeploymentsLogsCmd() *cobra.Command {
 				return env.WriteJSON(output.NewResponse(logs, fmt.Sprintf("%d log entries", len(logs))))
 			}
 
-			for _, log := range logs {
-				fmt.Fprintln(env.Stdout, log.Message) //nolint:errcheck
-			}
+			printStepLogs(env.Stdout, logs)
 			return nil
 		},
 	}
@@ -481,4 +487,26 @@ func newDeploymentsWatchCmd() *cobra.Command {
 			return watchDeployment(cliCtx.Background(), client, env, projectID, args[0])
 		},
 	}
+}
+
+// printStepLogs prints each log entry's message and, under it, its detail
+// (command output, the list of excluded files, an error's cause), as the
+// DeployHQ web app and its plain-text log do.
+func printStepLogs(w io.Writer, logs []sdk.DeploymentStepLog) {
+	for _, log := range logs {
+		fmt.Fprintln(w, log.Message) //nolint:errcheck
+		if log.Detail != nil {
+			if d := strings.TrimRight(*log.Detail, "\n"); strings.TrimSpace(d) != "" {
+				fmt.Fprintln(w, d) //nolint:errcheck
+			}
+		}
+	}
+}
+
+// stepLogs is one step's logs in 'dhq deployments logs --json' without --step.
+type stepLogs struct {
+	Step        string                  `json:"step"`
+	Description string                  `json:"description"`
+	Status      string                  `json:"status"`
+	Logs        []sdk.DeploymentStepLog `json:"logs"`
 }

@@ -2,9 +2,13 @@ package commands
 
 import (
 	"fmt"
+	"io/fs"
+	"sort"
+	"strings"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/internal/skillinstaller"
+	"github.com/deployhq/deployhq-cli/skills"
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +20,7 @@ func newSkillsCmd() *cobra.Command {
 (Claude Code, Cursor, etc.). Run during 'dhq hello' or standalone.
 
 Examples:
+  dhq skills show                         Print the skill, to read it right away
   dhq skills list                         Show every supported agent and status
   dhq skills install                      Install for detected user-scope agents
                                           (Claude Code, Cursor, etc.). Skips
@@ -25,6 +30,7 @@ Examples:
                                           (writes into the current repo)
   dhq skills install --agent claude-code  Install for any specific agent`,
 	}
+	cmd.AddCommand(newSkillsShowCmd())
 	cmd.AddCommand(newSkillsListCmd())
 	cmd.AddCommand(newSkillsInstallCmd())
 	return cmd
@@ -147,4 +153,83 @@ func newSkillsInstallCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&agentFlag, "agent", "", "Install for a specific agent only (e.g. claude-code)")
 	return cmd
+}
+
+// skillDir is the embedded skill's root in skills.FS.
+const skillDir = "deployhq"
+
+// skillReferences returns the names of the skill's reference docs (without
+// ".md"), sorted.
+func skillReferences() []string {
+	entries, err := fs.ReadDir(skills.FS, skillDir+"/references")
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+			names = append(names, strings.TrimSuffix(e.Name(), ".md"))
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// skillShowOutput is the --json shape of 'dhq skills show'.
+type skillShowOutput struct {
+	Name       string   `json:"name"`
+	Content    string   `json:"content"`
+	References []string `json:"references"`
+}
+
+// newSkillsShowCmd prints the embedded skill. A skill installed with
+// 'dhq skills install' is only loaded by the agent's next session, so an
+// agent that is setting DeployHQ up right now reads it this way instead.
+func newSkillsShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show [reference]",
+		Short: "Print the DeployHQ skill, so an AI agent can read it right away",
+		Long: `Print DeployHQ's skill for AI agents: the setup steps, including when to ask
+the person. Nothing is installed or changed.
+
+An agent can read it straight away, in the session it is working in. A skill
+installed with 'dhq skills install' is only loaded by the agent's next session.
+
+With a reference name, print that reference document instead. The names are
+listed at the end of the skill.`,
+		Example: `  # Read the skill
+  dhq skills show
+
+  # Read one of its references
+  dhq skills show launch`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			env := cliCtx.Envelope
+			refs := skillReferences()
+
+			name, path := "SKILL", skillDir+"/SKILL.md"
+			if len(args) == 1 {
+				name = strings.TrimSuffix(args[0], ".md")
+				path = skillDir + "/references/" + name + ".md"
+			}
+			data, err := skills.FS.ReadFile(path)
+			if err != nil {
+				return &output.UserError{
+					Message: fmt.Sprintf("Unknown skill reference: %q", name),
+					Hint:    "References: " + strings.Join(refs, ", "),
+				}
+			}
+
+			if env.JSONMode {
+				return env.WriteJSON(output.NewResponse(skillShowOutput{Name: name, Content: string(data), References: refs},
+					fmt.Sprintf("DeployHQ skill: %s", name)))
+			}
+			// Plain Markdown even when piped: this is a document to read.
+			fmt.Fprint(env.Stdout, string(data)) //nolint:errcheck
+			if len(args) == 0 {
+				fmt.Fprintf(env.Stdout, "\n---\nThe references linked above are printed with 'dhq skills show <name>': %s\n", strings.Join(refs, ", ")) //nolint:errcheck
+			}
+			return nil
+		},
+	}
 }

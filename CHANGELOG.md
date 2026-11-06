@@ -9,18 +9,36 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ## [Unreleased]
 
+### Added
+
+- **`dhq skills show [reference]`** prints DeployHQ's skill for AI agents (or
+  one of its references) without installing anything. An agent can read it in
+  the session it is working in: a skill installed with `dhq skills install` is
+  only loaded by the agent's next session. Plain Markdown, also when piped;
+  `--json` gives `{name, content, references}`.
+
 ### Fixed
 
-- **Pointing AI agents at DeployHQ's skill**: agents act on the CLI's errors
-  but rarely run `dhq --help`, so the skill pointer there was missed. The first
-  messages of a new setup now carry it too: the "not signed in" guidance,
-  `next_step` in `dhq auth status --json`, `dhq doctor`, and the
-  "No project specified" errors (including `dhq deploy`'s). In `--json` output
-  their recovery actions add `install_and_read_skill`. The command names the
-  agent running dhq (for example `dhq skills install --agent claude-code`), so
-  the skill is installed for that agent only, not for every AI tool on the
-  machine; when dhq can't tell which agent it is, the agent fills in its name.
-  `dhq --help` names the agent the same way.
+- **Getting AI agents to the skill**: agents act on the CLI's errors but rarely
+  run `dhq --help`, and a skill they install mid-session isn't loaded until
+  their next one. The first messages of a new setup (the "not signed in"
+  guidance, `next_step` in `dhq auth status --json`, `dhq doctor`, and the
+  "No project specified" errors, including `dhq deploy`'s) now ask the agent
+  to read the setup steps with `dhq skills show` before going on. In `--json`
+  output their recovery actions add `read_setup_skill` (`dhq skills show`).
+  `dhq --help` says the same. Installing for future sessions is offered for the
+  running agent only (for example `dhq skills install --agent claude-code`),
+  not for every AI tool on the machine.
+- **The skill says to exclude files before the first deploy.** Every file in
+  the repository is uploaded unless excluded; the setup steps now say to check
+  the files and exclude deploy scripts or local config first, and, since
+  `dhq launch` deploys straight away, to create the project, add the
+  exclusions, then run `dhq launch --project <permalink>`.
+- **`dhq deployments logs`** prints each log entry's detail under its message,
+  as the DeployHQ web app does (command output, the list of excluded files, an
+  error's cause). Without it, "Excluded files for server ..." showed no files.
+  Without `--step`, `--json` (or piped output) now returns every step's logs as
+  JSON instead of text.
 - **Signing in or signing up "in a separate terminal window"** now says
   "not with the agent's `!` shortcut, which gives dhq no terminal to prompt in"
   as well. Agents read "not through the AI agent" as allowing it, and suggested

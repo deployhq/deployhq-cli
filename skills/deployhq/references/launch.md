@@ -25,6 +25,11 @@ Each of these is hard to undo, so the person agrees to all of them before the
 agent runs `dhq launch`. A good sequence:
 
 - Run `dhq launch --static --dry-run --json` (or `--vps`) and show the person what it would do.
+- **Exclude files before launching.** `dhq launch` deploys at once, and every file in
+  the repository is uploaded unless it is excluded. Check the files (`git ls-files`); if
+  any must not be published (a deploy script, local config), create the project first
+  with `dhq projects create`, add them with `dhq excluded-files create -p <permalink> --path <path>`,
+  then run `dhq launch --project <permalink>`.
 - Offer the choice: run `dhq launch`, or go step by step (`dhq projects create`,
   `dhq repos create`, `dhq beta enroll`, `dhq servers create --protocol-type static_hosting`,
   `dhq deploy`), approving each action on its own. See "Set up DeployHQ for this

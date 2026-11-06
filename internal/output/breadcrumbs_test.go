@@ -131,14 +131,14 @@ func TestErrorResponseFromErr_NotLoggedIn_OffersSignup(t *testing.T) {
 	assert.Equal(t, "dhq auth login", data.Recovery[0].Cmd)
 	assert.Equal(t, "ask_user_to_signup_in_separate_terminal", data.Recovery[1].Action)
 	assert.Equal(t, "dhq signup", data.Recovery[1].Cmd)
-	assert.Equal(t, Breadcrumb{Action: "install_and_read_skill", Cmd: "dhq skills install --agent claude-code"}, data.Recovery[2])
+	assert.Equal(t, Breadcrumb{Action: "read_setup_skill", Cmd: "dhq skills show"}, data.Recovery[2])
 }
 
 // Agents act on these errors but rarely run 'dhq --help', so the first
 // errors of a new setup point at DeployHQ's skill.
 func TestErrorResponseFromErr_FirstSetupErrorsOfferSkill(t *testing.T) {
 	t.Setenv("DEPLOYHQ_AGENT", "claude-code")
-	skill := Breadcrumb{Action: "install_and_read_skill", Cmd: "dhq skills install --agent claude-code"}
+	skill := Breadcrumb{Action: "read_setup_skill", Cmd: "dhq skills show"}
 	for name, err := range map[string]error{
 		"not logged in":      errors.New("auth: not logged in"),
 		"auth not signed in": &AuthError{Message: "Not logged in"},
@@ -280,18 +280,17 @@ func TestBreadcrumb_ResourceFields(t *testing.T) {
 	assert.Contains(t, string(data), `"id":"abc"`)
 }
 
-// A bare 'dhq skills install' would install for every AI tool on the machine,
-// so the crumb names the running agent, or leaves a placeholder.
-func TestErrorResponseFromErr_SkillCrumbNeverInstallsForEveryAgent(t *testing.T) {
-	for agent, want := range map[string]string{
-		"codex":       "dhq skills install --agent codex",
-		"copilot":     "dhq skills install --agent <your agent>", // writes into the repo
-		"not-a-agent": "dhq skills install --agent <your agent>",
-	} {
+// The crumb reads the skill (it changes nothing) rather than installing it:
+// an installed skill only loads in the agent's next session.
+func TestErrorResponseFromErr_SkillCrumbReadsNotInstalls(t *testing.T) {
+	for _, agent := range []string{"claude-code", "codex", ""} {
 		t.Run(agent, func(t *testing.T) {
 			t.Setenv("DEPLOYHQ_AGENT", agent)
 			rec := ErrorResponseFromErr(errors.New("auth: not logged in")).Data.(ErrorData).Recovery
-			assert.Contains(t, rec, Breadcrumb{Action: "install_and_read_skill", Cmd: want})
+			assert.Contains(t, rec, Breadcrumb{Action: "read_setup_skill", Cmd: "dhq skills show"})
+			for _, b := range rec {
+				assert.NotContains(t, b.Cmd, "skills install")
+			}
 		})
 	}
 }
