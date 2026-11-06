@@ -15,18 +15,23 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   but rarely run `dhq --help`, so the skill pointer there was missed. The first
   messages of a new setup now carry it too: the "not signed in" guidance,
   `next_step` in `dhq auth status --json`, `dhq doctor`, and the
-  "No project specified" error. In `--json` output their recovery actions add
-  `install_and_read_skill` (`dhq skills install`).
+  "No project specified" errors (including `dhq deploy`'s). In `--json` output
+  their recovery actions add `install_and_read_skill`. The command names the
+  agent running dhq (for example `dhq skills install --agent claude-code`), so
+  the skill is installed for that agent only, not for every AI tool on the
+  machine; when dhq can't tell which agent it is, the agent fills in its name.
 - **Signing in or signing up "in a separate terminal window"** now says
   "not with the agent's `!` shortcut, which gives dhq no terminal to prompt in"
   as well. Agents read "not through the AI agent" as allowing it, and suggested
-  `! dhq auth login` / `! dhq signup`, which always refuse there.
+  `! dhq auth login` / `! dhq signup`, which always refuse there. The hint for
+  adding a password-only server with `--password-stdin` says the same.
 - **`dhq repos create` / `dhq repos update` with an HTTPS git URL**: DeployHQ
   saves the branch of such a repository without checking it, so a branch that
   isn't in the repository was accepted and the first deployment failed. dhq now
   checks the branch against the repository's branch list and fails (exit code 1)
   with the branches and the command to pick one. When the list can't be read,
-  it carries on as before.
+  it carries on as before. Branch names in these messages are now quoted when
+  they contain shell syntax, as they may be pasted into a command.
 - **`dhq repos create` with an HTTPS URL** no longer suggests adding the
   project's deploy key: such a repository is read with a username and password
   (or nothing, when public), never with the key.

@@ -20,7 +20,8 @@ func newDoctorCmd() *cobra.Command {
 			// Check 1: Auth
 			creds, err := auth.Load()
 			if err != nil {
-				checks = append(checks, doctorCheck{"Authentication", "fail", "Not logged in. Run 'dhq auth login', or 'dhq signup' if you have no DeployHQ account yet, " + auth.SeparateTerminal + ". " + auth.SkillPointer})
+				checks = append(checks, doctorCheck{"Authentication", "fail", "Not logged in. Run 'dhq auth login', or 'dhq signup' if you have no DeployHQ account yet. " +
+					"When an AI agent runs dhq, the person runs either one themselves " + auth.SeparateTerminal + ". " + auth.SkillPointer()})
 			} else {
 				checks = append(checks, doctorCheck{"Authentication", "ok", "Logged in as " + creds.Email})
 			}

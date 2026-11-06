@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/deployhq/deployhq-cli/internal/auth"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
 
@@ -229,7 +230,10 @@ func isRetryable(code, message string) bool {
 // installSkillCrumb points an agent at DeployHQ's skill. It is offered on the
 // errors an agent meets first in a new setup (not signed in, no project),
 // since agents act on these but rarely run 'dhq --help'.
-var installSkillCrumb = Breadcrumb{Action: "install_and_read_skill", Cmd: "dhq skills install"}
+// It installs the skill for the running agent only.
+func installSkillCrumb() Breadcrumb {
+	return Breadcrumb{Action: "install_and_read_skill", Cmd: auth.SkillInstallCommand()}
+}
 
 // recoveryActions returns suggested next commands for common errors.
 func recoveryActions(code, message string) []Breadcrumb {
@@ -247,20 +251,20 @@ func recoveryActions(code, message string) []Breadcrumb {
 		if notSignedIn(msg) {
 			crumbs = append(crumbs,
 				Breadcrumb{Action: "ask_user_to_signup_in_separate_terminal", Cmd: "dhq signup"},
-				installSkillCrumb)
+				installSkillCrumb())
 		}
 		return append(crumbs, Breadcrumb{Action: "check_status", Cmd: "dhq auth status"})
 	case notSignedIn(msg):
 		return []Breadcrumb{
 			{Action: "ask_user_to_login_in_separate_terminal", Cmd: "dhq auth login"},
 			{Action: "ask_user_to_signup_in_separate_terminal", Cmd: "dhq signup"},
-			installSkillCrumb,
+			installSkillCrumb(),
 		}
 	case strings.Contains(msg, "no project"):
 		return []Breadcrumb{
 			{Action: "list_projects", Cmd: "dhq projects list --json"},
 			{Action: "set_project", Cmd: "dhq config set project <permalink>"},
-			installSkillCrumb,
+			installSkillCrumb(),
 		}
 	case strings.Contains(msg, "not found"):
 		return []Breadcrumb{

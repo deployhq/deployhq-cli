@@ -464,7 +464,7 @@ func branchNotKeptError(ctx context.Context, client *sdk.Client, projectID, done
 // reported: the branch can't be shown to be wrong.
 func httpBranchMissingError(ctx context.Context, client *sdk.Client, projectID, done, requested string, repo *sdk.Repository) *output.UserError {
 	if requested == "" || repo == nil || repo.Branch != requested ||
-		repo.ScmType != "git" || !strings.HasPrefix(repo.URL, "http") {
+		repo.ScmType != "git" || !isHTTPRepoURL(repo.URL) {
 		return nil
 	}
 	branches, err := client.ListBranches(ctx, projectID, nil)
@@ -494,6 +494,11 @@ func pickBranchError(projectID, message string, branches map[string]string) *out
 			names = append(names, name)
 		}
 		sort.Strings(names)
+		// Branch names come from the repository and may hold shell syntax
+		// (release&hotfix); quote them as they may be pasted into a command.
+		for i, name := range names {
+			names[i] = quoteRerunArg(name)
+		}
 		list := strings.Join(names, ", ")
 		if len(names) > maxBranchesShown {
 			list = strings.Join(names[:maxBranchesShown], ", ") +

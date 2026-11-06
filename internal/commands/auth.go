@@ -448,8 +448,10 @@ const signInNextStep = "Ask the person to sign in by running 'dhq auth login' " 
 
 // notLoggedInNextStep is the next step when dhq has no credentials to use. The
 // person may not have an account yet, so it names sign-up too.
-const notLoggedInNextStep = signInNextStep + " If they have no DeployHQ account yet, they run 'dhq signup' there instead. " +
-	auth.SkillPointer
+func notLoggedInNextStep() string {
+	return signInNextStep + " If they have no DeployHQ account yet, they run 'dhq signup' there instead. " +
+		auth.SkillPointer()
+}
 
 // notLoggedInStatus is the not_logged_in result. It names the account dhq is
 // configured to use, if any, and where that setting came from, since a wrong
@@ -459,7 +461,7 @@ func notLoggedInStatus(cfg *config.Config) authStatusResult {
 		Status: authStatusNotLoggedIn,
 		Message: "No credentials found: dhq has no stored login to use, and flags, " +
 			"DEPLOYHQ_* environment variables and config files do not set all of account, email and API key",
-		NextStep: notLoggedInNextStep,
+		NextStep: notLoggedInNextStep(),
 	}
 	if cfg.Account == "" {
 		return res

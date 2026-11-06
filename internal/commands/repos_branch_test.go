@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -319,4 +321,77 @@ func TestIsHTTPRepoURL(t *testing.T) {
 	} {
 		assert.Equal(t, want, isHTTPRepoURL(url), url)
 	}
+}
+
+// The HTTP(S) check runs only where DeployHQ didn't check: an SSH repository
+// whose branch was kept passed DeployHQ's own check, even if the branch list
+// read back differs.
+func TestReposBranch_SSHKeptBranchNotRechecked(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "feature"}) // list: main, develop
+
+	require.NoError(t, runServersCmd(t, "repos", "update", "--branch", "feature"))
+}
+
+func TestReposBranch_HTTPSUppercaseSchemeChecked(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "nope", savedURL: "HTTPS://github.com/acme/my-app.git"})
+
+	err := runServersCmd(t, "repos", "update", "--branch", "nope")
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+}
+
+// An empty branch list can't show the branch is wrong.
+func TestReposBranch_HTTPSEmptyBranchListSucceeds(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "main", savedURL: "https://github.com/acme/my-app.git", branchesBody: "{}"})
+
+	require.NoError(t, runServersCmd(t, "repos", "update", "--branch", "main"))
+}
+
+// Branch names come from the repository and are quoted in the hint, since they
+// may be pasted into a command.
+func TestReposBranch_ListedBranchNamesAreQuoted(t *testing.T) {
+	withResolvableContext(t)
+	installFakeRepoAPI(t, &fakeRepoAPI{
+		savedBranch: "nope", savedURL: "https://github.com/acme/my-app.git",
+		branchesBody: `{"main":"abc","a$(id)":"def"}`,
+	})
+
+	err := runServersCmd(t, "repos", "update", "--branch", "nope")
+	var uerr *output.UserError
+	require.True(t, errors.As(err, &uerr), "got %T: %v", err, err)
+	assert.Contains(t, uerr.Hint, "Branches: 'a$(id)', main.")
+}
+
+// An HTTPS repository is never read with the project's deploy key, so a
+// successful create doesn't suggest adding it.
+func TestReposCreate_HTTPSNoDeployKeySuggestion(t *testing.T) {
+	withResolvableContext(t)
+	out := filepath.Join(t.TempDir(), "out.jsonl")
+	t.Setenv("DEPLOYHQ_OUTPUT_FILE", out)
+	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "main", savedURL: "https://github.com/acme/my-app.git"})
+
+	require.NoError(t, runServersCmd(t, "repos", "create", "--json", "--scm-type", "git",
+		"--url", "https://github.com/acme/my-app.git", "--branch", "main"))
+	b, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Contains(t, string(b), "Repository created")
+	assert.NotContains(t, string(b), "deploy-key")
+	assert.NotContains(t, string(b), projectPublicKey)
+}
+
+// The same create over SSH does suggest it: the control for the test above.
+func TestReposCreate_SSHDeployKeySuggestion(t *testing.T) {
+	withResolvableContext(t)
+	out := filepath.Join(t.TempDir(), "out.jsonl")
+	t.Setenv("DEPLOYHQ_OUTPUT_FILE", out)
+	installFakeRepoAPI(t, &fakeRepoAPI{savedBranch: "main"})
+
+	require.NoError(t, runServersCmd(t, "repos", "create", "--json", "--scm-type", "git",
+		"--url", "git@github.com:acme/my-app.git", "--branch", "main"))
+	b, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Contains(t, string(b), "gh repo deploy-key add")
 }
