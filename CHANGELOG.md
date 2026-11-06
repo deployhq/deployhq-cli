@@ -36,6 +36,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `dhq launch` deploys straight away, to create the project, add the
   exclusions, then run `dhq launch --project <permalink>`. `dhq deploy`'s hint
   for an account with no projects, which suggests `dhq launch`, says the same.
+- **The skill says DeployHQ hosting is free during the beta** and may be billed
+  once it ends. It said "billed once the beta ends", which agents passed on as
+  "may be a paid resource".
 - **`dhq deployments logs`** prints each log entry's detail under its message,
   as the DeployHQ web app does (command output, the list of excluded files, an
   error's cause). Without it, "Excluded files for server ..." showed no files.
