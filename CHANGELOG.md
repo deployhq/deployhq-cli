@@ -32,7 +32,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   not for every AI tool on the machine.
 - **The skill says to exclude files before the first deploy.** Every file in
   the repository is uploaded unless excluded; the setup steps now say to check
-  the files and exclude deploy scripts or local config first, and, since
+  the files on the branch DeployHQ deploys (the remote's, not the local
+  checkout) and exclude deploy scripts or local config first, and, since
   `dhq launch` deploys straight away, to create the project, add the
   exclusions, then run `dhq launch --project <permalink>`. `dhq deploy`'s hint
   for an account with no projects, which suggests `dhq launch`, says the same.

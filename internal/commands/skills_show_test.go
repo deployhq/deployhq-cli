@@ -84,3 +84,16 @@ func TestSkillsShow_JSON(t *testing.T) {
 	assert.Contains(t, res.Data.Content, "DeployHQ")
 	assert.Contains(t, res.Data.References, "launch")
 }
+
+// The pre-deploy file check lists the branch DeployHQ deploys (the remote's),
+// not the local checkout: `git ls-files` shows the local index, which can
+// differ (a staged deletion, unpushed work).
+func TestSkill_PreDeployFileCheckUsesRemoteBranch(t *testing.T) {
+	for _, path := range []string{"deployhq/SKILL.md", "deployhq/references/launch.md"} {
+		b, err := skills.FS.ReadFile(path)
+		require.NoError(t, err)
+		s := strings.Join(strings.Fields(string(b)), " ")
+		assert.Contains(t, s, "git ls-tree -r --name-only origin/<branch>", path)
+		assert.NotContains(t, s, "git ls-files", path)
+	}
+}
