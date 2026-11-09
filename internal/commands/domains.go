@@ -35,6 +35,19 @@ The domain goes live automatically once both records are detected (DeployHQ
 checks every few minutes). A domain that is not verified within 7 days expires;
 remove it and add it again to start over.`
 
+// parseDomainHostname normalises a hostname argument and refuses what is
+// clearly not one (a URL, a path); the API validates the rest.
+func parseDomainHostname(raw string) (string, error) {
+	hostname := strings.TrimSuffix(strings.TrimSpace(strings.ToLower(raw)), ".")
+	if hostname == "" || strings.Contains(hostname, "://") || strings.ContainsAny(hostname, "/ ") {
+		return "", &output.UserError{
+			Message: fmt.Sprintf("%q is not a hostname", raw),
+			Hint:    "Pass just the domain, e.g. www.example.com (no https:// or path).",
+		}
+	}
+	return hostname, nil
+}
+
 func newDomainsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "domains",
@@ -487,12 +500,9 @@ be set up prints the reason and exits non-zero.
   dhq domains add example.com -p my-site -s "My Site" --with-www    # both halves of the pair`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			hostname := strings.TrimSuffix(strings.TrimSpace(strings.ToLower(args[0])), ".")
-			if hostname == "" || strings.Contains(hostname, "://") || strings.ContainsAny(hostname, "/ ") {
-				return &output.UserError{
-					Message: fmt.Sprintf("%q is not a hostname", args[0]),
-					Hint:    "Pass just the domain, e.g. www.example.com (no https:// or path).",
-				}
+			hostname, err := parseDomainHostname(args[0])
+			if err != nil {
+				return err
 			}
 
 			ctx := cliCtx.Background()

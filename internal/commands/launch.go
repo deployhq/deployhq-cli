@@ -52,6 +52,13 @@ type launchConfig struct {
 	subdomain    string
 	subdirectory string
 	spaMode      bool
+	// customDomain is an optional custom domain to add to the new site;
+	// withWWW also asks for the other half of its apex and www pair.
+	customDomain string
+	withWWW      bool
+	// customDomainPrompted stops launchProvisionStatic asking twice when it
+	// re-runs itself after a refused subdomain or hostname.
+	customDomainPrompted bool
 
 	// VPS params
 	region  string
@@ -75,6 +82,10 @@ type launchResult struct {
 	Project    string `json:"project"`
 	Server     string `json:"server"`
 	Deployment string `json:"deployment,omitempty"`
+	// CustomDomain reports the custom domain asked for with --custom-domain.
+	// It is absent when none was asked for, and a problem with the domain
+	// never fails the launch: read its status.
+	CustomDomain *launchCustomDomainResult `json:"custom_domain,omitempty"`
 }
 
 // dryRunResult is the --dry-run output (no side effects).
@@ -92,6 +103,9 @@ type dryRunWould struct {
 	Subdomain   string `json:"subdomain,omitempty"`
 	Project     string `json:"project,omitempty"`
 	Branch      string `json:"branch,omitempty"`
+	// CustomDomain and WithWWW are the custom domain the launch would add.
+	CustomDomain string `json:"custom_domain,omitempty"`
+	WithWWW      bool   `json:"with_www,omitempty"`
 }
 
 // launchErrorReason is the machine-readable error code taxonomy.
@@ -106,9 +120,13 @@ const (
 	// here the cause is known.
 	reasonPaymentMethodRequired = "payment_method_required"
 	reasonSubdomainTaken        = "subdomain_taken"
-	reasonRateLimited           = "rate_limited"
-	reasonProvisionFailed       = "provision_failed"
-	reasonDeployFailed          = "deploy_failed"
+	// reasonCustomDomainInvalid: the API refused the hostname given with
+	// --custom-domain (a 422), and nothing was provisioned. Any other trouble
+	// with the domain is reported in the successful launch result instead.
+	reasonCustomDomainInvalid = "custom_domain_invalid"
+	reasonRateLimited         = "rate_limited"
+	reasonProvisionFailed     = "provision_failed"
+	reasonDeployFailed        = "deploy_failed"
 	// reasonEmailVerificationRequired: the account's email isn't verified yet, so
 	// the backend's deploy gate blocks it. Handled gracefully (wait-and-retry
 	// interactively, structured fail non-interactively) — not a raw 403.
@@ -144,7 +162,7 @@ func (e *launchError) ExitCode() int {
 	}
 	switch e.Reason {
 	case reasonPlanLimitReached, reasonAcceptCostRequired, reasonBetaEnrollRequired,
-		reasonRepoUnreachable, reasonRateLimited, "payment_method_required":
+		reasonRepoUnreachable, reasonRateLimited, reasonCustomDomainInvalid, "payment_method_required":
 		return output.ExitUserError
 	case reasonAuthRequired, reasonEmailVerificationRequired:
 		return output.ExitAuthError
@@ -214,6 +232,25 @@ func paymentMethodLaunchError(err error, client *sdk.Client, target, projectID s
 	return le
 }
 
+// launchNoteCreatedProject records, on a refused-hostname failure, the project
+// this run created, the same way paymentMethodLaunchError does: remembered so a
+// re-run reuses it, named so the caller can remove it.
+func launchNoteCreatedProject(env *output.Envelope, cfg launchConfig, projectCreated bool, provErr error) {
+	var le *launchError
+	if !projectCreated || !errors.As(provErr, &le) || le.Reason != reasonCustomDomainInvalid {
+		return
+	}
+	launchPersistConfig(env, cfg, nil)
+	le.Message = strings.TrimSpace(le.Message) + fmt.Sprintf(" The project %q was created during this run and has no server yet.", cfg.projectID)
+	le.NextStep = fmt.Sprintf("Re-run the same dhq launch command with a different --custom-domain (and --project %s added), or remove the project with: dhq projects delete %s",
+		cfg.projectID, cfg.projectID)
+	if le.Details == nil {
+		le.Details = map[string]string{}
+	}
+	le.Details["project"] = cfg.projectID
+	le.Details["project_created"] = "true"
+}
+
 // accountLaunchError converts an account-level refusal that stops every API
 // request (a suspended account, a plan without API access) into a launchError
 // whose reason is the account error's code and whose next step is its hint.
@@ -281,6 +318,8 @@ func newLaunchCmd() *cobra.Command {
 		flagNonInteract   bool // local --non-interactive (mirrors global but scoped)
 		flagInteractive   bool
 		flagDryRun        bool
+		flagCustomDomain  string
+		flagWithWWW       bool
 	)
 
 	cmd := &cobra.Command{
@@ -307,6 +346,9 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
   dhq launch --vps --dry-run --json
   dhq launch --json --static --subdomain my-app
 
+  # Launch on your own domain (Static Hosting, paid plans): prints the DNS records to publish
+  dhq launch --static --subdomain my-app --custom-domain example.com --with-www
+
   # Opt out to own-server setup
   # At the target prompt, choose "Use my own server" → branches into dhq init`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -323,6 +365,8 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 
 			// Resolve launchConfig from flags → env → .deployhq.toml → detection
 			cfg := resolveLaunchConfig(flagStatic, flagVPS, flagSubdomain, flagRegion, flagSize, flagBranch, flagProject, flagAcceptCost, flagCleanupOnFail, flagDryRun)
+			cfg.customDomain = strings.TrimSpace(flagCustomDomain)
+			cfg.withWWW = flagWithWWW
 
 			return runLaunch(env, cfg)
 		},
@@ -341,6 +385,8 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 	cmd.Flags().BoolVar(&flagNonInteract, "yes", false, "Alias for --non-interactive")
 	cmd.Flags().BoolVar(&flagInteractive, "interactive", false, "Force interactive mode even in piped / agent contexts")
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Print intended actions and cost without executing (no side effects)")
+	cmd.Flags().StringVar(&flagCustomDomain, "custom-domain", "", "Custom domain for the Static Hosting site (e.g. www.example.com). Paid plans only; prints the DNS records to publish. If it cannot be added the site still launches")
+	cmd.Flags().BoolVar(&flagWithWWW, "with-www", false, "With --custom-domain, also add the other half of the apex and www pair")
 
 	return cmd
 }
@@ -400,6 +446,11 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	env.Status("DeployHQ • one-command deploy")
 	env.Status("")
 
+	// A bad combination of custom domain flags costs no API call.
+	if err := validateLaunchCustomDomain(&cfg); err != nil {
+		return err
+	}
+
 	// ── Step 1: Auth / bootstrap ────────────────────────────────────────────
 	client, accountSubdomain, err := launchEnsureAuth(ctx, env, cfg)
 	if err != nil {
@@ -420,6 +471,10 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	}
 	if detection.SuggestedProtocol != "" && cfg.targetProtocol == "" {
 		cfg.targetProtocol = detection.SuggestedProtocol
+	}
+	// Runs for a dry run too, so the preview refuses what the launch would.
+	if err := resolveLaunchCustomDomainTarget(&cfg); err != nil {
+		return err
 	}
 
 	// ── Dry-run exit: before any mutation ─────────────────────────────
@@ -538,6 +593,9 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		if pollErr == nil {
 			env.Status("Found existing server %s — skipping provisioning.", cfg.serverID)
 			server = existing
+			if err := launchEnsureCustomDomainOnServer(ctx, env, &cfg, client, server); err != nil {
+				return writeLaunchError(env, cfg, reasonCustomDomainInvalid, err)
+			}
 		} else {
 			// Server no longer exists (404) or there's an error — fall through to provision.
 			env.Status("Persisted server %s not found (%v) — provisioning new server.", cfg.serverID, pollErr)
@@ -546,7 +604,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 
 	if server == nil {
 		var provErr error
-		server, provErr = launchProvision(ctx, env, cfg, client)
+		server, provErr = launchProvision(ctx, env, &cfg, client)
 		if provErr != nil {
 			// Provision failure cleanup: run the same cleanup path as deploy failures
 			// so --cleanup-on-failure and resource naming apply.
@@ -563,6 +621,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 				}
 				return writeLaunchError(env, cfg, reasonPaymentMethodRequired, pm)
 			}
+			launchNoteCreatedProject(env, cfg, projectCreated, provErr)
 			return writeLaunchError(env, cfg, reasonProvisionFailed, provErr)
 		}
 		// Persist the new server so re-runs are idempotent.
@@ -588,6 +647,10 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 		// Provision succeeded but deploy failed — name the resource
 		if server != nil {
 			launchDeployFailureCleanup(ctx, env, cfg, client, server)
+			if len(server.CustomDomains) > 0 && !cfg.cleanupOnFailure {
+				env.Status("Custom domain %s was added to this server. See it with: %s",
+					cfg.customDomain, domainsShowCmd(cfg.customDomain, launchDomainsTarget(cfg, server)))
+			}
 		}
 		return writeLaunchError(env, cfg, reasonDeployFailed, err)
 	}
@@ -596,29 +659,9 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	launchPersistConfig(env, cfg, server)
 
 	// ── Final output ──────────────────────────────────────────────────────────
-	if env.WantsJSON() {
-		result := launchResult{
-			Status:     "live",
-			Target:     cfg.targetProtocol,
-			URL:        liveURL,
-			Project:    cfg.projectID,
-			Server:     server.Identifier,
-			Deployment: "",
-		}
-		if dep != nil {
-			result.Deployment = dep.Identifier
-		}
-		return env.WriteJSON(output.NewResponse(result, "Deployment live: "+liveURL))
-	}
-
-	env.Status("")
-	output.ColorGreen.Fprintf(env.Stderr, "Live: %s\n", liveURL) //nolint:errcheck
-	env.Status("Saved settings to .deployhq.toml — redeploy with 'dhq deploy -s %s'.", server.Identifier)
-	env.Status("Roll back anytime with 'dhq rollback <deployment>' — redeploys the previous revision ('dhq deployments list' shows history).")
-	// Final stdout line = live URL (Vercel pattern, scriptable)
-	fmt.Fprintln(os.Stdout, liveURL) //nolint:errcheck
-
-	return nil
+	// The custom domain is reported last: the site is live either way.
+	domain := launchFinishCustomDomain(ctx, env, cfg, client, server, accountSubdomain, liveURL)
+	return writeLaunchResult(env, cfg, server, dep, liveURL, domain)
 }
 
 // ── Detection (remote-first, local fallback) ──────────────────────────────────
@@ -1025,6 +1068,8 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 		if dr.Would.Subdomain == "" {
 			dr.Would.Subdomain = "<repo-name>"
 		}
+		dr.Would.CustomDomain = cfg.customDomain
+		dr.Would.WithWWW = cfg.withWWW
 	case detect.ProtocolManagedVPS:
 		region := cfg.region
 		if region == "" {
@@ -1065,6 +1110,9 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 	if !caps.BetaFeatures && cfg.targetProtocol != "" {
 		dr.Warning = "Managed-resources beta not enabled. Run dhq launch without --dry-run to enroll."
 	}
+	if cfg.customDomain != "" {
+		dr.Warning = strings.TrimSpace(dr.Warning + " Custom domains need a paid plan: on other plans the site still launches, without the domain. The DNS records to publish are printed after the deploy.")
+	}
 
 	if env.WantsJSON() {
 		return env.WriteJSON(output.NewResponse(dr, "Dry run — no changes made"))
@@ -1075,6 +1123,13 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 	env.Status("Would provision: %s", dr.Would.Provision)
 	if dr.Would.Subdomain != "" {
 		env.Status("  Subdomain:     %s.deployhq-sites.com", dr.Would.Subdomain)
+	}
+	if dr.Would.CustomDomain != "" {
+		line := dr.Would.CustomDomain
+		if other := domainCounterpart(dr.Would.CustomDomain); dr.Would.WithWWW && other != "" {
+			line += " and " + other
+		}
+		env.Status("  Custom domain: %s", line)
 	}
 	if dr.Would.Region != "" {
 		env.Status("  Region:        %s", dr.Would.Region)
@@ -1435,18 +1490,18 @@ func launchCheckPlanLimits(env *output.Envelope, cfg launchConfig, caps *sdk.Acc
 
 // ── Provision ─────────────────────────────────────────────────────────────────
 
-func launchProvision(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client) (*sdk.Server, error) {
+func launchProvision(ctx context.Context, env *output.Envelope, cfg *launchConfig, client *sdk.Client) (*sdk.Server, error) {
 	switch cfg.targetProtocol {
 	case detect.ProtocolStaticHosting:
 		return launchProvisionStatic(ctx, env, cfg, client)
 	case detect.ProtocolManagedVPS:
-		return launchProvisionVPS(ctx, env, cfg, client)
+		return launchProvisionVPS(ctx, env, *cfg, client)
 	default:
 		return nil, &output.UserError{Message: "Unknown target protocol: " + cfg.targetProtocol}
 	}
 }
 
-func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client) (*sdk.Server, error) {
+func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg *launchConfig, client *sdk.Client) (*sdk.Server, error) {
 	subdomain := cfg.subdomain
 	if subdomain == "" {
 		subdomain = projectNameFromRemote(detectGitRemote())
@@ -1486,6 +1541,8 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg launch
 		if idx, _, err := spaPrompt.Run(); err == nil {
 			cfg.spaMode = idx == 1
 		}
+
+		launchPromptCustomDomain(env, cfg)
 	} else if subdomain == "" {
 		return nil, &output.UserError{
 			Message: "Subdomain not specified",
@@ -1499,9 +1556,11 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg launch
 		Name:         subdomain,
 		ProtocolType: detect.ProtocolStaticHosting,
 		HostedWebsiteAttributes: &sdk.HostedWebsiteAttributes{
-			Subdomain:    subdomain,
-			SPAMode:      cfg.spaMode,
-			Subdirectory: cfg.subdirectory,
+			Subdomain:                   subdomain,
+			SPAMode:                     cfg.spaMode,
+			Subdirectory:                cfg.subdirectory,
+			CustomDomainHostname:        cfg.customDomain,
+			CustomDomainWithCounterpart: cfg.withWWW,
 		},
 	}
 
@@ -1513,6 +1572,32 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg launch
 		}
 		var apiErr *sdk.APIError
 		if errors.As(err, &apiErr) && apiErr.IsValidationError() {
+			// The custom domain first: a hostname refusal can itself say
+			// "subdomains" ("may not be X or one of its subdomains").
+			if reasons := customDomainRefusalReasons(apiErr); cfg.customDomain != "" && len(reasons) > 0 {
+				if env.NonInteractive {
+					return nil, customDomainInvalidError(cfg.customDomain, reasons)
+				}
+				env.Warn("DeployHQ refused the custom domain %q: %s", cfg.customDomain, strings.Join(reasons, "; "))
+				domainPrompt := promptui.Prompt{Label: "Custom domain (press Enter to launch without one)", Default: cfg.customDomain}
+				answer, promptErr := domainPrompt.Run()
+				if promptErr != nil {
+					return nil, &output.UserError{Message: "Custom domain entry cancelled"}
+				}
+				answer = strings.TrimSpace(answer)
+				if answer == "" || answer == cfg.customDomain {
+					cfg.customDomain, cfg.withWWW = "", false
+					cfg.customDomainPrompted = true
+					return launchProvisionStatic(ctx, env, cfg, client)
+				}
+				hostname, parseErr := parseDomainHostname(answer)
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				cfg.customDomain = hostname
+				cfg.customDomainPrompted = true
+				return launchProvisionStatic(ctx, env, cfg, client)
+			}
 			msg := apiErr.Error()
 			if strings.Contains(strings.ToLower(msg), "subdomain") {
 				if env.NonInteractive {
@@ -1537,11 +1622,14 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg launch
 		return nil, err
 	}
 
-	// Poll until active
+	// Poll until active. The custom domain outcome is only on the create
+	// response, so carry it across the poll's fresh copies of the server.
+	created := server
 	server, err = pollProvisioningState(ctx, env, client, cfg.projectID, server, 10*time.Minute)
 	if err != nil {
 		return server, err
 	}
+	server.CustomDomains, server.CustomDomainErrors = created.CustomDomains, created.CustomDomainErrors
 
 	liveURL := sdk.LiveURL(server)
 	output.ColorGreen.Fprintf(env.Stderr, "Static Hosting site provisioned: %s\n", liveURL) //nolint:errcheck

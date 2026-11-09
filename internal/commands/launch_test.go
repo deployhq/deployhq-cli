@@ -389,7 +389,7 @@ func TestLaunchStatic_ProvisionThenBuildCommand_Integration(t *testing.T) {
 	detection := detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm run build"}}, OutputDir: "dist"}
 
 	// Step 8: provision the static server.
-	server, err := launchProvisionStatic(t.Context(), env, cfg, client)
+	server, err := launchProvisionStatic(t.Context(), env, &cfg, client)
 	require.NoError(t, err)
 	require.NotNil(t, server)
 	assert.Equal(t, "srv-1", server.Identifier)
@@ -820,7 +820,7 @@ func TestLaunchStatic_SubdomainTaken_NonInteractive(t *testing.T) {
 		subdomain:      "taken-subdomain",
 	}
 
-	server, err := launchProvisionStatic(t.Context(), env, cfg, client)
+	server, err := launchProvisionStatic(t.Context(), env, &cfg, client)
 	require.Error(t, err)
 	assert.Nil(t, server)
 
