@@ -7,11 +7,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 	"github.com/spf13/cobra"
 )
+
+// domainsRegistrationTimeout bounds how long "dhq domains add" waits for a new
+// domain's registration to finish. A variable so tests can shorten it.
+var domainsRegistrationTimeout = 60 * time.Second
 
 // customDomainRules is the product behaviour every domains command explains:
 // what a site may have, what the customer has to do, and what happens next.
@@ -262,11 +267,19 @@ func writeDNSRecords(env *output.Envelope, d *sdk.CustomDomain, showCmd string) 
 	for i, r := range d.DNSRecords {
 		rows[i] = []string{r.Type, recordField(r.Name), recordField(r.Value)}
 	}
-	env.Status("\nAdd BOTH of these DNS records at your DNS provider for %s:\n", d.Hostname)
+	if d.Registering {
+		env.Status("\n%s is still being set up, so only its CNAME record is available yet:\n", d.Hostname)
+	} else {
+		env.Status("\nAdd BOTH of these DNS records at your DNS provider for %s:\n", d.Hostname)
+	}
 	env.WriteTable([]string{"Type", "Name", "Value"}, rows)
 	if isApexHostname(d.Hostname) {
 		env.Status("\n%s is an apex domain: most DNS providers do not allow a CNAME there.", d.Hostname)
 		env.Status("Use an ALIAS or ANAME record, or CNAME flattening, with the same value instead.")
+	}
+	if d.Registering {
+		env.Status("\nThe TXT record that proves you own the domain appears once setup finishes. See it with: %s", showCmd)
+		return
 	}
 	for _, r := range d.DNSRecords {
 		if r.Type == "TXT" && (r.Name == nil || r.Value == nil) {
@@ -366,9 +379,18 @@ func newDomainsListCmd() *cobra.Command {
 func writeDomainsTable(env *output.Envelope, domains []sdk.CustomDomain) {
 	rows := make([][]string, len(domains))
 	for i, d := range domains {
-		rows[i] = []string{d.Hostname, output.ColorStatus(d.Status), yesNo(d.Primary), d.Identifier}
+		rows[i] = []string{d.Hostname, domainStatusLabel(&domains[i]), yesNo(d.Primary), d.Identifier}
 	}
 	env.WriteTable([]string{"Hostname", "Status", "Primary", "Identifier"}, rows)
+}
+
+// domainStatusLabel is the status column, noting a registration still running.
+func domainStatusLabel(d *sdk.CustomDomain) string {
+	label := output.ColorStatus(d.Status)
+	if d.Registering {
+		label += " (setting up)"
+	}
+	return label
 }
 
 func newDomainsShowCmd() *cobra.Command {
@@ -403,7 +425,7 @@ func newDomainsShowCmd() *cobra.Command {
 			}
 
 			writeDomainDetails(env, d)
-			if d.Status != "active" {
+			if d.Status != "active" && d.Status != "failed" {
 				writeDNSRecords(env, d, domainsShowCmd(d.Hostname, target))
 			}
 			return nil
@@ -425,7 +447,7 @@ func writeDomainDetails(env *output.Envelope, d *sdk.CustomDomain) {
 	env.WriteTable([]string{"Field", "Value"}, [][]string{
 		{"Hostname", d.Hostname},
 		{"Identifier", d.Identifier},
-		{"Status", output.ColorStatus(d.Status)},
+		{"Status", domainStatusLabel(d)},
 		{"Primary", yesNo(d.Primary)},
 		{"SSL", ssl},
 		{"Activated", activated},
@@ -440,15 +462,24 @@ func writeDomainDetails(env *output.Envelope, d *sdk.CustomDomain) {
 	if d.Status == "expired" {
 		env.Status("\nThis domain expired before it was verified. Remove it and add it again to start over.")
 	}
+	if d.Status == "failed" {
+		env.Status("\nThis domain could not be set up. Remove it and add it again to retry.")
+	}
 }
 
 func newDomainsAddCmd() *cobra.Command {
 	var flags domainsServerFlags
-	var withWWW bool
+	var withWWW, noWait bool
 	cmd := &cobra.Command{
 		Use:   "add <hostname>",
 		Short: "Add a custom domain to a Static Hosting server",
 		Long: `Add a custom domain to a Static Hosting server and print the DNS records to create.
+
+DeployHQ registers the domain in the background, and the TXT record exists only
+once that finishes, so this command waits up to a minute for it. With --no-wait
+it prints what the server returned straight away (possibly only the CNAME
+record); get the TXT record later with "dhq domains show". A domain that cannot
+be set up prints the reason and exits non-zero.
 
 ` + customDomainRules,
 		Example: `  dhq domains add www.example.com -p my-site -s "My Site"
@@ -475,42 +506,215 @@ func newDomainsAddCmd() *cobra.Command {
 				return explainDomainsError(err, target)
 			}
 
-			return reportDomainsAdded(cliCtx.Envelope, d, target, withWWW)
+			env := cliCtx.Envelope
+			added := domainsAddOutcome{created: d, withWWW: withWWW}
+			if !noWait {
+				added.timedOut, err = waitForDomainRegistration(ctx, client, target, env, addedDomains(d))
+				if err != nil {
+					return err
+				}
+				added.failed = failedDomains(d)
+			}
+			return reportDomainsAdded(env, added, target)
 		},
 	}
 	addDomainsServerFlags(cmd, &flags)
 	cmd.Flags().BoolVar(&withWWW, "with-www", false, "Also add the other half of the apex and www pair (only for an apex domain or its www form, on a site with no other custom domains)")
+	cmd.Flags().BoolVar(&noWait, "no-wait", false, "Do not wait for registration; print what the server returned (the TXT record may not be issued yet)")
 	return cmd
 }
 
-// reportDomainsAdded prints the domain just added and the DNS records it needs.
-func reportDomainsAdded(env *output.Envelope, created *sdk.CustomDomainCreation, target domainsTarget, withWWW bool) error {
+// domainsAddOutcome is what "dhq domains add" has to report.
+type domainsAddOutcome struct {
+	created  *sdk.CustomDomainCreation
+	withWWW  bool
+	timedOut bool
+	failed   []*sdk.CustomDomain
+}
+
+// addedDomains returns the domains the request created: the typed one and its
+// counterpart, if any. Waiting updates them in place.
+func addedDomains(created *sdk.CustomDomainCreation) []*sdk.CustomDomain {
+	domains := []*sdk.CustomDomain{&created.CustomDomain}
+	if created.Counterpart != nil {
+		domains = append(domains, created.Counterpart)
+	}
+	return domains
+}
+
+func failedDomains(created *sdk.CustomDomainCreation) []*sdk.CustomDomain {
+	var failed []*sdk.CustomDomain
+	for _, d := range addedDomains(created) {
+		if d.Status == "failed" {
+			failed = append(failed, d)
+		}
+	}
+	return failed
+}
+
+func anyRegistering(domains []*sdk.CustomDomain) bool {
+	for _, d := range domains {
+		if d.Registering {
+			return true
+		}
+	}
+	return false
+}
+
+// waitForDomainRegistration polls the domains list until none of domains is
+// registering, updating them in place. A server that does not report
+// registration never enters the loop. It returns true if time ran out first;
+// an error means the domains could no longer be read. Failures that may pass
+// (network, 5xx, 429) keep polling until the deadline.
+func waitForDomainRegistration(ctx context.Context, client *sdk.Client, target domainsTarget, env *output.Envelope, domains []*sdk.CustomDomain) (bool, error) {
+	if !anyRegistering(domains) {
+		return false, nil
+	}
+	env.Status("Setting up %s (usually a few seconds)...", domains[0].Hostname)
+
+	ctx, cancel := context.WithTimeout(ctx, domainsRegistrationTimeout)
+	defer cancel()
+	delay := pollInterval
+	for {
+		select {
+		case <-ctx.Done():
+			return true, nil
+		case <-time.After(delay):
+		}
+		delay = pollInterval
+
+		listed, err := client.ListCustomDomains(ctx, target.scope)
+		if err != nil {
+			if ctx.Err() != nil {
+				return true, nil
+			}
+			if !retryableCheckError(err) {
+				return false, domainRegistrationCheckError(err, domains[0], target)
+			}
+			var apiErr *sdk.APIError
+			if errors.As(err, &apiErr) && time.Duration(apiErr.RetryAfter)*time.Second > delay {
+				delay = time.Duration(apiErr.RetryAfter) * time.Second
+			}
+			continue
+		}
+
+		for _, d := range domains {
+			current := findDomain(listed, d.Identifier)
+			if current == nil {
+				return false, &output.UserError{
+					Message: fmt.Sprintf("%s is no longer on this server: it was removed while it was being set up", d.Hostname),
+					Hint:    "See this server's domains with: dhq domains list " + target.flags(),
+				}
+			}
+			*d = *current
+		}
+		if !anyRegistering(domains) {
+			return false, nil
+		}
+	}
+}
+
+// domainRegistrationCheckError reports that the domain was added but its state
+// could not be read back, so the caller does not add it again.
+func domainRegistrationCheckError(err error, d *sdk.CustomDomain, target domainsTarget) error {
+	showCmd := domainsShowCmd(d.Hostname, target)
+	return &output.UserError{
+		Message:  fmt.Sprintf("%s was added, but its DNS records could not be read: %v", d.Hostname, err),
+		Hint:     "See them with: " + showCmd,
+		Recovery: []output.Breadcrumb{{Action: "show", Cmd: showCmd + " --json"}},
+	}
+}
+
+// domainsFailedError reports domains whose registration failed, with DeployHQ's
+// reasons and the way to retry.
+func domainsFailedError(failed []*sdk.CustomDomain, created *sdk.CustomDomainCreation, target domainsTarget) error {
+	var reasons, retry []string
+	var recovery []output.Breadcrumb
+	for _, d := range failed {
+		reason := "no reason was given"
+		if len(d.VerificationErrors) > 0 {
+			reason = strings.Join(d.VerificationErrors, "; ")
+		}
+		reasons = append(reasons, fmt.Sprintf("%s: %s", d.Hostname, reason))
+		remove := fmt.Sprintf("dhq domains remove %s %s --yes", d.Hostname, target.flags())
+		retry = append(retry, fmt.Sprintf("%s, then dhq domains add %s %s", remove, d.Hostname, target.flags()))
+		recovery = append(recovery, output.Breadcrumb{Action: "remove", Cmd: remove})
+	}
+	for _, d := range addedDomains(created) {
+		if d.Status != "failed" {
+			recovery = append(recovery, output.Breadcrumb{Action: "show", Cmd: domainsShowCmd(d.Hostname, target) + " --json"})
+		}
+	}
+	return &output.UserError{
+		Message:  "Could not set up " + strings.Join(reasons, "; "),
+		Hint:     "Remove it and add it again: " + strings.Join(retry, "; "),
+		Recovery: recovery,
+	}
+}
+
+// domainsAddSummary is the one-line result of "dhq domains add" for --json.
+func domainsAddSummary(added domainsAddOutcome, showCmd string) string {
+	created := added.created
+	switch {
+	case added.timedOut:
+		return fmt.Sprintf("Custom domain %s added, but setup was still running after %d seconds: a domain with registering true has only its CNAME in dns_records. Get the TXT record later with: %s", created.Hostname, int(domainsRegistrationTimeout.Seconds()), showCmd)
+	case anyRegistering(addedDomains(created)):
+		return fmt.Sprintf("Custom domain %s added and being set up: a domain with registering true has only its CNAME in dns_records. Get the TXT record later with: %s", created.Hostname, showCmd)
+	}
+	return fmt.Sprintf("Custom domain %s added (%s). Create both dns_records at the DNS provider; it goes live automatically once they are detected, and expires if not verified within 7 days.", created.Hostname, created.Status)
+}
+
+// reportDomainsAdded prints the domains just added and the DNS records they
+// need. A domain whose registration failed is an error (exit non-zero); in text
+// mode the other half of a pair is still printed first, as it was added.
+func reportDomainsAdded(env *output.Envelope, added domainsAddOutcome, target domainsTarget) error {
+	created := added.created
+	var failure error
+	if len(added.failed) > 0 {
+		failure = domainsFailedError(added.failed, created, target)
+	}
+
 	showCmd := domainsShowCmd(created.Hostname, target)
 	if env.WantsJSON() {
+		if failure != nil {
+			return failure
+		}
 		return env.WriteJSON(output.NewResponse(created,
-			fmt.Sprintf("Custom domain %s added (%s). Create both dns_records at the DNS provider; it goes live automatically once they are detected, and expires if not verified within 7 days.", created.Hostname, created.Status),
+			domainsAddSummary(added, showCmd),
 			output.Breadcrumb{Action: "show", Cmd: showCmd},
 			output.Breadcrumb{Action: "list", Cmd: fmt.Sprintf("dhq domains list %s", target.flags())},
 		))
 	}
 
-	primary := ""
-	if created.Primary {
-		primary = " as the primary domain"
+	if created.Status != "failed" {
+		primary := ""
+		if created.Primary {
+			primary = " as the primary domain"
+		}
+		env.Status("Added %s%s (status: %s)", created.Hostname, primary, created.Status)
+		writeDNSRecords(env, &created.CustomDomain, showCmd)
 	}
-	env.Status("Added %s%s (status: %s)", created.Hostname, primary, created.Status)
-	writeDNSRecords(env, &created.CustomDomain, showCmd)
-	if c := created.Counterpart; c != nil {
+	if c := created.Counterpart; c != nil && c.Status != "failed" {
 		env.Status("\nAlso added %s (status: %s)", c.Hostname, c.Status)
 		writeDNSRecords(env, c, domainsShowCmd(c.Hostname, target))
 	}
 	for _, e := range created.CounterpartErrors {
 		env.Status("\nWarning: the other half of the pair could not be added: %s", e)
 	}
-	if withWWW && created.Counterpart == nil && len(created.CounterpartErrors) == 0 {
+	if added.withWWW && created.Counterpart == nil && len(created.CounterpartErrors) == 0 {
 		env.Status("\nWarning: --with-www added nothing: it needs an apex domain or its www form, on a site with no other custom domains.")
 	}
-	env.Status("\nCheck progress with: %s", showCmd)
+	if failure != nil {
+		return failure
+	}
+	if added.timedOut {
+		env.Status("\nStopped waiting after %d seconds: setup is still running. The domain was added; get its DNS records later with: %s",
+			int(domainsRegistrationTimeout.Seconds()), showCmd)
+		return nil
+	}
+	if !created.Registering {
+		env.Status("\nCheck progress with: %s", showCmd)
+	}
 	return nil
 }
 
