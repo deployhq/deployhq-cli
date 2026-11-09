@@ -224,7 +224,7 @@ func explainDomainsError(err error, target domainsTarget) error {
 		if apiErr.RetryAfter > 0 {
 			hint = fmt.Sprintf("Try again in %d seconds.", apiErr.RetryAfter)
 		}
-		return &output.UserError{Message: msg, Hint: hint}
+		return &output.UserError{Message: msg, Hint: hint, Retryable: true}
 	case apiErr.StatusCode == 503:
 		msg := apiErr.Message
 		if msg == "" {
@@ -513,8 +513,8 @@ be set up prints the reason and exits non-zero.
 				if err != nil {
 					return err
 				}
-				added.failed = failedDomains(d)
 			}
+			added.failed = failedDomains(d)
 			return reportDomainsAdded(env, added, target)
 		},
 	}

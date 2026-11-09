@@ -460,6 +460,9 @@ func TestDomainsCheck_RateLimitedSaysWhenToRetry(t *testing.T) {
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "checked moments ago")
 	assert.Contains(t, userErr.Hint, "42 seconds")
+	data, ok := output.ErrorResponseFromErr(err).Data.(output.ErrorData)
+	require.True(t, ok)
+	assert.True(t, data.Retryable, "agents can repeat a rate-limited check")
 }
 
 func TestDomainsCheck_NotPendingIsExplained(t *testing.T) {
@@ -712,6 +715,19 @@ func TestDomainsAdd_FailedCounterpartFailsTheCommand(t *testing.T) {
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "example.com: Counterpart refused")
 	assert.NotContains(t, userErr.Message, "www.example.com", "the typed domain is fine")
+}
+
+func TestDomainsAdd_NoWaitStillReportsAFailedDomain(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + domainsBase:          {201, failedDomainJSON},
+	})
+
+	err := runServersCmd(t, "domains", "add", "www.example.com", "-s", "srv-static", "--no-wait")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "could not be registered")
 }
 
 func TestDomainsAdd_RemovedWhileWaitingIsAnError(t *testing.T) {

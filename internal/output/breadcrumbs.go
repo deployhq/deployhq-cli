@@ -131,6 +131,7 @@ func ErrorResponseFromErr(err error) *Response {
 	hint := ""
 	exitCode := ClassifyError(err)
 	var recovery []Breadcrumb
+	retryable := false
 
 	switch e := err.(type) {
 	case *UserError:
@@ -138,6 +139,7 @@ func ErrorResponseFromErr(err error) *Response {
 		message = e.Message
 		hint = e.Hint
 		recovery = e.Recovery
+		retryable = e.Retryable
 	case *AuthError:
 		code = "auth_error"
 		message = e.Message
@@ -189,7 +191,7 @@ func ErrorResponseFromErr(err error) *Response {
 			Error:      message,
 			Code:       code,
 			ExitCode:   exitCode,
-			Retryable:  isRetryable(code, message),
+			Retryable:  retryable || isRetryable(code, message),
 			Suggestion: hint,
 			Recovery:   recovery,
 		},
