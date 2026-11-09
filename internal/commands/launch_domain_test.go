@@ -98,7 +98,6 @@ func TestLaunchStatic_SendsCustomDomainAttributes(t *testing.T) {
 	srv, body := launchDomainServer(t, http.StatusCreated, launchActiveServerJSON(`,"custom_domains":[],"custom_domain_errors":[]`))
 	env, _, _ := testLaunchEnvelope()
 	cfg := launchDomainCfg("example.com")
-	cfg.withWWW = true
 
 	_, err := launchProvisionStatic(t.Context(), env, &cfg, newSpecValidatingClient(t, srv))
 	require.NoError(t, err)
@@ -109,6 +108,17 @@ func TestLaunchStatic_SendsCustomDomainAttributes(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(*body), &payload))
 	assert.Equal(t, "example.com", payload.Attrs["custom_domain_hostname"])
 	assert.Equal(t, true, payload.Attrs["custom_domain_with_counterpart"])
+}
+
+func TestLaunchStatic_NoPairOmitsCounterpart(t *testing.T) {
+	srv, body := launchDomainServer(t, http.StatusCreated, launchActiveServerJSON(`,"custom_domains":[],"custom_domain_errors":[]`))
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg("example.com")
+	cfg.noPair = true
+
+	_, err := launchProvisionStatic(t.Context(), env, &cfg, newSpecValidatingClient(t, srv))
+	require.NoError(t, err)
+	assert.NotContains(t, *body, "custom_domain_with_counterpart")
 }
 
 func TestLaunchStatic_OmitsCustomDomainAttributesWhenNotRequested(t *testing.T) {
@@ -206,7 +216,8 @@ func TestValidateLaunchCustomDomain(t *testing.T) {
 	}{
 		{"no domain, no check", launchConfig{targetProtocol: "managed_vps"}, "", launchConfig{targetProtocol: "managed_vps"}},
 		{"vps refused", launchConfig{targetProtocol: "managed_vps", customDomain: "example.com"}, "only applies to Static Hosting", launchConfig{}},
-		{"with-www alone refused", launchConfig{withWWW: true}, "--with-www", launchConfig{}},
+		{"no-pair alone refused", launchConfig{noPair: true}, "--no-pair needs --custom-domain", launchConfig{}},
+		{"no-pair with a domain ok", launchConfig{customDomain: "example.com", noPair: true}, "", launchConfig{customDomain: "example.com"}},
 		{"url refused", launchConfig{customDomain: "https://example.com"}, "is not a hostname", launchConfig{}},
 		{"path refused", launchConfig{customDomain: "example.com/about"}, "is not a hostname", launchConfig{}},
 		{"normalised", launchConfig{customDomain: " Example.COM. ", targetProtocol: "static_hosting"}, "", launchConfig{customDomain: "example.com", targetProtocol: "static_hosting"}},
@@ -260,10 +271,21 @@ func TestLaunchCommand_VPSWithCustomDomainRefusedBeforeAnyRequest(t *testing.T) 
 	assert.Empty(t, *calls, "refused before any API call")
 }
 
+func TestLaunchCommand_NoPairWithoutCustomDomainRefusedBeforeAnyRequest(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{})
+	_, err := runCmdCapturingStdout(t, "launch", "--static", "--no-pair", "--json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--no-pair needs --custom-domain")
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Empty(t, *calls, "refused before any API call")
+}
+
 func TestLaunchCommand_FlagSet(t *testing.T) {
 	cmd := newLaunchCmd()
 	assert.NotNil(t, cmd.Flags().Lookup("custom-domain"))
-	assert.NotNil(t, cmd.Flags().Lookup("with-www"))
+	assert.NotNil(t, cmd.Flags().Lookup("no-pair"))
+	assert.Nil(t, cmd.Flags().Lookup("with-www"), "removed: the pair is the default")
 }
 
 // ── Non-fatal outcomes ────────────────────────────────────────────────────────
@@ -432,19 +454,17 @@ func TestLaunchFinishCustomDomain_ActiveDomain(t *testing.T) {
 	assert.Equal(t, "active", got.Status)
 }
 
-// --with-www on a hostname with no www form asks for something that cannot
-// happen, so the result says it added nothing extra.
-func TestLaunchFinishCustomDomain_WithWWWAddedNothing(t *testing.T) {
+// A hostname with no www form (or a site with another domain) has its pair
+// skipped by the server. That is the default working, not a problem to report.
+func TestLaunchFinishCustomDomain_SkippedDefaultPairIsNotAnError(t *testing.T) {
 	env, _, _ := testLaunchEnvelope()
 	srv, _ := launchDomainListServer(t, "["+registeredDomainJSON+"]")
 	server := launchStaticServer()
 	server.CustomDomains = []sdk.CustomDomain{launchDomainFromJSON(t, registeredDomainJSON)}
 	server.CustomDomainErrors = []string{}
-	cfg := launchDomainCfg("blog.example.com")
-	cfg.withWWW = true
 
-	got := launchFinishCustomDomain(t.Context(), env, cfg, newTestClient(t, srv), server, "acme", launchDomainLiveURL)
-	assert.Contains(t, strings.Join(got.Errors, " "), "--with-www added nothing")
+	got := launchFinishCustomDomain(t.Context(), env, launchDomainCfg("blog.example.com"), newTestClient(t, srv), server, "acme", launchDomainLiveURL)
+	assert.Empty(t, got.Errors)
 }
 
 // ── Re-running launch on a server that already exists ─────────────────────────
@@ -491,6 +511,63 @@ func TestLaunchEnsureCustomDomain_KeepsDomainAlreadyOnServer(t *testing.T) {
 	require.NoError(t, launchEnsureCustomDomainOnServer(t.Context(), env, &cfg, newTestClient(t, srv), server))
 	assert.Equal(t, []string{"GET " + launchDomainsPath}, *requests, "already there: nothing added")
 	require.Len(t, server.CustomDomains, 1)
+}
+
+func launchExistingServerAPICapturing(t *testing.T, listBody string) (*httptest.Server, *string) {
+	t.Helper()
+	var posted string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			raw, _ := io.ReadAll(r.Body)
+			posted = string(raw)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(registeredDomainJSON))
+			return
+		}
+		_, _ = w.Write([]byte(listBody))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &posted
+}
+
+// Adding to a site that already exists follows the same default as a new one.
+func TestLaunchEnsureCustomDomain_PairsByDefault(t *testing.T) {
+	srv, posted := launchExistingServerAPICapturing(t, "[]")
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg("example.com")
+
+	require.NoError(t, launchEnsureCustomDomainOnServer(t.Context(), env, &cfg, newTestClient(t, srv), launchStaticServer()))
+	assert.Contains(t, *posted, `"with_counterpart":true`)
+}
+
+func TestLaunchEnsureCustomDomain_NoPairOmitsCounterpart(t *testing.T) {
+	srv, posted := launchExistingServerAPICapturing(t, "[]")
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg("example.com")
+	cfg.noPair = true
+
+	require.NoError(t, launchEnsureCustomDomainOnServer(t.Context(), env, &cfg, newTestClient(t, srv), launchStaticServer()))
+	assert.NotContains(t, *posted, "with_counterpart")
+}
+
+// The commands a person is told to run for a domain that failed keep --no-pair.
+func TestLaunchDomainAddCmd_KeepsNoPair(t *testing.T) {
+	cfg := launchDomainCfg("example.com")
+	cfg.noPair = true
+	target := domainsTarget{projectID: "my-app", server: "srv-1"}
+	assert.Equal(t, "dhq domains add example.com -p my-app -s srv-1 --no-pair", launchDomainAddCmd(cfg, target))
+	cfg.noPair = false
+	assert.Equal(t, "dhq domains add example.com -p my-app -s srv-1", launchDomainAddCmd(cfg, target))
+}
+
+// Both halves expired: re-adding the first must not recreate the second.
+func TestLaunchRerun_BothHalvesExpiredRetryWithNoPair(t *testing.T) {
+	apex := strings.Replace(strings.ReplaceAll(expiredDomainFixture(), "www.example.com", "example.com"), `"dom-1"`, `"dom-2"`, 1)
+	got := launchRerun(t, "["+expiredDomainFixture()+","+apex+"]", "www.example.com")
+
+	assert.Equal(t, "expired", got.Status)
+	assert.Contains(t, got.NextStep, "dhq domains add www.example.com "+launchDomainFlags+" --no-pair")
+	assert.Contains(t, got.NextStep, "dhq domains add example.com "+launchDomainFlags+" --no-pair")
 }
 
 func TestLaunchEnsureCustomDomain_InvalidHostnameIsFatal(t *testing.T) {
@@ -735,7 +812,6 @@ func TestLaunchDryRun_CustomDomain_JSON(t *testing.T) {
 	env, stdout, _ := testLaunchEnvelopeJSON()
 	caps := &sdk.AccountCapabilities{BetaFeatures: true, StaticHostingEligible: true}
 	cfg := launchDomainCfg("example.com")
-	cfg.withWWW = true
 	cfg.dryRun = true
 
 	require.NoError(t, launchDryRun(t.Context(), env, cfg, newTestClient(t, srv), caps))
@@ -744,7 +820,8 @@ func TestLaunchDryRun_CustomDomain_JSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp))
 	would := resp.Data["would"].(map[string]any)
 	assert.Equal(t, "example.com", would["custom_domain"])
-	assert.Equal(t, true, would["with_www"])
+	assert.Equal(t, true, would["with_counterpart"], "the pair is the default")
+	assert.NotContains(t, would, "with_www")
 	assert.Contains(t, resp.Data["warning"], "paid plan")
 }
 
@@ -763,7 +840,6 @@ func TestLaunchDryRun_CustomDomain_Text(t *testing.T) {
 	env, _, stderr := testLaunchEnvelope()
 	caps := &sdk.AccountCapabilities{BetaFeatures: true, StaticHostingEligible: true}
 	cfg := launchDomainCfg("example.com")
-	cfg.withWWW = true
 	cfg.dryRun = true
 	env.IsTTY = true
 
@@ -943,7 +1019,7 @@ func TestLaunchCommand_DryRunWithCustomDomainMakesNoChanges(t *testing.T) {
 	launchDomainTestRepo(t)
 	requests := launchFakeAPI(t, "{}", 500, nil)
 
-	stdout, err := runCmdCapturingStdout(t, "launch", "--static", "--subdomain", "my-app", "--custom-domain", "example.com", "--with-www", "--dry-run", "--json")
+	stdout, err := runCmdCapturingStdout(t, "launch", "--static", "--subdomain", "my-app", "--custom-domain", "example.com", "--dry-run", "--json")
 	require.NoError(t, err)
 	var resp struct {
 		Data struct {

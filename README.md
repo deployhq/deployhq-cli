@@ -157,7 +157,7 @@ dhq servers       list | show | create | update | delete | reset-host-key
 dhq server-groups list | show | create | update | delete
 dhq domains       list | show | add | remove | check -p <project> -s <server>
                   (custom domains for a Static Hosting site; paid plans;
-                  --global -s <server> for a global server; add --with-www --no-wait)
+                  --global -s <server> for a global server; add --no-pair --no-wait)
 dhq deployments   list | show | create | abort | rollback | logs | watch
 dhq repos         show | create | update | branches | commits | commit-info | latest-revision
 dhq deploy        [-p project] [-s server] [--wait] (deploy with live progress)

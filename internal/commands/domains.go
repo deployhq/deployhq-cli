@@ -336,13 +336,19 @@ func domainsRemoveCmd(hostname string, target domainsTarget) string {
 	return fmt.Sprintf("dhq domains remove %s %s --yes", hostname, target.flags())
 }
 
-func domainsAddCmd(hostname string, target domainsTarget) string {
-	return fmt.Sprintf("dhq domains add %s %s", hostname, target.flags())
+func domainsAddCmd(hostname string, target domainsTarget, noPair bool) string {
+	cmd := fmt.Sprintf("dhq domains add %s %s", hostname, target.flags())
+	if noPair {
+		cmd += " --no-pair"
+	}
+	return cmd
 }
 
-// domainsRetryCmds is the pair of commands that start a domain over.
-func domainsRetryCmds(hostname string, target domainsTarget) string {
-	return domainsRemoveCmd(hostname, target) + ", then " + domainsAddCmd(hostname, target)
+// domainsRetryCmds is the pair of commands that start a domain over. When both
+// halves of a pair are being started over, noPair keeps re-adding one from
+// recreating the other before it has been removed.
+func domainsRetryCmds(hostname string, target domainsTarget, noPair bool) string {
+	return domainsRemoveCmd(hostname, target) + ", then " + domainsAddCmd(hostname, target, noPair)
 }
 
 // findDomain matches arg against the identifier or hostname of each domain.
@@ -517,7 +523,7 @@ func writeDomainDetails(env *output.Envelope, d *sdk.CustomDomain) {
 
 func newDomainsAddCmd() *cobra.Command {
 	var flags domainsServerFlags
-	var withWWW, noWait bool
+	var noPair, noWait bool
 	cmd := &cobra.Command{
 		Use:   "add <hostname>",
 		Short: "Add a custom domain to a Static Hosting server",
@@ -529,10 +535,15 @@ it prints what the server returned straight away (possibly only the CNAME
 record); get the TXT record later with "dhq domains show". A domain that cannot
 be set up prints the reason and exits non-zero.
 
+By default the other half of the apex and www pair is added too: example.com
+brings www.example.com, and www.example.com brings example.com. DeployHQ skips
+it for a hostname that is neither an apex nor its www form, and on a site that
+already has another custom domain. --no-pair adds only the hostname you typed.
+
 ` + customDomainRules,
 		Example: `  dhq domains add www.example.com -p my-site -s "My Site"
-  dhq domains add example.com -p my-site -s "My Site"    # the apex of the pair
-  dhq domains add example.com -p my-site -s "My Site" --with-www    # both halves of the pair`,
+  dhq domains add example.com -p my-site -s "My Site"    # example.com and www.example.com
+  dhq domains add example.com -p my-site -s "My Site" --no-pair    # only example.com`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			hostname, err := parseDomainHostname(args[0])
@@ -546,13 +557,13 @@ be set up prints the reason and exits non-zero.
 				return err
 			}
 
-			d, err := client.CreateCustomDomain(ctx, target.scope, sdk.CustomDomainCreateRequest{Hostname: hostname, WithCounterpart: withWWW})
+			d, err := client.CreateCustomDomain(ctx, target.scope, sdk.CustomDomainCreateRequest{Hostname: hostname, WithCounterpart: !noPair})
 			if err != nil {
 				return explainDomainsError(err, target)
 			}
 
 			env := cliCtx.Envelope
-			added := domainsAddOutcome{created: d, withWWW: withWWW}
+			added := domainsAddOutcome{created: d, noPair: noPair}
 			if !noWait {
 				added.timedOut, err = waitForDomainRegistration(ctx, client, target, env, addedDomains(d))
 				if err != nil {
@@ -564,7 +575,7 @@ be set up prints the reason and exits non-zero.
 		},
 	}
 	addDomainsServerFlags(cmd, &flags)
-	cmd.Flags().BoolVar(&withWWW, "with-www", false, "Also add the other half of the apex and www pair (only for an apex domain or its www form, on a site with no other custom domains)")
+	cmd.Flags().BoolVar(&noPair, "no-pair", false, "Add only this hostname, not the other half of its apex and www pair")
 	cmd.Flags().BoolVar(&noWait, "no-wait", false, "Do not wait for registration; print what the server returned (the TXT record may not be issued yet)")
 	return cmd
 }
@@ -572,7 +583,7 @@ be set up prints the reason and exits non-zero.
 // domainsAddOutcome is what "dhq domains add" has to report.
 type domainsAddOutcome struct {
 	created  *sdk.CustomDomainCreation
-	withWWW  bool
+	noPair   bool
 	timedOut bool
 	failed   []*sdk.CustomDomain
 }
@@ -672,7 +683,7 @@ func domainRegistrationCheckError(err error, d *sdk.CustomDomain, target domains
 
 // domainsFailedError reports domains whose registration failed, with DeployHQ's
 // reasons and the way to retry.
-func domainsFailedError(failed []*sdk.CustomDomain, created *sdk.CustomDomainCreation, target domainsTarget) error {
+func domainsFailedError(failed []*sdk.CustomDomain, created *sdk.CustomDomainCreation, target domainsTarget, noPair bool) error {
 	var reasons, retry []string
 	var recovery []output.Breadcrumb
 	for _, d := range failed {
@@ -681,7 +692,7 @@ func domainsFailedError(failed []*sdk.CustomDomain, created *sdk.CustomDomainCre
 			reason = strings.Join(d.VerificationErrors, "; ")
 		}
 		reasons = append(reasons, fmt.Sprintf("%s: %s", d.Hostname, reason))
-		retry = append(retry, domainsRetryCmds(d.Hostname, target))
+		retry = append(retry, domainsRetryCmds(d.Hostname, target, noPair))
 		recovery = append(recovery, output.Breadcrumb{Action: "remove", Cmd: domainsRemoveCmd(d.Hostname, target)})
 	}
 	for _, d := range addedDomains(created) {
@@ -731,7 +742,7 @@ func reportDomainsAdded(env *output.Envelope, added domainsAddOutcome, target do
 	created := added.created
 	var failure error
 	if len(added.failed) > 0 {
-		failure = domainsFailedError(added.failed, created, target)
+		failure = domainsFailedError(added.failed, created, target, added.noPair || len(added.failed) > 1)
 	}
 
 	showCmd := domainsShowCmd(created.Hostname, target)
@@ -761,9 +772,6 @@ func reportDomainsAdded(env *output.Envelope, added domainsAddOutcome, target do
 	}
 	for _, e := range created.CounterpartErrors {
 		env.Status("\nWarning: the other half of the pair could not be added: %s", e)
-	}
-	if added.withWWW && created.Counterpart == nil && len(created.CounterpartErrors) == 0 {
-		env.Status("\nWarning: --with-www added nothing: it needs an apex domain or its www form, on a site with no other custom domains.")
 	}
 	if failure != nil {
 		return failure

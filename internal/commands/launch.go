@@ -52,10 +52,10 @@ type launchConfig struct {
 	subdomain    string
 	subdirectory string
 	spaMode      bool
-	// customDomain is an optional custom domain to add to the new site;
-	// withWWW also asks for the other half of its apex and www pair.
+	// customDomain is an optional custom domain to add to the new site, along
+	// with the other half of its apex and www pair unless noPair is set.
 	customDomain string
-	withWWW      bool
+	noPair       bool
 	// customDomainPrompted stops launchProvisionStatic asking twice when it
 	// re-runs itself after a refused subdomain or hostname.
 	customDomainPrompted bool
@@ -103,9 +103,9 @@ type dryRunWould struct {
 	Subdomain   string `json:"subdomain,omitempty"`
 	Project     string `json:"project,omitempty"`
 	Branch      string `json:"branch,omitempty"`
-	// CustomDomain and WithWWW are the custom domain the launch would add.
-	CustomDomain string `json:"custom_domain,omitempty"`
-	WithWWW      bool   `json:"with_www,omitempty"`
+	// CustomDomain and WithCounterpart are the custom domain the launch would add.
+	CustomDomain    string `json:"custom_domain,omitempty"`
+	WithCounterpart bool   `json:"with_counterpart,omitempty"`
 }
 
 // launchErrorReason is the machine-readable error code taxonomy.
@@ -319,7 +319,7 @@ func newLaunchCmd() *cobra.Command {
 		flagInteractive   bool
 		flagDryRun        bool
 		flagCustomDomain  string
-		flagWithWWW       bool
+		flagNoPair        bool
 	)
 
 	cmd := &cobra.Command{
@@ -347,7 +347,7 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
   dhq launch --json --static --subdomain my-app
 
   # Launch on your own domain (Static Hosting, paid plans): prints the DNS records to publish
-  dhq launch --static --subdomain my-app --custom-domain example.com --with-www
+  dhq launch --static --subdomain my-app --custom-domain example.com
 
   # Opt out to own-server setup
   # At the target prompt, choose "Use my own server" → branches into dhq init`,
@@ -366,7 +366,7 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 			// Resolve launchConfig from flags → env → .deployhq.toml → detection
 			cfg := resolveLaunchConfig(flagStatic, flagVPS, flagSubdomain, flagRegion, flagSize, flagBranch, flagProject, flagAcceptCost, flagCleanupOnFail, flagDryRun)
 			cfg.customDomain = strings.TrimSpace(flagCustomDomain)
-			cfg.withWWW = flagWithWWW
+			cfg.noPair = flagNoPair
 
 			return runLaunch(env, cfg)
 		},
@@ -386,7 +386,7 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 	cmd.Flags().BoolVar(&flagInteractive, "interactive", false, "Force interactive mode even in piped / agent contexts")
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Print intended actions and cost without executing (no side effects)")
 	cmd.Flags().StringVar(&flagCustomDomain, "custom-domain", "", "Custom domain for the Static Hosting site (e.g. www.example.com). Paid plans only; prints the DNS records to publish. If it cannot be added the site still launches")
-	cmd.Flags().BoolVar(&flagWithWWW, "with-www", false, "With --custom-domain, also add the other half of the apex and www pair")
+	cmd.Flags().BoolVar(&flagNoPair, "no-pair", false, "With --custom-domain, add only that hostname, not the other half of its apex and www pair")
 
 	return cmd
 }
@@ -1069,7 +1069,7 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 			dr.Would.Subdomain = "<repo-name>"
 		}
 		dr.Would.CustomDomain = cfg.customDomain
-		dr.Would.WithWWW = cfg.withWWW
+		dr.Would.WithCounterpart = cfg.customDomain != "" && !cfg.noPair
 	case detect.ProtocolManagedVPS:
 		region := cfg.region
 		if region == "" {
@@ -1126,7 +1126,7 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 	}
 	if dr.Would.CustomDomain != "" {
 		line := dr.Would.CustomDomain
-		if other := domainCounterpart(dr.Would.CustomDomain); dr.Would.WithWWW && other != "" {
+		if other := domainCounterpart(dr.Would.CustomDomain); dr.Would.WithCounterpart && other != "" {
 			line += " and " + other
 		}
 		env.Status("  Custom domain: %s", line)
@@ -1560,7 +1560,7 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg *launc
 			SPAMode:                     cfg.spaMode,
 			Subdirectory:                cfg.subdirectory,
 			CustomDomainHostname:        cfg.customDomain,
-			CustomDomainWithCounterpart: cfg.withWWW,
+			CustomDomainWithCounterpart: cfg.customDomain != "" && !cfg.noPair,
 		},
 	}
 
@@ -1586,7 +1586,7 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg *launc
 				}
 				answer = strings.TrimSpace(answer)
 				if answer == "" || answer == cfg.customDomain {
-					cfg.customDomain, cfg.withWWW = "", false
+					cfg.customDomain, cfg.noPair = "", false
 					cfg.customDomainPrompted = true
 					return launchProvisionStatic(ctx, env, cfg, client)
 				}

@@ -700,9 +700,9 @@
       "prompt": "Launch this static site on DeployHQ on my domain example.com, including www",
       "expected": {
         "command": "dhq launch",
-        "flags": ["--custom-domain", "example.com", "--with-www"]
+        "flags": ["--custom-domain", "example.com"]
       },
-      "must_not_contain": ["--vps"],
+      "must_not_contain": ["--vps", "--no-pair"],
       "notes": "A custom domain is requested along with the launch; Static Hosting is implied."
     },
     {
@@ -735,7 +735,7 @@
         "args": ["www.example.com"],
         "flags": ["-p", "my-site", "-s", "My Site"]
       },
-      "must_not_contain": ["dhq api", "--with-www"]
+      "must_not_contain": ["dhq api", "--no-pair"]
     },
     {
       "id": "add-custom-domain-pair",
@@ -744,8 +744,9 @@
       "expected": {
         "command": "dhq domains add",
         "args": ["example.com"],
-        "flags": ["-p", "my-site", "-s", "srv-1", "--with-www"]
-      }
+        "flags": ["-p", "my-site", "-s", "srv-1"]
+      },
+      "must_not_contain": ["--no-pair"]
     },
     {
       "id": "custom-domain-show-records",

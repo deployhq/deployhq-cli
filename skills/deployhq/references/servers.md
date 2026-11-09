@@ -112,16 +112,18 @@ dhq servers show srv-001 -p my-app --json=branch,preferred_branch
 
 **Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;
 other server types return not-found). Launching a new site? `dhq launch
---custom-domain <domain> --with-www` does this in one go; see
+--custom-domain <domain>` does this in one go; see
 [launch.md](launch.md).
 
 - Name the server with `-p <project> -s <server>`, or `--global -s <server>`
   for a global Static Hosting server (no project needed; adding, removing or
   checking a domain on one needs an account administrator).
 - At most 2 domains per site: an apex + www pair. The first added is the
-  primary; the other redirects to it. `add --with-www` adds both at once
-  (only for an apex domain or its www form, on a site with no other custom
-  domains); read `counterpart` and `counterpart_errors` in the output.
+  primary; the other redirects to it. `add` adds both by default, so a bare
+  domain gets `www` too. DeployHQ skips the other half without an error for a
+  hostname that is neither an apex nor its www form, and on a site that already
+  has another custom domain. `--no-pair` adds only the typed hostname. Read
+  `counterpart` and `counterpart_errors` in the output.
 - DeployHQ registers the domain in the background and `add` waits up to a
   minute for the TXT record. `--no-wait` skips that. While `registering` is
   `true`, `dns_records` holds only the CNAME: get the rest with `show`. If the
@@ -143,7 +145,8 @@ other server types return not-found). Launching a new site? `dhq launch
 
 ```bash
 dhq domains add www.example.com -p my-site -s "My Site" --json   # dns_records to hand to the person
-dhq domains add example.com -p my-site -s "My Site" --with-www --json   # the apex and www pair
+dhq domains add example.com -p my-site -s "My Site" --json   # the apex and www pair (the default)
+dhq domains add example.com -p my-site -s "My Site" --no-pair --json   # only example.com
 dhq domains add www.example.com -p my-site -s "My Site" --no-wait --json   # do not wait for the TXT record
 dhq domains list -p my-site -s "My Site" --json
 dhq domains show www.example.com -p my-site -s "My Site" --json=status,registering,dns_records,verification_errors

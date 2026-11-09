@@ -32,7 +32,9 @@ const (
 // launchCustomDomainResult is the custom domain part of launch's JSON result.
 type launchCustomDomainResult struct {
 	Hostname string `json:"hostname"`
-	WithWWW  bool   `json:"with_www"`
+	// WithCounterpart reports whether the other half of the apex and www pair
+	// was asked for: true unless --no-pair.
+	WithCounterpart bool `json:"with_counterpart"`
 	// Added reports whether the domain is on the site at all. Status says
 	// where it has got to.
 	Added  bool   `json:"added"`
@@ -51,10 +53,10 @@ type launchCustomDomainResult struct {
 // else happens, so a bad combination costs no API call.
 func validateLaunchCustomDomain(cfg *launchConfig) error {
 	if cfg.customDomain == "" {
-		if cfg.withWWW {
+		if cfg.noPair {
 			return &output.UserError{
-				Message: "--with-www needs --custom-domain",
-				Hint:    "Name the domain too, e.g. dhq launch --custom-domain example.com --with-www",
+				Message: "--no-pair needs --custom-domain",
+				Hint:    "Name the domain too, e.g. dhq launch --custom-domain example.com --no-pair",
 			}
 		}
 		return nil
@@ -127,11 +129,7 @@ func launchDomainsTarget(cfg launchConfig, server *sdk.Server) domainsTarget {
 }
 
 func launchDomainAddCmd(cfg launchConfig, target domainsTarget) string {
-	cmd := fmt.Sprintf("dhq domains add %s %s", cfg.customDomain, target.flags())
-	if cfg.withWWW {
-		cmd += " --with-www"
-	}
-	return cmd
+	return domainsAddCmd(cfg.customDomain, target, cfg.noPair)
 }
 
 // domainCounterpart is the other half of a hostname's apex and www pair, or ""
@@ -187,7 +185,7 @@ func launchPromptCustomDomain(env *output.Envelope, cfg *launchConfig) {
 		Items: []string{"Yes", "No"},
 	}
 	if idx, _, err := prompt.Run(); err == nil {
-		cfg.withWWW = idx == 0
+		cfg.noPair = idx != 0
 	}
 }
 
@@ -217,7 +215,7 @@ func launchEnsureCustomDomainOnServer(ctx context.Context, env *output.Envelope,
 		return nil
 	}
 
-	created, err := client.CreateCustomDomain(ctx, target.scope, sdk.CustomDomainCreateRequest{Hostname: cfg.customDomain, WithCounterpart: cfg.withWWW})
+	created, err := client.CreateCustomDomain(ctx, target.scope, sdk.CustomDomainCreateRequest{Hostname: cfg.customDomain, WithCounterpart: !cfg.noPair})
 	if err != nil {
 		var apiErr *sdk.APIError
 		if errors.As(err, &apiErr) && apiErr.IsValidationError() {
@@ -250,10 +248,10 @@ func launchFinishCustomDomain(ctx context.Context, env *output.Envelope, cfg lau
 	}
 	target := launchDomainsTarget(cfg, server)
 	result := &launchCustomDomainResult{
-		Hostname: cfg.customDomain,
-		WithWWW:  cfg.withWWW,
-		Domains:  []sdk.CustomDomain{},
-		Errors:   append([]string{}, server.CustomDomainErrors...),
+		Hostname:        cfg.customDomain,
+		WithCounterpart: !cfg.noPair,
+		Domains:         []sdk.CustomDomain{},
+		Errors:          append([]string{}, server.CustomDomainErrors...),
 	}
 
 	if server.CustomDomains == nil && server.CustomDomainErrors == nil {
@@ -282,9 +280,11 @@ func launchFinishCustomDomain(ctx context.Context, env *output.Envelope, cfg lau
 	showCmd := domainsShowCmd(cfg.customDomain, target)
 	failed := failedDomains(created)
 	expired := expiredDomains(domains)
+	// Starting both halves over: re-adding one must not recreate the other.
+	retryNoPair := cfg.noPair || len(failed)+len(expired) > 1
 	switch {
 	case len(failed) > 0:
-		failure := domainsFailedError(failed, created, target)
+		failure := domainsFailedError(failed, created, target, retryNoPair)
 		var ue *output.UserError
 		if errors.As(failure, &ue) {
 			result.Errors = append(result.Errors, ue.Message)
@@ -292,12 +292,12 @@ func launchFinishCustomDomain(ctx context.Context, env *output.Envelope, cfg lau
 		}
 		result.Status = launchDomainFailed
 		if len(expired) > 0 {
-			problem, fix := expiredDomainsAdvice(expired, target)
+			problem, fix := expiredDomainsAdvice(expired, target, retryNoPair)
 			result.Errors = append(result.Errors, problem)
 			result.NextStep += " " + fix
 		}
 	case len(expired) > 0:
-		problem, fix := expiredDomainsAdvice(expired, target)
+		problem, fix := expiredDomainsAdvice(expired, target, retryNoPair)
 		result.Status = launchDomainExpired
 		result.Errors = append(result.Errors, problem)
 		result.NextStep = "The site is live at " + liveURL + ". " + fix
@@ -314,9 +314,6 @@ func launchFinishCustomDomain(ctx context.Context, env *output.Envelope, cfg lau
 			liveURL, showCmd)
 	}
 
-	if cfg.withWWW && created.Counterpart == nil && len(result.Errors) == 0 {
-		result.Errors = append(result.Errors, "--with-www added nothing: it needs an apex domain or its www form, on a site with no other custom domains.")
-	}
 	return result
 }
 
@@ -332,12 +329,12 @@ func expiredDomains(domains []*sdk.CustomDomain) []*sdk.CustomDomain {
 
 // expiredDomainsAdvice says what is wrong with domains that expired and the
 // commands that start them over. Publishing DNS records cannot revive one.
-func expiredDomainsAdvice(expired []*sdk.CustomDomain, target domainsTarget) (problem, fix string) {
+func expiredDomainsAdvice(expired []*sdk.CustomDomain, target domainsTarget, noPair bool) (problem, fix string) {
 	names := make([]string, 0, len(expired))
 	retry := make([]string, 0, len(expired))
 	for _, d := range expired {
 		names = append(names, d.Hostname)
-		retry = append(retry, domainsRetryCmds(d.Hostname, target))
+		retry = append(retry, domainsRetryCmds(d.Hostname, target, noPair))
 	}
 	problem = strings.Join(names, " and ") + " expired before it was verified."
 	fix = "Remove it and add it again to get new DNS records: " + strings.Join(retry, "; ") + "."
@@ -427,14 +424,18 @@ func launchDomainBreadcrumbs(cfg launchConfig, target domainsTarget, domain *lau
 		return []output.Breadcrumb{{Action: "add_custom_domain", Cmd: launchDomainAddCmd(cfg, target) + " --json"}}
 	}
 	if domain.Status == launchDomainExpired {
-		var crumbs []output.Breadcrumb
+		var expired []*sdk.CustomDomain
 		for i := range domain.Domains {
-			if d := &domain.Domains[i]; d.Status == launchDomainExpired {
-				crumbs = append(crumbs,
-					output.Breadcrumb{Action: "remove_custom_domain", Cmd: domainsRemoveCmd(d.Hostname, target) + " --json"},
-					output.Breadcrumb{Action: "add_custom_domain", Cmd: domainsAddCmd(d.Hostname, target) + " --json"},
-				)
+			if domain.Domains[i].Status == launchDomainExpired {
+				expired = append(expired, &domain.Domains[i])
 			}
+		}
+		var crumbs []output.Breadcrumb
+		for _, d := range expired {
+			crumbs = append(crumbs,
+				output.Breadcrumb{Action: "remove_custom_domain", Cmd: domainsRemoveCmd(d.Hostname, target) + " --json"},
+				output.Breadcrumb{Action: "add_custom_domain", Cmd: domainsAddCmd(d.Hostname, target, cfg.noPair || len(expired) > 1) + " --json"},
+			)
 		}
 		return crumbs
 	}

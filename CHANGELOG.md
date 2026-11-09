@@ -16,8 +16,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   identifier), or by `--global -s <server>` for a global server (no project
   needed). `add` prints the two DNS records to create (the CNAME, with an
   ALIAS/ANAME note for an apex domain, and the TXT ownership record); the
-  domain goes live automatically once both are detected. `add --with-www` also
-  adds the other half of the apex and www pair. DeployHQ registers a domain in
+  domain goes live automatically once both are detected. `add` also adds the
+  other half of the apex and www pair by default, so a bare domain gets `www`
+  too; `--no-pair` adds only the hostname you typed. DeployHQ registers a domain in
   the background and the TXT record exists only once that finishes, so `add`
   waits up to a minute for it: `--no-wait` skips the wait and prints what the
   server returned; if the wait runs out, `add` says so, exits 0 and names the
@@ -28,7 +29,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   confirmation unless `--yes`, which non-interactive mode requires. Custom
   domains need a paid plan: that refusal now explains itself (error code
   `paid_plan_required`, with the API's hint and a link to the plans page).
-- **`dhq launch --custom-domain <hostname>` and `--with-www`**: launch Static
+- **`dhq launch --custom-domain <hostname>` and `--no-pair`**: launch Static
   Hosting on your own domain. Refused with `--vps` (exit 1). A hostname the API
   refuses fails the launch with `custom_domain_invalid` (exit 1) and nothing is
   provisioned; any other problem with the domain (no paid plan, rate limit,

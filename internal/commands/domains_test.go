@@ -177,7 +177,7 @@ func TestDomainsAdd_SendsWrappedHostname(t *testing.T) {
 	require.Len(t, *calls, 2)
 	post := (*calls)[1]
 	assert.Equal(t, http.MethodPost, post.method)
-	assert.Equal(t, map[string]any{"custom_domain": map[string]any{"hostname": "www.example.com"}}, post.body)
+	assert.Equal(t, map[string]any{"custom_domain": map[string]any{"hostname": "www.example.com", "with_counterpart": true}}, post.body, "the pair is the default")
 }
 
 func TestDomainsAdd_RejectsURL_NoHTTP(t *testing.T) {
@@ -471,7 +471,7 @@ func TestWriteDNSRecords_ApexGuidance(t *testing.T) {
 	}
 }
 
-func TestDomainsAdd_WithWWWSendsCounterpart(t *testing.T) {
+func TestDomainsAdd_SendsCounterpartByDefault(t *testing.T) {
 	withResolvableContext(t)
 	calls := domainsAPI(t, map[string]cannedResponse{
 		"GET /projects/my-app/servers": {200, domainsServersJSON},
@@ -479,8 +479,56 @@ func TestDomainsAdd_WithWWWSendsCounterpart(t *testing.T) {
 			`"counterpart":{"identifier":"dom-2","hostname":"www.example.com","status":"pending"},"counterpart_errors":[]}`},
 	})
 
-	require.NoError(t, runServersCmd(t, "domains", "add", "example.com", "-s", "srv-static", "--with-www", "--json"))
+	require.NoError(t, runServersCmd(t, "domains", "add", "example.com", "-s", "srv-static", "--json"))
 	assert.Equal(t, map[string]any{"custom_domain": map[string]any{"hostname": "example.com", "with_counterpart": true}}, (*calls)[1].body)
+}
+
+func TestDomainsAdd_NoPairSendsOnlyTheHostname(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + domainsBase:          {201, domainJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "add", "example.com", "-s", "srv-static", "--no-pair", "--json"))
+	assert.Equal(t, map[string]any{"custom_domain": map[string]any{"hostname": "example.com"}}, (*calls)[1].body)
+}
+
+func TestDomainsAdd_WithWWWFlagIsGone(t *testing.T) {
+	err := executeRoot(t, "domains", "add", "example.com", "-s", "srv-static", "--with-www")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown flag: --with-www")
+}
+
+// The server skips the other half for a subdomain, or a site with another
+// domain: asking for the default pair is not a mistake to warn about.
+func TestDomainsAdd_SkippedPairIsNotAWarning(t *testing.T) {
+	withResolvableContext(t)
+	blog := strings.ReplaceAll(domainJSON, "www.example.com", "blog.example.com")
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + domainsBase:          {201, strings.TrimSuffix(blog, "}") + `,"counterpart":null,"counterpart_errors":[]}`},
+	})
+	created := &sdk.CustomDomainCreation{CustomDomain: launchDomainFromJSON(t, blog)}
+	env, _, stderr := testLaunchEnvelope()
+
+	require.NoError(t, reportDomainsAdded(env, domainsAddOutcome{created: created}, domainsTarget{projectID: "my-app", server: "srv-static"}))
+	assert.NotContains(t, stderr.String(), "Warning")
+	assert.NotContains(t, stderr.String(), "added nothing")
+}
+
+func TestDomainsFailed_BothHalvesRetryWithNoPair(t *testing.T) {
+	target := domainsTarget{projectID: "my-app", server: "srv-static"}
+	first := &sdk.CustomDomain{Hostname: "example.com", Status: "failed"}
+	second := &sdk.CustomDomain{Hostname: "www.example.com", Status: "failed"}
+	created := &sdk.CustomDomainCreation{CustomDomain: *first, Counterpart: second}
+
+	err := domainsFailedError([]*sdk.CustomDomain{first, second}, created, target, true)
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Hint, "dhq domains add example.com -p my-app -s srv-static --no-pair",
+		"re-adding one half must not recreate the other, which is removed next")
+	assert.Contains(t, userErr.Hint, "dhq domains add www.example.com -p my-app -s srv-static --no-pair")
 }
 
 func TestDomainsAdd_CounterpartErrorsDoNotFail(t *testing.T) {
@@ -491,7 +539,7 @@ func TestDomainsAdd_CounterpartErrorsDoNotFail(t *testing.T) {
 			`"counterpart":null,"counterpart_errors":["Hostname has already been taken"]}`},
 	})
 
-	require.NoError(t, runServersCmd(t, "domains", "add", "example.com", "-s", "srv-static", "--with-www"))
+	require.NoError(t, runServersCmd(t, "domains", "add", "example.com", "-s", "srv-static"))
 }
 
 func TestDomainsAdd_RateLimitedSaysWhenToRetry(t *testing.T) {
@@ -671,7 +719,7 @@ func TestDomainsAdd_PollsTheCounterpartToo(t *testing.T) {
 		},
 	})
 
-	data := addDomainJSONOutput(t, "--with-www")
+	data := addDomainJSONOutput(t)
 	assert.Equal(t, false, data["counterpart"].(map[string]any)["registering"])
 }
 
@@ -867,7 +915,7 @@ func TestDomainsAdd_FailedCounterpartFailsTheCommand(t *testing.T) {
 		"GET " + domainsBase: {{200, "[" + registeredDomainJSON + "," + failedCounterpart + "]"}},
 	})
 
-	err := runServersCmd(t, "domains", "add", "www.example.com", "-s", "srv-static", "--with-www")
+	err := runServersCmd(t, "domains", "add", "www.example.com", "-s", "srv-static")
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "example.com: Counterpart refused")

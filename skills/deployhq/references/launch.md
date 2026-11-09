@@ -32,7 +32,7 @@ agent runs `dhq launch`. A good sequence:
   any must not be published (a deploy script, local config), create the project first
   with `dhq projects create`, add them with `dhq excluded-files create -p <permalink> --path <path>`,
   then run `dhq launch --project <permalink>`.
-- **Your own domain (Static Hosting):** `dhq launch --custom-domain example.com --with-www`. The site is live at once on its `deployhq-sites.com` address; the domain only goes live after the person publishes the DNS records `launch` prints. See "Custom domains" below.
+- **Your own domain (Static Hosting):** `dhq launch --custom-domain example.com` (a bare domain gets `www` too by default). The site is live at once on its `deployhq-sites.com` address; the domain only goes live after the person publishes the DNS records `launch` prints. See "Custom domains" below.
 - Offer the choice: run `dhq launch`, or go step by step (`dhq projects create`,
   `dhq repos create`, `dhq beta enroll`, `dhq servers create --protocol-type static_hosting`,
   `dhq deploy`), approving each action on its own. See "Set up DeployHQ for this
@@ -58,7 +58,7 @@ dhq launch --static --subdomain my-app --json
 dhq launch --vps --accept-cost --region lon1 --size s-1vcpu-1gb --json
 
 # Static Hosting on your own domain
-dhq launch --static --subdomain my-app --custom-domain example.com --with-www --json
+dhq launch --static --subdomain my-app --custom-domain example.com --json
 
 # Inspect intended actions + cost without doing anything (no side effects)
 dhq launch --vps --dry-run --json
@@ -72,7 +72,7 @@ dhq launch --vps --dry-run --json
 | `--vps` | Force Managed VPS target |
 | `--subdomain` | Static Hosting subdomain (default: repo / project name) |
 | `--custom-domain` | Static Hosting only, paid plans only: a custom domain for the site (e.g. `www.example.com`). Refused with `--vps` (exit 1). `launch` waits up to a minute for the domain's registration, then reports the DNS records to publish |
-| `--with-www` | With `--custom-domain`: also add the other half of the apex and www pair |
+| `--no-pair` | With `--custom-domain`: add only that hostname, not the other half of its apex and www pair (added by default; DeployHQ skips it silently for a hostname that is neither an apex nor its www form, and on a site that already has another custom domain). Refused without `--custom-domain` (exit 1) |
 | `--region` | Managed VPS region slug (e.g. `lon1`, `nyc3`). List via `dhq api GET /managed_hosting/regions` |
 | `--size` | Managed VPS size slug (e.g. `s-1vcpu-1gb`). List via `dhq api GET /managed_hosting/sizes` |
 | `--accept-cost` | Acknowledge Managed VPS provisioning — free for early customers during beta, billed monthly afterwards. **Required** for non-interactive VPS provisioning |
