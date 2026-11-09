@@ -19,4 +19,4 @@ var FS embed.FS
 // alongside the installed files so a future `dhq` can detect stale installs
 // and update without re-prompting. Bump when the skill content changes
 // meaningfully (new commands, restructured references, etc.).
-const Version = "2"
+const Version = "3"

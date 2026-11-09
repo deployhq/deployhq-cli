@@ -35,6 +35,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   rather than the raw JSON body. `APIError.RetryAfter` also reads a
   `retry_after` in the response body when the header is missing.
 
+### Changed
+
+- **Installed copies of the skill are reported as outdated** (its version is
+  now 3), so they pick up `dhq domains`.
+
 ## [0.25.0] - 2026-11-06
 
 ### Added
