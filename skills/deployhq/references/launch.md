@@ -125,6 +125,7 @@ result under `custom_domain`, whose `status` is one of:
 | `registering` | Still being set up when `launch` stopped waiting (a minute): the TXT record is not issued yet | Get it later with `dhq domains show <domain> -p <project> -s <server> --json` |
 | `active` | The domain is live | Nothing |
 | `failed` | Registering it failed; `custom_domain.errors` says why | `next_step`: remove it and add it again with `dhq domains` |
+| `expired` | A re-run found the domain on the site, but it was not verified in time: publishing DNS records will not bring it back. The site itself is live | `next_step` has the exact commands: remove it, then add it again, and hand the person the new records |
 | `not_added` | The domain was refused (no paid plan, too many requests) or the server does not support this: nothing was added | Read `custom_domain.errors`, then follow `custom_domain.next_step`. `custom_domain.retryable` is `true` for a rate limit |
 
 Only a hostname the API refuses (`custom_domain_invalid`, exit 1) fails the launch:

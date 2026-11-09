@@ -321,6 +321,19 @@ func domainsShowCmd(hostname string, target domainsTarget) string {
 	return fmt.Sprintf("dhq domains show %s %s", hostname, target.flags())
 }
 
+func domainsRemoveCmd(hostname string, target domainsTarget) string {
+	return fmt.Sprintf("dhq domains remove %s %s --yes", hostname, target.flags())
+}
+
+func domainsAddCmd(hostname string, target domainsTarget) string {
+	return fmt.Sprintf("dhq domains add %s %s", hostname, target.flags())
+}
+
+// domainsRetryCmds is the pair of commands that start a domain over.
+func domainsRetryCmds(hostname string, target domainsTarget) string {
+	return domainsRemoveCmd(hostname, target) + ", then " + domainsAddCmd(hostname, target)
+}
+
 // findDomain matches arg against the identifier or hostname of each domain.
 func findDomain(domains []sdk.CustomDomain, arg string) *sdk.CustomDomain {
 	for i := range domains {
@@ -657,9 +670,8 @@ func domainsFailedError(failed []*sdk.CustomDomain, created *sdk.CustomDomainCre
 			reason = strings.Join(d.VerificationErrors, "; ")
 		}
 		reasons = append(reasons, fmt.Sprintf("%s: %s", d.Hostname, reason))
-		remove := fmt.Sprintf("dhq domains remove %s %s --yes", d.Hostname, target.flags())
-		retry = append(retry, fmt.Sprintf("%s, then dhq domains add %s %s", remove, d.Hostname, target.flags()))
-		recovery = append(recovery, output.Breadcrumb{Action: "remove", Cmd: remove})
+		retry = append(retry, domainsRetryCmds(d.Hostname, target))
+		recovery = append(recovery, output.Breadcrumb{Action: "remove", Cmd: domainsRemoveCmd(d.Hostname, target)})
 	}
 	for _, d := range addedDomains(created) {
 		if d.Status != "failed" {

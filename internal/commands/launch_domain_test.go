@@ -529,6 +529,100 @@ func TestLaunchEnsureCustomDomain_RefusalsAreNonFatal(t *testing.T) {
 	}
 }
 
+// ── A domain already on the server that cannot go live as it stands ───────────
+
+// launchRerun runs both halves of a re-run of launch against a site whose
+// domains list is listBody.
+func launchRerun(t *testing.T, listBody, hostname string) *launchCustomDomainResult {
+	t.Helper()
+	srv, _ := launchExistingServerAPI(t, listBody, http.StatusCreated, registeredDomainJSON)
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg(hostname)
+	server := launchStaticServer()
+	client := newTestClient(t, srv)
+	require.NoError(t, launchEnsureCustomDomainOnServer(t.Context(), env, &cfg, client, server))
+	got := launchFinishCustomDomain(t.Context(), env, cfg, client, server, "acme", launchDomainLiveURL)
+	require.NotNil(t, got)
+	return got
+}
+
+func expiredDomainFixture() string {
+	return strings.Replace(registeredDomainJSON, `"status":"pending"`, `"status":"expired"`, 1)
+}
+
+const launchDomainFlags = "-p " + launchDomainProjectID + " -s " + launchDomainServerID
+
+// An expired domain stays expired whatever is published: DNS cannot revive it.
+func TestLaunchRerun_ExpiredDomainMustBeRemovedAndAddedAgain(t *testing.T) {
+	got := launchRerun(t, "["+expiredDomainFixture()+"]", "www.example.com")
+
+	assert.Equal(t, "expired", got.Status)
+	assert.True(t, got.Added)
+	assert.Contains(t, strings.Join(got.Errors, " "), "www.example.com expired")
+	assert.Contains(t, got.NextStep, "dhq domains remove www.example.com "+launchDomainFlags+" --yes")
+	assert.Contains(t, got.NextStep, "dhq domains add www.example.com "+launchDomainFlags)
+	assert.Contains(t, got.NextStep, launchDomainLiveURL, "the site itself is live")
+	assert.NotContains(t, got.NextStep, "Publish", "publishing DNS cannot activate an expired domain")
+}
+
+func TestLaunchRerun_ExpiredDomainBreadcrumbsAndSummary(t *testing.T) {
+	got := launchRerun(t, "["+expiredDomainFixture()+"]", "www.example.com")
+	env, stdout, _ := testLaunchEnvelopeJSON()
+
+	require.NoError(t, writeLaunchResult(env, launchDomainCfg("www.example.com"), launchStaticServer(),
+		&sdk.Deployment{Identifier: "dep-1"}, launchDomainLiveURL, got), "an expired domain does not fail the launch")
+
+	var resp struct {
+		OK          bool
+		Summary     string
+		Breadcrumbs []output.Breadcrumb
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp))
+	assert.True(t, resp.OK)
+	assert.Contains(t, resp.Summary, "expired")
+	var cmds []string
+	for _, b := range resp.Breadcrumbs {
+		cmds = append(cmds, b.Cmd)
+	}
+	joined := strings.Join(cmds, "\n")
+	assert.Contains(t, joined, "dhq domains remove www.example.com")
+	assert.Contains(t, joined, "dhq domains add www.example.com")
+	assert.NotContains(t, joined, "dhq domains check", "only a pending domain can be checked")
+}
+
+func TestLaunchRerun_ExpiredDomainTextDoesNotOfferDNSRecords(t *testing.T) {
+	got := launchRerun(t, "["+expiredDomainFixture()+"]", "www.example.com")
+	env, stdout, stderr := testLaunchEnvelope()
+	env.IsTTY = true
+
+	require.NoError(t, writeLaunchResult(env, launchDomainCfg("www.example.com"), launchStaticServer(),
+		&sdk.Deployment{Identifier: "dep-1"}, launchDomainLiveURL, got))
+
+	assert.Equal(t, launchDomainLiveURL+"\n", stdout.String())
+	assert.Contains(t, stderr.String(), "dhq domains remove www.example.com")
+	assert.NotContains(t, stderr.String(), "abc123", "the old records no longer apply")
+}
+
+// One half of a pair expired while the other failed: both are named.
+func TestLaunchRerun_ExpiredAlongsideFailed(t *testing.T) {
+	failedApex := strings.Replace(strings.ReplaceAll(failedDomainJSON, "www.example.com", "example.com"), `"dom-1"`, `"dom-2"`, 1)
+	got := launchRerun(t, "["+expiredDomainFixture()+","+failedApex+"]", "www.example.com")
+
+	assert.Equal(t, "failed", got.Status)
+	assert.Contains(t, got.NextStep, "dhq domains remove www.example.com")
+	assert.Contains(t, got.NextStep, "dhq domains remove example.com")
+}
+
+// A failed domain takes the same remove-and-add path on a re-run.
+func TestLaunchRerun_FailedDomainMustBeRemovedAndAddedAgain(t *testing.T) {
+	got := launchRerun(t, "["+failedDomainJSON+"]", "www.example.com")
+
+	assert.Equal(t, "failed", got.Status)
+	assert.Contains(t, got.NextStep, "dhq domains remove www.example.com "+launchDomainFlags+" --yes")
+	assert.Contains(t, got.NextStep, "dhq domains add www.example.com "+launchDomainFlags)
+	assert.NotContains(t, got.NextStep, "Publish")
+}
+
 // ── Final output ──────────────────────────────────────────────────────────────
 
 func launchDomainResultFixture() *launchCustomDomainResult {

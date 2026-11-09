@@ -25,6 +25,7 @@ const (
 	launchDomainRegistering = "registering"
 	launchDomainActive      = "active"
 	launchDomainFailed      = "failed"
+	launchDomainExpired     = "expired"
 	launchDomainNotAdded    = "not_added"
 )
 
@@ -272,6 +273,7 @@ func launchFinishCustomDomain(ctx context.Context, env *output.Envelope, cfg lau
 
 	showCmd := domainsShowCmd(cfg.customDomain, target)
 	failed := failedDomains(created)
+	expired := expiredDomains(domains)
 	switch {
 	case len(failed) > 0:
 		failure := domainsFailedError(failed, created, target)
@@ -281,6 +283,16 @@ func launchFinishCustomDomain(ctx context.Context, env *output.Envelope, cfg lau
 			result.NextStep = ue.Hint + ". The site itself is live at " + liveURL + "."
 		}
 		result.Status = launchDomainFailed
+		if len(expired) > 0 {
+			problem, fix := expiredDomainsAdvice(expired, target)
+			result.Errors = append(result.Errors, problem)
+			result.NextStep += " " + fix
+		}
+	case len(expired) > 0:
+		problem, fix := expiredDomainsAdvice(expired, target)
+		result.Status = launchDomainExpired
+		result.Errors = append(result.Errors, problem)
+		result.NextStep = "The site is live at " + liveURL + ". " + fix
 	case timedOut || waitErr != nil || anyRegistering(domains):
 		result.Status = launchDomainRegistering
 		result.NextStep = fmt.Sprintf("The site is live at %s. The domain is still being set up; get its DNS records, including the TXT record, with: %s", liveURL, showCmd)
@@ -298,6 +310,30 @@ func launchFinishCustomDomain(ctx context.Context, env *output.Envelope, cfg lau
 		result.Errors = append(result.Errors, "--with-www added nothing: it needs an apex domain or its www form, on a site with no other custom domains.")
 	}
 	return result
+}
+
+func expiredDomains(domains []*sdk.CustomDomain) []*sdk.CustomDomain {
+	var expired []*sdk.CustomDomain
+	for _, d := range domains {
+		if d.Status == launchDomainExpired {
+			expired = append(expired, d)
+		}
+	}
+	return expired
+}
+
+// expiredDomainsAdvice says what is wrong with domains that expired and the
+// commands that start them over. Publishing DNS records cannot revive one.
+func expiredDomainsAdvice(expired []*sdk.CustomDomain, target domainsTarget) (problem, fix string) {
+	names := make([]string, 0, len(expired))
+	retry := make([]string, 0, len(expired))
+	for _, d := range expired {
+		names = append(names, d.Hostname)
+		retry = append(retry, domainsRetryCmds(d.Hostname, target))
+	}
+	problem = strings.Join(names, " and ") + " expired before it was verified."
+	fix = "Remove it and add it again to get new DNS records: " + strings.Join(retry, "; ") + "."
+	return problem, fix
 }
 
 func allDomainsActive(domains []*sdk.CustomDomain) bool {
@@ -370,6 +406,8 @@ func launchDomainSummary(base string, domain *launchCustomDomainResult) string {
 		return fmt.Sprintf("%s. Custom domain %s is still being set up", base, domain.Hostname)
 	case launchDomainFailed:
 		return fmt.Sprintf("%s. Custom domain %s could not be set up: see custom_domain.errors", base, domain.Hostname)
+	case launchDomainExpired:
+		return fmt.Sprintf("%s. Custom domain %s expired and must be removed and added again: see custom_domain.next_step", base, domain.Hostname)
 	case launchDomainNotAdded:
 		return fmt.Sprintf("%s. Custom domain %s was not added: see custom_domain.errors", base, domain.Hostname)
 	}
@@ -379,6 +417,18 @@ func launchDomainSummary(base string, domain *launchCustomDomainResult) string {
 func launchDomainBreadcrumbs(cfg launchConfig, target domainsTarget, domain *launchCustomDomainResult) []output.Breadcrumb {
 	if domain.Status == launchDomainNotAdded {
 		return []output.Breadcrumb{{Action: "add_custom_domain", Cmd: launchDomainAddCmd(cfg, target) + " --json"}}
+	}
+	if domain.Status == launchDomainExpired {
+		var crumbs []output.Breadcrumb
+		for i := range domain.Domains {
+			if d := &domain.Domains[i]; d.Status == launchDomainExpired {
+				crumbs = append(crumbs,
+					output.Breadcrumb{Action: "remove_custom_domain", Cmd: domainsRemoveCmd(d.Hostname, target) + " --json"},
+					output.Breadcrumb{Action: "add_custom_domain", Cmd: domainsAddCmd(d.Hostname, target) + " --json"},
+				)
+			}
+		}
+		return crumbs
 	}
 	showCmd := domainsShowCmd(domain.Hostname, target)
 	crumbs := []output.Breadcrumb{{Action: "show_custom_domain", Cmd: showCmd + " --json"}}
@@ -397,6 +447,9 @@ func writeLaunchDomainReport(env *output.Envelope, target domainsTarget, domain 
 		env.Status("Custom domain %s is live.", domain.Hostname)
 	case launchDomainFailed:
 		env.Warn("Custom domain %s could not be set up: %s", domain.Hostname, strings.Join(domain.Errors, "; "))
+		env.Status("Next: %s", domain.NextStep)
+	case launchDomainExpired:
+		env.Warn("Custom domain %s cannot go live: %s", domain.Hostname, strings.Join(domain.Errors, "; "))
 		env.Status("Next: %s", domain.NextStep)
 	case launchDomainNotAdded:
 		env.Warn("Custom domain %s was not added: %s", domain.Hostname, strings.Join(domain.Errors, "; "))
