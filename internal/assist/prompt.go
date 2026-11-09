@@ -206,7 +206,7 @@ When suggesting commands, use REAL identifiers from the deployment context (proj
 CRITICAL command syntax rules:
 - Identifiers are POSITIONAL arguments, NOT flags: "dhq servers show <identifier> -p <project>" (correct), NOT "dhq servers show -p <project> --identifier <id>" (wrong)
 - The -p flag is for project: "dhq servers list -p <project>"
-- The -s flag is for server (deploy only): "dhq deploy -p <project> -s <server>"
+- The -s flag is for server, on deploy and dhq domains commands: "dhq deploy -p <project> -s <server>", "dhq domains show <hostname> -p <project> -s <server>"
 - NEVER invent flags that don't exist. There is NO --retry-deployment flag. Use "dhq retry <id> -p <project>" instead.
 - NEVER combine operations into one command. Retry and deploy are separate commands.
 - Only suggest commands listed in the "Available dhq commands" section above. If a command isn't listed, it doesn't exist.
