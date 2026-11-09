@@ -138,7 +138,7 @@ dhq templates build-configuration -t <template>    (show only)
 
 Managed Hosting:
 dhq hosted-resources list|show|sync|retry-provision
-dhq domains list|show|add|remove -p <project> -s <server>    (Static Hosting custom domains; paid plans; remove needs --yes non-interactively)
+dhq domains list|show|add|remove|check -p <project> -s <server>    (Static Hosting custom domains; --global -s <server> for a global server; add --with-www --no-wait; paid plans; remove needs --yes non-interactively)
 dhq managed-hosting regions|sizes
 dhq beta enroll [--protocol managed_vps|static_hosting]    (enroll the account in the managed-resources beta)
 

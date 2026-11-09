@@ -11,20 +11,29 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ### Added
 
-- **`dhq domains list | show | add | remove`**: custom domains for a Static
-  Hosting site, scoped by `-p <project>` and `-s <server>` (name or
-  identifier). `add` prints the two DNS records to create (the CNAME, with an
+- **`dhq domains list | show | add | remove | check`**: custom domains for a
+  Static Hosting site, scoped by `-p <project>` and `-s <server>` (name or
+  identifier), or by `--global -s <server>` for a global server (no project
+  needed). `add` prints the two DNS records to create (the CNAME, with an
   ALIAS/ANAME note for an apex domain, and the TXT ownership record); the
-  domain goes live automatically once both are detected. `show` repeats the
-  records and any verification errors. `remove` takes a hostname or
-  identifier and asks for confirmation unless `--yes`, which non-interactive
-  mode requires. Custom domains need a paid plan: that refusal now explains
-  itself (error code `paid_plan_required`, with the API's hint and a link to
-  the plans page).
-- **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`;
-  `APIError.Hint` and `APIError.IsPaidPlanRequired()`. Error responses with an
-  `error_code` but no `error` field now report the code rather than the raw
-  JSON body.
+  domain goes live automatically once both are detected. `add --with-www` also
+  adds the other half of the apex and www pair. DeployHQ registers a domain in
+  the background and the TXT record exists only once that finishes, so `add`
+  waits up to a minute for it: `--no-wait` skips the wait and prints what the
+  server returned; if the wait runs out, `add` says so, exits 0 and names the
+  command that shows the records later; a domain that cannot be set up prints
+  the reason and exits non-zero. `check` asks for a pending domain to be
+  checked now (at most once a minute). `show` repeats the records and any
+  verification errors. `remove` takes a hostname or identifier and asks for
+  confirmation unless `--yes`, which non-interactive mode requires. Custom
+  domains need a paid plan: that refusal now explains itself (error code
+  `paid_plan_required`, with the API's hint and a link to the plans page).
+- **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`,
+  `RefreshCustomDomain`, scoped with `ProjectServerDomains` or
+  `GlobalServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.
+  Error responses with an `error_code` but no `error` field now report the code
+  rather than the raw JSON body. `APIError.RetryAfter` also reads a
+  `retry_after` in the response body when the header is missing.
 
 ## [0.25.0] - 2026-11-06
 

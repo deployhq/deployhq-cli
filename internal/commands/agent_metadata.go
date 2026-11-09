@@ -462,7 +462,8 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"hosted_resource"},
 	},
 
-	// Static Hosting custom domains (all take -p <project> -s <server>)
+	// Static Hosting custom domains (all take -p <project> -s <server>, or
+	// --global -s <server> for a global server)
 	"dhq domains list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"custom_domain"},
@@ -473,8 +474,14 @@ var commandMetadataTable = map[string]AgentMetadata{
 	},
 	"dhq domains add": {
 		// Re-adding a hostname is refused (422), not duplicated, but it is not
-		// a no-op either; the person then has to create DNS records.
+		// a no-op either; the person then has to create DNS records. Waits up
+		// to a minute for the TXT record unless --no-wait.
 		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+	"dhq domains check": {
+		// Only asks for a check sooner; repeats within a minute are refused (429).
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"custom_domain"},
 	},
 	"dhq domains remove": {
