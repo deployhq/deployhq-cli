@@ -697,10 +697,10 @@
     {
       "id": "launch-with-custom-domain-and-www",
       "category": "domains",
-      "prompt": "Launch this static site on DeployHQ on my domain dropsite.dev, including www",
+      "prompt": "Launch this static site on DeployHQ on my domain example.com, including www",
       "expected": {
         "command": "dhq launch",
-        "flags": ["--custom-domain", "dropsite.dev", "--with-www"]
+        "flags": ["--custom-domain", "example.com", "--with-www"]
       },
       "must_not_contain": ["--vps"],
       "notes": "A custom domain is requested along with the launch; Static Hosting is implied."

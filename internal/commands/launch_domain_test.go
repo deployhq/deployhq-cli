@@ -100,7 +100,7 @@ func TestLaunchStatic_SendsCustomDomainAttributes(t *testing.T) {
 	cfg := launchDomainCfg("example.com")
 	cfg.withWWW = true
 
-	_, err := launchProvisionStatic(t.Context(), env, &cfg, newTestClient(t, srv))
+	_, err := launchProvisionStatic(t.Context(), env, &cfg, newSpecValidatingClient(t, srv))
 	require.NoError(t, err)
 
 	var payload struct {
