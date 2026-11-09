@@ -255,9 +255,13 @@ func parseAPIError(resp *http.Response) error {
 		Message    string `json:"message"`
 		UpgradeURL string `json:"upgrade_url"`
 		Hint       string `json:"hint"`
+		RetryAfter int    `json:"retry_after"`
 	}
 	if json.Unmarshal(body, &singleErr) == nil && singleErr.Error != "" {
 		apiErr.Message = singleErr.Error
+		if apiErr.RetryAfter == 0 && resp.StatusCode == http.StatusTooManyRequests && singleErr.RetryAfter > 0 {
+			apiErr.RetryAfter = singleErr.RetryAfter
+		}
 		apiErr.ErrorCode = singleErr.ErrorCode
 		apiErr.Detail = singleErr.Message
 		apiErr.UpgradeURL = singleErr.UpgradeURL

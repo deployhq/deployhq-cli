@@ -12,8 +12,9 @@ type APIError struct {
 	Message    string   `json:"error,omitempty"`
 	Errors     []string `json:"errors,omitempty"`
 	// RetryAfter is the parsed Retry-After header (in seconds) accompanying a
-	// 429 response, or 0 when absent/unparseable. Callers hitting a provisioning
-	// rate limit should back off for this long before retrying.
+	// 429 response, or the body's retry_after when the header is missing, or 0
+	// when both are absent/unparseable. Callers hitting a rate limit should back
+	// off for this long before retrying.
 	RetryAfter int `json:"retry_after,omitempty"`
 
 	// ErrorCode, Detail and UpgradeURL carry the structured fields some error

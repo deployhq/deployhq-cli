@@ -242,7 +242,7 @@ func newDomainsListCmd() *cobra.Command {
 				return err
 			}
 
-			domains, err := client.ListCustomDomains(ctx, projectID, serverID)
+			domains, err := client.ListCustomDomains(ctx, sdk.ProjectServerDomains(projectID, serverID))
 			if err != nil {
 				return explainDomainsError(err, projectID, server)
 			}
@@ -314,7 +314,7 @@ func newDomainsShowCmd() *cobra.Command {
 			}
 
 			// There is no single-domain endpoint; a server has at most two.
-			domains, err := client.ListCustomDomains(ctx, projectID, serverID)
+			domains, err := client.ListCustomDomains(ctx, sdk.ProjectServerDomains(projectID, serverID))
 			if err != nil {
 				return explainDomainsError(err, projectID, server)
 			}
@@ -405,7 +405,7 @@ func newDomainsAddCmd() *cobra.Command {
 				return err
 			}
 
-			d, err := client.CreateCustomDomain(ctx, projectID, serverID, hostname)
+			d, err := client.CreateCustomDomain(ctx, sdk.ProjectServerDomains(projectID, serverID), sdk.CustomDomainCreateRequest{Hostname: hostname})
 			if err != nil {
 				return explainDomainsError(err, projectID, server)
 			}
@@ -425,7 +425,7 @@ func newDomainsAddCmd() *cobra.Command {
 			}
 			env.Status("Added %s%s (status: %s)", d.Hostname, primary, d.Status)
 			showCmd := domainsShowCmd(d.Hostname, projectID, server)
-			writeDNSRecords(env, d, showCmd)
+			writeDNSRecords(env, &d.CustomDomain, showCmd)
 			env.Status("\nCheck progress with: %s", showCmd)
 			return nil
 		},
@@ -469,7 +469,7 @@ is required in non-interactive mode (agents, CI, piped output, --json).`,
 			}
 
 			// Resolve a hostname to its identifier (and confirm it exists).
-			domains, err := client.ListCustomDomains(ctx, projectID, serverID)
+			domains, err := client.ListCustomDomains(ctx, sdk.ProjectServerDomains(projectID, serverID))
 			if err != nil {
 				return explainDomainsError(err, projectID, server)
 			}
@@ -487,7 +487,7 @@ is required in non-interactive mode (agents, CI, piped output, --json).`,
 				}
 			}
 
-			removal, err := client.DeleteCustomDomain(ctx, projectID, serverID, d.Identifier)
+			removal, err := client.DeleteCustomDomain(ctx, sdk.ProjectServerDomains(projectID, serverID), d.Identifier)
 			if err != nil {
 				return explainDomainsError(err, projectID, server)
 			}
