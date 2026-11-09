@@ -723,6 +723,75 @@ func TestDomainsAdd_TimeoutSaysSoAndExitsZero(t *testing.T) {
 	assert.Contains(t, data["__summary"], "dhq domains show www.example.com")
 }
 
+func TestDomainsAdd_SummaryNamesEachDomainStillRegistering(t *testing.T) {
+	counterpart := func(registering string) string {
+		return `{"identifier":"dom-2","hostname":"example.com","status":"pending","registering":` + registering + `,"dns_records":[]}`
+	}
+	typed := func(json string) string {
+		return strings.TrimSuffix(json, "}") + `,"counterpart":` + counterpart("true") + `,"counterpart_errors":[]}`
+	}
+	cases := []struct {
+		name      string
+		post      string
+		list      string
+		args      []string
+		want      []string
+		dontWant  string
+		timeoutMs int
+	}{
+		{
+			name: "only the counterpart, timed out",
+			post: typed(registeredDomainJSON), list: "[" + registeredDomainJSON + "," + counterpart("true") + "]",
+			want: []string{"dhq domains show example.com"}, dontWant: "dhq domains show www.example.com", timeoutMs: 20,
+		},
+		{
+			name: "only the counterpart, not waiting",
+			post: typed(registeredDomainJSON), args: []string{"--no-wait"},
+			want: []string{"dhq domains show example.com"}, dontWant: "dhq domains show www.example.com",
+		},
+		{
+			name: "both, not waiting",
+			post: typed(registeringDomainJSON), args: []string{"--no-wait"},
+			want: []string{"dhq domains show www.example.com", "dhq domains show example.com"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withResolvableContext(t)
+			fastDomainsPolling(t, time.Duration(tc.timeoutMs)*time.Millisecond)
+			domainsAPI(t, map[string]cannedResponse{
+				"GET /projects/my-app/servers": {200, domainsServersJSON},
+				"POST " + domainsBase:          {201, tc.post},
+				"GET " + domainsBase:           {200, tc.list},
+			})
+
+			stdout, err := runCmdCapturingStdout(t, append([]string{"domains", "add", "www.example.com", "-s", "srv-static", "--json"}, tc.args...)...)
+			require.NoError(t, err)
+			var resp struct {
+				Summary     string
+				Breadcrumbs []output.Breadcrumb
+			}
+			require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "stdout: %s", stdout)
+
+			var showCmds []string
+			for _, b := range resp.Breadcrumbs {
+				if b.Action == "show" {
+					showCmds = append(showCmds, b.Cmd)
+				}
+			}
+			require.Len(t, showCmds, len(tc.want))
+			for i, want := range tc.want {
+				assert.Contains(t, resp.Summary, want)
+				assert.Contains(t, showCmds[i], want)
+			}
+			if tc.dontWant != "" {
+				assert.NotContains(t, resp.Summary, tc.dontWant, "that domain has finished registering")
+				assert.NotContains(t, strings.Join(showCmds, "\n"), tc.dontWant)
+			}
+		})
+	}
+}
+
 func TestDomainsAdd_JSONFieldSelection(t *testing.T) {
 	withResolvableContext(t)
 	domainsAPI(t, map[string]cannedResponse{

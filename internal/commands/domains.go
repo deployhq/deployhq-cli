@@ -696,9 +696,25 @@ func domainsFailedError(failed []*sdk.CustomDomain, created *sdk.CustomDomainCre
 	}
 }
 
+// registeringShowCmds is the show command of each added domain still being
+// registered, or of the typed domain if none is.
+func registeringShowCmds(created *sdk.CustomDomainCreation, target domainsTarget) []string {
+	var cmds []string
+	for _, d := range addedDomains(created) {
+		if d.Registering {
+			cmds = append(cmds, domainsShowCmd(d.Hostname, target))
+		}
+	}
+	if len(cmds) == 0 {
+		cmds = []string{domainsShowCmd(created.Hostname, target)}
+	}
+	return cmds
+}
+
 // domainsAddSummary is the one-line result of "dhq domains add" for --json.
-func domainsAddSummary(added domainsAddOutcome, showCmd string) string {
+func domainsAddSummary(added domainsAddOutcome, target domainsTarget) string {
 	created := added.created
+	showCmd := strings.Join(registeringShowCmds(created, target), " and ")
 	switch {
 	case added.timedOut:
 		return fmt.Sprintf("Custom domain %s added, but setup was still running after %d seconds: a domain with registering true has only its CNAME in dns_records. Get the TXT record later with: %s", created.Hostname, int(domainsRegistrationTimeout.Seconds()), showCmd)
@@ -723,11 +739,12 @@ func reportDomainsAdded(env *output.Envelope, added domainsAddOutcome, target do
 		if failure != nil {
 			return failure
 		}
-		return env.WriteJSON(output.NewResponse(created,
-			domainsAddSummary(added, showCmd),
-			output.Breadcrumb{Action: "show", Cmd: showCmd},
-			output.Breadcrumb{Action: "list", Cmd: fmt.Sprintf("dhq domains list %s", target.flags())},
-		))
+		var crumbs []output.Breadcrumb
+		for _, cmd := range registeringShowCmds(created, target) {
+			crumbs = append(crumbs, output.Breadcrumb{Action: "show", Cmd: cmd})
+		}
+		crumbs = append(crumbs, output.Breadcrumb{Action: "list", Cmd: fmt.Sprintf("dhq domains list %s", target.flags())})
+		return env.WriteJSON(output.NewResponse(created, domainsAddSummary(added, target), crumbs...))
 	}
 
 	if created.Status != "failed" {
@@ -753,7 +770,7 @@ func reportDomainsAdded(env *output.Envelope, added domainsAddOutcome, target do
 	}
 	if added.timedOut {
 		env.Status("\nStopped waiting after %d seconds: setup is still running. The domain was added; get its DNS records later with: %s",
-			int(domainsRegistrationTimeout.Seconds()), showCmd)
+			int(domainsRegistrationTimeout.Seconds()), strings.Join(registeringShowCmds(created, target), " and "))
 		return nil
 	}
 	if !created.Registering {
