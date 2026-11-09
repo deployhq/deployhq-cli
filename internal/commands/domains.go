@@ -46,6 +46,7 @@ project. Other server types do not support custom domains.`,
   dhq domains list -p my-site -s "My Site"
   dhq domains show www.example.com -p my-site -s "My Site"
   dhq domains remove www.example.com -p my-site -s "My Site" --yes
+  dhq domains check www.example.com -p my-site -s "My Site"
   dhq domains list --global -s "Shared Site"`,
 	}
 
@@ -54,6 +55,7 @@ project. Other server types do not support custom domains.`,
 		newDomainsShowCmd(),
 		newDomainsAddCmd(),
 		newDomainsRemoveCmd(),
+		newDomainsCheckCmd(),
 	)
 	return cmd
 }
@@ -208,6 +210,16 @@ func explainDomainsError(err error, target domainsTarget) error {
 			}
 		}
 		return &output.AuthError{Message: msg, Hint: hint}
+	case apiErr.IsRateLimited():
+		msg := apiErr.Message
+		if msg == "" {
+			msg = "Too many custom domain requests"
+		}
+		hint := "Wait a while, then run the command again."
+		if apiErr.RetryAfter > 0 {
+			hint = fmt.Sprintf("Try again in %d seconds.", apiErr.RetryAfter)
+		}
+		return &output.UserError{Message: msg, Hint: hint}
 	case apiErr.StatusCode == 503:
 		msg := apiErr.Message
 		if msg == "" {
@@ -432,6 +444,7 @@ func writeDomainDetails(env *output.Envelope, d *sdk.CustomDomain) {
 
 func newDomainsAddCmd() *cobra.Command {
 	var flags domainsServerFlags
+	var withWWW bool
 	cmd := &cobra.Command{
 		Use:   "add <hostname>",
 		Short: "Add a custom domain to a Static Hosting server",
@@ -439,7 +452,8 @@ func newDomainsAddCmd() *cobra.Command {
 
 ` + customDomainRules,
 		Example: `  dhq domains add www.example.com -p my-site -s "My Site"
-  dhq domains add example.com -p my-site -s "My Site"    # the apex of the pair`,
+  dhq domains add example.com -p my-site -s "My Site"    # the apex of the pair
+  dhq domains add example.com -p my-site -s "My Site" --with-www    # both halves of the pair`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			hostname := strings.TrimSuffix(strings.TrimSpace(strings.ToLower(args[0])), ".")
@@ -456,33 +470,48 @@ func newDomainsAddCmd() *cobra.Command {
 				return err
 			}
 
-			d, err := client.CreateCustomDomain(ctx, target.scope, sdk.CustomDomainCreateRequest{Hostname: hostname})
+			d, err := client.CreateCustomDomain(ctx, target.scope, sdk.CustomDomainCreateRequest{Hostname: hostname, WithCounterpart: withWWW})
 			if err != nil {
 				return explainDomainsError(err, target)
 			}
 
-			env := cliCtx.Envelope
-			if env.WantsJSON() {
-				return env.WriteJSON(output.NewResponse(d,
-					fmt.Sprintf("Custom domain %s added (%s). Create both dns_records at the DNS provider; it goes live automatically once they are detected, and expires if not verified within 7 days.", d.Hostname, d.Status),
-					output.Breadcrumb{Action: "show", Cmd: fmt.Sprintf("dhq domains show %s %s", d.Hostname, target.flags())},
-					output.Breadcrumb{Action: "list", Cmd: fmt.Sprintf("dhq domains list %s", target.flags())},
-				))
-			}
-
-			primary := ""
-			if d.Primary {
-				primary = " as the primary domain"
-			}
-			env.Status("Added %s%s (status: %s)", d.Hostname, primary, d.Status)
-			showCmd := domainsShowCmd(d.Hostname, target)
-			writeDNSRecords(env, &d.CustomDomain, showCmd)
-			env.Status("\nCheck progress with: %s", showCmd)
-			return nil
+			return reportDomainsAdded(cliCtx.Envelope, d, target, withWWW)
 		},
 	}
 	addDomainsServerFlags(cmd, &flags)
+	cmd.Flags().BoolVar(&withWWW, "with-www", false, "Also add the other half of the apex and www pair (only for an apex domain or its www form, on a site with no other custom domains)")
 	return cmd
+}
+
+// reportDomainsAdded prints the domain just added and the DNS records it needs.
+func reportDomainsAdded(env *output.Envelope, created *sdk.CustomDomainCreation, target domainsTarget, withWWW bool) error {
+	showCmd := domainsShowCmd(created.Hostname, target)
+	if env.WantsJSON() {
+		return env.WriteJSON(output.NewResponse(created,
+			fmt.Sprintf("Custom domain %s added (%s). Create both dns_records at the DNS provider; it goes live automatically once they are detected, and expires if not verified within 7 days.", created.Hostname, created.Status),
+			output.Breadcrumb{Action: "show", Cmd: showCmd},
+			output.Breadcrumb{Action: "list", Cmd: fmt.Sprintf("dhq domains list %s", target.flags())},
+		))
+	}
+
+	primary := ""
+	if created.Primary {
+		primary = " as the primary domain"
+	}
+	env.Status("Added %s%s (status: %s)", created.Hostname, primary, created.Status)
+	writeDNSRecords(env, &created.CustomDomain, showCmd)
+	if c := created.Counterpart; c != nil {
+		env.Status("\nAlso added %s (status: %s)", c.Hostname, c.Status)
+		writeDNSRecords(env, c, domainsShowCmd(c.Hostname, target))
+	}
+	for _, e := range created.CounterpartErrors {
+		env.Status("\nWarning: the other half of the pair could not be added: %s", e)
+	}
+	if withWWW && created.Counterpart == nil && len(created.CounterpartErrors) == 0 {
+		env.Status("\nWarning: --with-www added nothing: it needs an apex domain or its www form, on a site with no other custom domains.")
+	}
+	env.Status("\nCheck progress with: %s", showCmd)
+	return nil
 }
 
 func newDomainsRemoveCmd() *cobra.Command {
@@ -549,4 +578,73 @@ is required in non-interactive mode (agents, CI, piped output, --json).`,
 	addDomainsServerFlags(cmd, &flags)
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Remove without asking for confirmation (required in non-interactive mode)")
 	return cmd
+}
+
+func newDomainsCheckCmd() *cobra.Command {
+	var flags domainsServerFlags
+	cmd := &cobra.Command{
+		Use:   "check <hostname|identifier>",
+		Short: "Check a pending custom domain now",
+		Long: `Ask DeployHQ to check a pending domain's DNS records now, instead of on the next
+scheduled check (every few minutes). The check runs in the background: read the
+outcome a few seconds later with "dhq domains show". Only a pending domain can be
+checked, and at most once a minute.`,
+		Example: `  dhq domains check www.example.com -p my-site -s "My Site"`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cliCtx.Background()
+			client, target, err := openDomainsTarget(ctx, flags)
+			if err != nil {
+				return err
+			}
+
+			// Resolve a hostname to its identifier (and confirm it exists).
+			domains, err := client.ListCustomDomains(ctx, target.scope)
+			if err != nil {
+				return explainDomainsError(err, target)
+			}
+			d := findDomain(domains, args[0])
+			if d == nil {
+				return domainNotFoundError(args[0], target, domains)
+			}
+
+			check, err := client.RefreshCustomDomain(ctx, target.scope, d.Identifier)
+			if err != nil {
+				return explainDomainsCheckError(err, d, target)
+			}
+
+			showCmd := domainsShowCmd(d.Hostname, target)
+			env := cliCtx.Envelope
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(check,
+					fmt.Sprintf("Check of %s requested; read the outcome with dhq domains show in a few seconds", d.Hostname),
+					output.Breadcrumb{Action: "show", Cmd: showCmd},
+				))
+			}
+			env.Status("Checking %s now. See the outcome in a few seconds with: %s", d.Hostname, showCmd)
+			return nil
+		},
+	}
+	addDomainsServerFlags(cmd, &flags)
+	return cmd
+}
+
+// explainDomainsCheckError explains why a check was refused. A 422 means the
+// domain is not waiting for verification (or its site is being deleted); the
+// other refusals are shared with the rest of the domains commands.
+func explainDomainsCheckError(err error, d *sdk.CustomDomain, target domainsTarget) error {
+	var apiErr *sdk.APIError
+	if errors.As(err, &apiErr) && apiErr.IsValidationError() {
+		msg := apiErr.Message
+		if msg == "" {
+			msg = fmt.Sprintf("%s cannot be checked", d.Hostname)
+		}
+		showCmd := domainsShowCmd(d.Hostname, target)
+		return &output.UserError{
+			Message:  msg,
+			Hint:     "Only a pending domain can be checked. See its status with: " + showCmd,
+			Recovery: []output.Breadcrumb{{Action: "show", Cmd: showCmd + " --json"}},
+		}
+	}
+	return explainDomainsError(err, target)
 }

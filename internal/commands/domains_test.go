@@ -92,7 +92,7 @@ func TestDomainsCmd_Structure(t *testing.T) {
 		assert.NotNil(t, sub.Flags().Lookup("server"), "%s needs --server", sub.Name())
 		assert.NotNil(t, sub.Flags().Lookup("global"), "%s needs --global", sub.Name())
 	}
-	for _, want := range []string{"list", "show", "add", "remove"} {
+	for _, want := range []string{"list", "show", "add", "remove", "check"} {
 		assert.True(t, names[want], "missing subcommand %q", want)
 	}
 }
@@ -362,6 +362,115 @@ func TestDomainsGlobal_UnknownServerListsChoices(t *testing.T) {
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Hint, "Shared Site (srv-global)")
+}
+
+func TestDomainsAdd_WithWWWSendsCounterpart(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + domainsBase: {201, `{"identifier":"dom-1","hostname":"example.com","primary":true,"status":"pending",` +
+			`"counterpart":{"identifier":"dom-2","hostname":"www.example.com","status":"pending"},"counterpart_errors":[]}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "add", "example.com", "-s", "srv-static", "--with-www", "--json"))
+	assert.Equal(t, map[string]any{"custom_domain": map[string]any{"hostname": "example.com", "with_counterpart": true}}, (*calls)[1].body)
+}
+
+func TestDomainsAdd_CounterpartErrorsDoNotFail(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + domainsBase: {201, `{"identifier":"dom-1","hostname":"example.com","primary":true,"status":"pending",` +
+			`"counterpart":null,"counterpart_errors":["Hostname has already been taken"]}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "add", "example.com", "-s", "srv-static", "--with-www"))
+}
+
+func TestDomainsAdd_RateLimitedSaysWhenToRetry(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + domainsBase:          {429, `{"error":"Too many custom domain changes","retry_after":3600}`},
+	})
+
+	err := runServersCmd(t, "domains", "add", "www.example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Equal(t, "Too many custom domain changes", userErr.Message)
+	assert.Contains(t, userErr.Hint, "3600 seconds")
+}
+
+func TestDomainsCheck_ResolvesHostnameAndAccepts(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":           {200, domainsServersJSON},
+		"GET " + domainsBase:                     {200, "[" + domainJSON + "]"},
+		"POST " + domainsBase + "/dom-1/refresh": {202, `{"status":"check_requested","identifier":"dom-1"}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "check", "www.example.com", "-s", "My Site", "--json"))
+	require.Len(t, *calls, 3)
+	assert.Equal(t, http.MethodPost, (*calls)[2].method)
+	assert.Equal(t, domainsBase+"/dom-1/refresh", (*calls)[2].path)
+}
+
+func TestDomainsCheck_GlobalServer(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":                          {200, globalServersJSON},
+		"GET " + globalDomainsBase:                     {200, "[" + domainJSON + "]"},
+		"POST " + globalDomainsBase + "/dom-1/refresh": {202, `{"status":"check_requested","identifier":"dom-1"}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "check", "dom-1", "--global", "-s", "srv-global", "--json"))
+	assert.Equal(t, globalDomainsBase+"/dom-1/refresh", (*calls)[2].path)
+}
+
+func TestDomainsCheck_RateLimitedSaysWhenToRetry(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+		"POST " + domainsBase + "/dom-1/refresh": {429,
+			`{"error":"This domain was checked moments ago. Try again shortly.","retry_after":42}`},
+	})
+
+	err := runServersCmd(t, "domains", "check", "www.example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "checked moments ago")
+	assert.Contains(t, userErr.Hint, "42 seconds")
+}
+
+func TestDomainsCheck_NotPendingIsExplained(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+		"POST " + domainsBase + "/dom-1/refresh": {422,
+			`{"error":"www.example.com is not waiting for verification, so there is nothing to check"}`},
+	})
+
+	err := runServersCmd(t, "domains", "check", "www.example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "not waiting for verification")
+	assert.Contains(t, userErr.Hint, "dhq domains show www.example.com")
+	require.NotEmpty(t, userErr.Recovery)
+}
+
+func TestDomainsCheck_UnknownDomainDoesNotPost(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+	})
+
+	require.Error(t, runServersCmd(t, "domains", "check", "shop.example.com", "-s", "srv-static"))
+	for _, c := range *calls {
+		assert.NotEqual(t, http.MethodPost, c.method)
+	}
 }
 
 func TestDomainsShow_FindsByIdentifierOrHostname(t *testing.T) {
