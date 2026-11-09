@@ -47,11 +47,13 @@ var commandMetadataTable = map[string]AgentMetadata{
 		// double-provisioning (idempotent). A Managed VPS is a managed resource (see
 		// managedVPSAcknowledgePhrase in metered.go for the current cost framing), so
 		// agents should confirm — and the command itself requires --accept-cost in
-		// non-interactive mode before provisioning a Managed VPS.
+		// non-interactive mode before provisioning a Managed VPS. With
+		// --custom-domain it also adds a custom domain, which the person must
+		// then publish DNS records for.
 		Interactive: true, Destructive: false, Idempotent: true,
 		RequiresConfirmation: true,
 		SupportsJSON:         true, SafeForAutomation: true,
-		ResourceTypes: []string{"project", "server", "deployment"},
+		ResourceTypes: []string{"project", "server", "deployment", "custom_domain"},
 	},
 
 	// Skills

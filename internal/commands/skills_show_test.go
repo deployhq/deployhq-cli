@@ -97,3 +97,19 @@ func TestSkill_PreDeployFileCheckUsesRemoteBranch(t *testing.T) {
 		assert.NotContains(t, s, "git ls-files", path)
 	}
 }
+
+// Agents often read the skill through `| head -100`, so the custom domain rule
+// has to sit in the first 100 lines of what `dhq skills show` prints.
+func TestSkill_CustomDomainRuleIsInFirst100Lines(t *testing.T) {
+	b, err := skills.FS.ReadFile("deployhq/SKILL.md")
+	require.NoError(t, err)
+	lines := strings.Split(string(b), "\n")
+	if len(lines) > 100 {
+		lines = lines[:100]
+	}
+	head := strings.Join(lines, "\n")
+	assert.Contains(t, head, "dhq launch --custom-domain")
+	assert.Contains(t, head, "dhq domains add")
+	assert.Contains(t, head, "CNAME and TXT")
+	assert.Contains(t, head, "deployhq-sites.com")
+}

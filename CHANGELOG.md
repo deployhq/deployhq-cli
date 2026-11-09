@@ -28,6 +28,17 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   confirmation unless `--yes`, which non-interactive mode requires. Custom
   domains need a paid plan: that refusal now explains itself (error code
   `paid_plan_required`, with the API's hint and a link to the plans page).
+- **`dhq launch --custom-domain <hostname>` and `--with-www`**: launch Static
+  Hosting on your own domain. Refused with `--vps` (exit 1). A hostname the API
+  refuses fails the launch with `custom_domain_invalid` (exit 1) and nothing is
+  provisioned; any other problem with the domain (no paid plan, rate limit,
+  failed registration) leaves the launch exiting 0 and `status: "live"`, with the
+  problem and a concrete `next_step` under `custom_domain` in `--json`. After the
+  deploy, launch waits up to a minute for the domain to register and prints the
+  CNAME and TXT records to publish, on stderr so the final stdout line stays the
+  live URL. The site keeps its `deployhq-sites.com` URL until the domain is live.
+  Re-running launch adds the domain to the existing site, or reports it if it is
+  already there.
 - **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`,
   `RefreshCustomDomain`, scoped with `ProjectServerDomains` or
   `GlobalServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.

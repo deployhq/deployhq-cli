@@ -244,8 +244,19 @@ func explainDomainsError(err error, target domainsTarget) error {
 			msg = "Custom domains are temporarily unavailable"
 		}
 		return &output.UserError{
-			Message: msg,
-			Hint:    "The DNS/CDN provider behind Static Hosting is unavailable right now. Nothing was changed; retry in a few minutes.",
+			Message:   msg,
+			Hint:      "The DNS/CDN provider behind Static Hosting is unavailable right now. Nothing was changed; retry in a few minutes.",
+			Retryable: true,
+		}
+	case apiErr.IsValidationError():
+		msg := strings.Join(apiErr.Errors, "; ")
+		if msg == "" {
+			msg = apiErr.Message
+		}
+		return &output.UserError{
+			Message:  "Custom domain refused: " + msg,
+			Hint:     "A custom domain must be a bare hostname such as www.example.com, and a site can have two at most: an apex and its www form. See this site's domains with: dhq domains list " + target.flags(),
+			Recovery: []output.Breadcrumb{{Action: "list_domains", Cmd: fmt.Sprintf("dhq domains list %s --json", target.flags())}},
 		}
 	}
 	return err

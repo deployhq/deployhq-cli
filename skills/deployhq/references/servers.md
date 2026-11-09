@@ -111,7 +111,9 @@ dhq servers show srv-001 -p my-app --json=branch,preferred_branch
 | `--subdirectory` | Output subdirectory to publish (e.g. dist) |
 
 **Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;
-other server types return not-found):
+other server types return not-found). Launching a new site? `dhq launch
+--custom-domain <domain> --with-www` does this in one go; see
+[launch.md](launch.md).
 
 - Name the server with `-p <project> -s <server>`, or `--global -s <server>`
   for a global Static Hosting server (no project needed; adding, removing or

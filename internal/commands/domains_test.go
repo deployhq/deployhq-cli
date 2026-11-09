@@ -229,6 +229,13 @@ func TestDomainsAdd_ValidationErrorsPassThrough(t *testing.T) {
 	err := runServersCmd(t, "domains", "add", "blog.example.com", "-s", "srv-static")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "at most 2 custom domains")
+
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr, "a refused hostname is explained, not a raw API error")
+	assert.Contains(t, userErr.Hint, "dhq domains list -p my-app -s srv-static", "names how to see the site's domains")
+	assert.False(t, userErr.Retryable, "a refused hostname stays refused")
+	require.NotEmpty(t, userErr.Recovery)
+	assert.Contains(t, userErr.Recovery[0].Cmd, "dhq domains list")
 }
 
 func TestDomainsAdd_ServiceUnavailableIsRetryAdvice(t *testing.T) {
@@ -238,6 +245,9 @@ func TestDomainsAdd_ServiceUnavailableIsRetryAdvice(t *testing.T) {
 		"POST " + domainsBase:          {503, `{"error":"Cloudflare is unavailable"}`},
 	})
 	err := runServersCmd(t, "domains", "add", "www.example.com", "-s", "srv-static")
+	var unavailable *output.UserError
+	require.ErrorAs(t, err, &unavailable)
+	assert.True(t, unavailable.Retryable, "a temporary outage can be retried")
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Equal(t, "Cloudflare is unavailable", userErr.Message)
