@@ -623,6 +623,30 @@ func TestLaunchRerun_FailedDomainMustBeRemovedAndAddedAgain(t *testing.T) {
 	assert.NotContains(t, got.NextStep, "Publish")
 }
 
+// A multi-part public suffix must not lose the other half of an existing pair.
+func TestLaunchRerun_KeepsBothHalvesOfAnExistingPair(t *testing.T) {
+	onCoUK := func(hostname, id string) string {
+		d := strings.ReplaceAll(registeredDomainJSON, "www.example.com", hostname)
+		return strings.Replace(d, `"dom-1"`, `"`+id+`"`, 1)
+	}
+	list := "[" + onCoUK("example.co.uk", "dom-1") + "," + onCoUK("www.example.co.uk", "dom-2") + "]"
+
+	for _, tc := range []struct{ typed, other string }{
+		{"example.co.uk", "www.example.co.uk"},
+		{"www.example.co.uk", "example.co.uk"},
+	} {
+		t.Run(tc.typed, func(t *testing.T) {
+			got := launchRerun(t, list, tc.typed)
+			require.Len(t, got.Domains, 2, "both halves are reported")
+			assert.Equal(t, tc.typed, got.Domains[0].Hostname)
+			assert.Equal(t, tc.other, got.Domains[1].Hostname)
+			for _, d := range got.Domains {
+				assert.Len(t, d.DNSRecords, 2, "%s keeps its DNS records", d.Hostname)
+			}
+		})
+	}
+}
+
 // ── Final output ──────────────────────────────────────────────────────────────
 
 func launchDomainResultFixture() *launchCustomDomainResult {

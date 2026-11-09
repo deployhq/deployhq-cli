@@ -146,6 +146,16 @@ func domainCounterpart(hostname string) string {
 	return ""
 }
 
+// otherWWWForm flips hostname between its www and non-www forms. Matching that
+// against the domains a site really has finds its pair without having to guess
+// where the registrable domain starts (example.co.uk).
+func otherWWWForm(hostname string) string {
+	if strings.HasPrefix(hostname, "www.") {
+		return strings.TrimPrefix(hostname, "www.")
+	}
+	return "www." + hostname
+}
+
 // launchPromptCustomDomain offers a custom domain, once, to a person at a
 // terminal who did not pass --custom-domain. A blank answer is no domain. It is
 // never called in non-interactive mode, so it cannot hold up an agent.
@@ -201,10 +211,8 @@ func launchEnsureCustomDomainOnServer(ctx context.Context, env *output.Envelope,
 	if d := findDomain(listed, cfg.customDomain); d != nil {
 		env.Status("Custom domain %s is already on this site.", d.Hostname)
 		server.CustomDomains = []sdk.CustomDomain{*d}
-		if other := domainCounterpart(d.Hostname); other != "" {
-			if o := findDomain(listed, other); o != nil {
-				server.CustomDomains = append(server.CustomDomains, *o)
-			}
+		if o := findDomain(listed, otherWWWForm(d.Hostname)); o != nil {
+			server.CustomDomains = append(server.CustomDomains, *o)
 		}
 		return nil
 	}
