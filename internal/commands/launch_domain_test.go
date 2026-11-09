@@ -686,20 +686,20 @@ func launchFakeAPI(t *testing.T, createBody string, createStatus int, domains []
 			return respond(r, 200, `{}`)
 		}
 		requests = append(requests, key)
-		switch {
-		case key == "GET /profile":
+		switch key {
+		case "GET /profile":
 			return respond(r, 200, `{"account":{"beta_features":true,"static_hosting_eligible":true,"managed_vps_eligible":true}}`)
-		case key == "POST /detection":
+		case "POST /detection":
 			return respond(r, 200, `{"stack":"vite","suggested_protocol":"static_hosting","static_hosting":{"root_path":"dist","spa_mode":false}}`)
-		case key == "GET /projects/my-app":
+		case "GET /projects/my-app":
 			return respond(r, 200, `{"permalink":"my-app","name":"my-app","repository":{"url":"git@github.com:acme/site.git"}}`)
-		case key == "POST /projects/my-app/servers":
+		case "POST /projects/my-app/servers":
 			return respond(r, createStatus, createBody)
-		case key == "POST /projects/my-app/deployments":
+		case "POST /projects/my-app/deployments":
 			return respond(r, 201, `{"identifier":"dep-1","status":"running"}`)
-		case key == "GET /projects/my-app/deployments/dep-1":
+		case "GET /projects/my-app/deployments/dep-1":
 			return respond(r, 200, `{"identifier":"dep-1","status":"completed"}`)
-		case key == "GET "+launchDomainsPath:
+		case "GET " + launchDomainsPath:
 			body := domains[min(listIdx, len(domains)-1)]
 			listIdx++
 			return respond(r, 200, body)
