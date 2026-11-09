@@ -54,7 +54,7 @@ func domainsAPI(t *testing.T, routes map[string]cannedResponse) *[]domainsCall {
 			}
 		}
 		// The update check against GitHub is unrelated to these tests.
-		if !strings.Contains(r.URL.Path, "/projects/") {
+		if !strings.Contains(r.URL.Path, "/projects/") && !strings.Contains(r.URL.Path, "/global_servers") {
 			return respond(http.StatusOK, `{}`), nil
 		}
 		call := domainsCall{method: r.Method, path: r.URL.Path}
@@ -76,7 +76,12 @@ func domainsAPI(t *testing.T, routes map[string]cannedResponse) *[]domainsCall {
 	return &calls
 }
 
-const domainsBase = "/projects/my-app/servers/srv-static/custom_domains"
+const (
+	domainsBase       = "/projects/my-app/servers/srv-static/custom_domains"
+	globalDomainsBase = "/global_servers/srv-global/custom_domains"
+
+	globalServersJSON = `[{"identifier":"srv-global","name":"Shared Site","protocol_type":"static_hosting"}]`
+)
 
 func TestDomainsCmd_Structure(t *testing.T) {
 	cmd := newDomainsCmd()
@@ -85,6 +90,7 @@ func TestDomainsCmd_Structure(t *testing.T) {
 	for _, sub := range cmd.Commands() {
 		names[sub.Name()] = true
 		assert.NotNil(t, sub.Flags().Lookup("server"), "%s needs --server", sub.Name())
+		assert.NotNil(t, sub.Flags().Lookup("global"), "%s needs --global", sub.Name())
 	}
 	for _, want := range []string{"list", "show", "add", "remove"} {
 		assert.True(t, names[want], "missing subcommand %q", want)
@@ -256,6 +262,106 @@ func TestDomainsRemove_UnknownDomainDoesNotDelete(t *testing.T) {
 	for _, c := range *calls {
 		assert.NotEqual(t, http.MethodDelete, c.method)
 	}
+}
+
+func TestDomainsGlobal_ListResolvesNameAgainstGlobalServers(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":      {200, globalServersJSON},
+		"GET " + globalDomainsBase: {200, "[" + domainJSON + "]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "list", "--global", "-s", "Shared Site", "--json"))
+	require.Len(t, *calls, 2)
+	assert.Equal(t, "/global_servers", (*calls)[0].path)
+	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
+}
+
+func TestDomainsGlobal_UUIDSkipsServerListing(t *testing.T) {
+	withResolvableContext(t)
+	uuid := "0b9f3c2e-1d4a-4c8b-9e2f-123456789abc"
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers/" + uuid + "/custom_domains": {200, "[]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "list", "--global", "-s", uuid, "--json"))
+	require.Len(t, *calls, 1)
+}
+
+func TestDomainsGlobal_DoesNotNeedAProject(t *testing.T) {
+	withResolvableContext(t)
+	t.Setenv("DEPLOYHQ_PROJECT", "")
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":      {200, globalServersJSON},
+		"GET " + globalDomainsBase: {200, "[]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "list", "--global", "-s", "srv-global", "--json"))
+	require.Len(t, *calls, 2)
+}
+
+func TestDomainsGlobal_Show(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":      {200, globalServersJSON},
+		"GET " + globalDomainsBase: {200, "[" + domainJSON + "]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "show", "www.example.com", "--global", "-s", "srv-global", "--json"))
+	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
+}
+
+func TestDomainsGlobal_Add(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":       {200, globalServersJSON},
+		"POST " + globalDomainsBase: {201, domainJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "add", "www.example.com", "--global", "-s", "Shared Site", "--json"))
+	require.Len(t, *calls, 2)
+	assert.Equal(t, http.MethodPost, (*calls)[1].method)
+	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
+}
+
+func TestDomainsGlobal_Remove(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":                    {200, globalServersJSON},
+		"GET " + globalDomainsBase:               {200, "[" + domainJSON + "]"},
+		"DELETE " + globalDomainsBase + "/dom-1": {202, `{"status":"removal_requested","identifier":"dom-1"}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "remove", "www.example.com", "--global", "-s", "srv-global", "--yes", "--json"))
+	require.Len(t, *calls, 3)
+	assert.Equal(t, globalDomainsBase+"/dom-1", (*calls)[2].path)
+}
+
+func TestDomainsGlobal_ErrorsSuggestGlobalCommands(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":      {200, globalServersJSON},
+		"GET " + globalDomainsBase: {404, `{"status":"not_found","error_code":"record_not_found"}`},
+	})
+
+	err := runServersCmd(t, "domains", "list", "--global", "-s", "Shared Site")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Hint, "dhq global-servers list")
+	assert.Contains(t, userErr.Hint, "--global -s 'Shared Site'")
+	assert.NotContains(t, userErr.Hint, "-p ")
+}
+
+func TestDomainsGlobal_UnknownServerListsChoices(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers": {200, globalServersJSON},
+	})
+
+	err := runServersCmd(t, "domains", "list", "--global", "-s", "nope")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Hint, "Shared Site (srv-global)")
 }
 
 func TestDomainsShow_FindsByIdentifierOrHostname(t *testing.T) {
