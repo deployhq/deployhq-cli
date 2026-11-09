@@ -661,3 +661,180 @@ func TestDomainCounterpart(t *testing.T) {
 	assert.Equal(t, "example.com", domainCounterpart("www.example.com"))
 	assert.Equal(t, "", domainCounterpart("blog.example.com"))
 }
+
+// ── End to end, through the command ───────────────────────────────────────────
+
+// launchFakeAPI serves the requests a full static launch makes, with the given
+// outcome for the server create, and records what was asked.
+func launchFakeAPI(t *testing.T, createBody string, createStatus int, domains []string) *[]string {
+	t.Helper()
+	var requests []string
+	listIdx := 0
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	respond := func(r *http.Request, status int, body string) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: status,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Request:    r,
+		}, nil
+	}
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		key := r.Method + " " + r.URL.Path
+		if strings.Contains(r.URL.Host, "github") {
+			return respond(r, 200, `{}`)
+		}
+		requests = append(requests, key)
+		switch {
+		case key == "GET /profile":
+			return respond(r, 200, `{"account":{"beta_features":true,"static_hosting_eligible":true,"managed_vps_eligible":true}}`)
+		case key == "POST /detection":
+			return respond(r, 200, `{"stack":"vite","suggested_protocol":"static_hosting","static_hosting":{"root_path":"dist","spa_mode":false}}`)
+		case key == "GET /projects/my-app":
+			return respond(r, 200, `{"permalink":"my-app","name":"my-app","repository":{"url":"git@github.com:acme/site.git"}}`)
+		case key == "POST /projects/my-app/servers":
+			return respond(r, createStatus, createBody)
+		case key == "POST /projects/my-app/deployments":
+			return respond(r, 201, `{"identifier":"dep-1","status":"running"}`)
+		case key == "GET /projects/my-app/deployments/dep-1":
+			return respond(r, 200, `{"identifier":"dep-1","status":"completed"}`)
+		case key == "GET "+launchDomainsPath:
+			body := domains[min(listIdx, len(domains)-1)]
+			listIdx++
+			return respond(r, 200, body)
+		}
+		return respond(r, 404, `{"error":"not_found"}`)
+	})
+	return &requests
+}
+
+func launchDomainTestRepo(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	runGit := func(args ...string) {
+		t.Helper()
+		_, err := runGitCommand(args...)
+		_ = err
+	}
+	runGit("init", "-q")
+	runGit("remote", "add", "origin", "git@github.com:acme/site.git")
+}
+
+func TestLaunchCommand_CustomDomain_EndToEnd(t *testing.T) {
+	withResolvableContext(t)
+	launchDomainTestRepo(t)
+	shrinkPollBackoff(t)
+	fastDomainsPolling(t, 5*time.Second)
+	created := launchActiveServerJSON(`,"custom_domains":[` + registeringDomainJSON + `],"custom_domain_errors":[]`)
+	requests := launchFakeAPI(t, created, 201, []string{"[" + registeredDomainJSON + "]"})
+
+	stdout, err := runCmdCapturingStdout(t, "launch", "--static", "--subdomain", "my-app", "--custom-domain", "www.example.com", "--json")
+	require.NoError(t, err, "the site is live: exit 0")
+
+	var resp struct {
+		OK          bool
+		Summary     string
+		Breadcrumbs []output.Breadcrumb
+		Data        struct {
+			Status       string
+			URL          string
+			Server       string
+			CustomDomain struct {
+				Hostname string
+				Added    bool
+				Status   string
+				Domains  []struct {
+					DNSRecords  []struct{ Type string } `json:"dns_records"`
+					Registering bool
+				}
+				NextStep string `json:"next_step"`
+			} `json:"custom_domain"`
+		}
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "stdout: %s", stdout)
+	assert.True(t, resp.OK)
+	assert.Equal(t, "live", resp.Data.Status)
+	assert.Equal(t, launchDomainLiveURL, resp.Data.URL)
+	assert.Equal(t, "dns_records_required", resp.Data.CustomDomain.Status)
+	assert.True(t, resp.Data.CustomDomain.Added)
+	require.Len(t, resp.Data.CustomDomain.Domains, 1)
+	assert.False(t, resp.Data.CustomDomain.Domains[0].Registering, "waited for the TXT record")
+	assert.Len(t, resp.Data.CustomDomain.Domains[0].DNSRecords, 2)
+	assert.Contains(t, resp.Summary, "www.example.com")
+	assert.Contains(t, strings.Join(*requests, "\n"), "GET "+launchDomainsPath, "polled for registration")
+}
+
+func TestLaunchCommand_InvalidCustomDomainExitsOne(t *testing.T) {
+	withResolvableContext(t)
+	launchDomainTestRepo(t)
+	requests := launchFakeAPI(t, `{"base":["Custom domain must be one of the test domains in this environment (dropsite.dev)"]}`, 422, nil)
+
+	stdout, err := runCmdCapturingStdout(t, "launch", "--static", "--subdomain", "my-app", "--custom-domain", "other.example", "--json")
+	require.Error(t, err)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+
+	var resp struct {
+		OK   bool
+		Data struct {
+			Reason    string
+			Retryable bool
+			ExitCode  int    `json:"exit_code"`
+			NextStep  string `json:"next_step"`
+		}
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "stdout: %s", stdout)
+	assert.False(t, resp.OK)
+	assert.Equal(t, reasonCustomDomainInvalid, resp.Data.Reason)
+	assert.Equal(t, 1, resp.Data.ExitCode)
+	assert.Contains(t, resp.Data.NextStep, "--custom-domain")
+	assert.NotContains(t, strings.Join(*requests, "\n"), "POST /projects/my-app/deployments", "nothing deployed")
+}
+
+func TestLaunchCommand_DomainRefusalStillExitsZero(t *testing.T) {
+	withResolvableContext(t)
+	launchDomainTestRepo(t)
+	created := launchActiveServerJSON(`,"custom_domains":[],"custom_domain_errors":["Custom domains are only available on paid plans"]`)
+	launchFakeAPI(t, created, 201, nil)
+
+	stdout, err := runCmdCapturingStdout(t, "launch", "--static", "--subdomain", "my-app", "--custom-domain", "example.com", "--json")
+	require.NoError(t, err, "a plan refusal must not fail a live launch")
+
+	var resp struct {
+		Summary string
+		Data    struct {
+			Status       string
+			CustomDomain struct {
+				Status   string
+				Errors   []string
+				NextStep string `json:"next_step"`
+			} `json:"custom_domain"`
+		}
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "stdout: %s", stdout)
+	assert.Equal(t, "live", resp.Data.Status)
+	assert.Equal(t, "not_added", resp.Data.CustomDomain.Status)
+	assert.Contains(t, resp.Data.CustomDomain.Errors[0], "paid plans")
+	assert.Contains(t, resp.Data.CustomDomain.NextStep, "/account/packages")
+	assert.Contains(t, resp.Summary, "not added")
+}
+
+func TestLaunchCommand_DryRunWithCustomDomainMakesNoChanges(t *testing.T) {
+	withResolvableContext(t)
+	launchDomainTestRepo(t)
+	requests := launchFakeAPI(t, "{}", 500, nil)
+
+	stdout, err := runCmdCapturingStdout(t, "launch", "--static", "--subdomain", "my-app", "--custom-domain", "example.com", "--with-www", "--dry-run", "--json")
+	require.NoError(t, err)
+	var resp struct {
+		Data struct {
+			Would map[string]any
+		}
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "stdout: %s", stdout)
+	assert.Equal(t, "example.com", resp.Data.Would["custom_domain"])
+	for _, req := range *requests {
+		assert.False(t, strings.HasPrefix(req, "POST /projects/"), "dry run must not change anything: %s", req)
+	}
+}
