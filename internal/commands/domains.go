@@ -84,11 +84,22 @@ type domainsServerFlags struct {
 	global bool
 }
 
-// addDomainsServerFlags registers the required -s/--server flag and --global.
+// addDomainsServerFlags registers the required -s/--server flag and --global,
+// and refuses --global alongside a --project given on this command line. A
+// default project from the config or environment does not conflict.
 func addDomainsServerFlags(cmd *cobra.Command, f *domainsServerFlags) {
 	cmd.Flags().StringVarP(&f.server, "server", "s", "", "Static Hosting server (name or identifier, required)")
 	_ = cmd.MarkFlagRequired("server")
 	cmd.Flags().BoolVar(&f.global, "global", false, "--server is a global server (no project needed)")
+	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
+		if f.global && cmd.Flags().Changed("project") {
+			return &output.UserError{
+				Message: "--project and --global cannot be used together",
+				Hint:    "A global server belongs to no project: drop --project, or drop --global to use one of the project's servers.",
+			}
+		}
+		return nil
+	}
 }
 
 // domainsTarget is the Static Hosting server a domains command acts on.

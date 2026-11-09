@@ -393,6 +393,52 @@ func TestDomainsGlobal_UnknownServerListsChoices(t *testing.T) {
 	assert.Contains(t, userErr.Hint, "Shared Site (srv-global)")
 }
 
+// --project names a project and --global says there is none: every subcommand
+// refuses the contradiction before calling the API.
+func TestDomains_ProjectFlagWithGlobalIsRefused(t *testing.T) {
+	cases := map[string][]string{
+		"list":   {"domains", "list"},
+		"show":   {"domains", "show", "www.example.com"},
+		"add":    {"domains", "add", "www.example.com"},
+		"remove": {"domains", "remove", "www.example.com", "--yes"},
+		"check":  {"domains", "check", "www.example.com"},
+	}
+	for name, args := range cases {
+		for _, projectFlag := range []string{"-p", "--project"} {
+			t.Run(name+" "+projectFlag, func(t *testing.T) {
+				withResolvableContext(t)
+				blockNetwork(t)
+				err := runServersCmd(t, append(args, projectFlag, "my-app", "--global", "-s", "srv-global", "--json")...)
+				var userErr *output.UserError
+				require.True(t, errors.As(err, &userErr), "got %v", err)
+				assert.Contains(t, userErr.Message, "--project")
+				assert.Contains(t, userErr.Message, "--global")
+				assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+				resp := output.ErrorResponseFromErr(err)
+				assert.False(t, resp.OK)
+				data, ok := resp.Data.(output.ErrorData)
+				require.True(t, ok)
+				assert.Equal(t, output.ExitUserError, data.ExitCode)
+			})
+		}
+	}
+}
+
+// A default project (config or environment) says nothing about this command,
+// so it does not conflict with --global.
+func TestDomainsGlobal_DefaultProjectIsAllowed(t *testing.T) {
+	withResolvableContext(t)
+	t.Setenv("DEPLOYHQ_PROJECT", "my-app")
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":      {200, globalServersJSON},
+		"GET " + globalDomainsBase: {200, "[]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "list", "--global", "-s", "srv-global", "--json"))
+	require.Len(t, *calls, 2)
+	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
+}
+
 func TestDomainsAdd_WithWWWSendsCounterpart(t *testing.T) {
 	withResolvableContext(t)
 	calls := domainsAPI(t, map[string]cannedResponse{
