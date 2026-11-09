@@ -109,6 +109,13 @@ type Server struct {
 	// to read the lifecycle status uniformly across protocols.
 	StaticHosting *StaticHostingInfo `json:"static_hosting,omitempty"`
 	ManagedVPS    *ManagedVPSInfo    `json:"managed_vps,omitempty"`
+
+	// CustomDomains and CustomDomainErrors are the outcome of a custom domain
+	// requested when a Static Hosting server is created: the domains added and
+	// why any were refused. The refusal never fails the create. A server that
+	// predates the feature omits both, which reads as nil (not empty).
+	CustomDomains      []CustomDomain `json:"custom_domains,omitempty"`
+	CustomDomainErrors []string       `json:"custom_domain_errors,omitempty"`
 }
 
 // HostedWebsiteAttributes holds Static Hosting-specific provisioning parameters.
@@ -122,6 +129,13 @@ type HostedWebsiteAttributes struct {
 	// Subdirectory is the output folder within the server path to publish.
 	// Defaults to "" (the server path root) when empty.
 	Subdirectory string `json:"subdirectory,omitempty"`
+	// CustomDomainHostname optionally asks for a custom domain on the new site.
+	// An invalid hostname fails the create with a 422; a refusal for any other
+	// reason (paid plan, rate limit) is reported in Server.CustomDomainErrors.
+	CustomDomainHostname string `json:"custom_domain_hostname,omitempty"`
+	// CustomDomainWithCounterpart also adds the other half of the apex and www
+	// pair of CustomDomainHostname.
+	CustomDomainWithCounterpart bool `json:"custom_domain_with_counterpart,omitempty"`
 }
 
 // ServerCreateRequest is the payload for creating a server.
