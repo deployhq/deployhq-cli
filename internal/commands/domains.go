@@ -308,9 +308,9 @@ func writeDNSRecords(env *output.Envelope, d *sdk.CustomDomain, showCmd string) 
 		env.Status("\nAdd BOTH of these DNS records at your DNS provider for %s:\n", d.Hostname)
 	}
 	env.WriteTable([]string{"Type", "Name", "Value"}, rows)
-	if isApexHostname(d.Hostname) {
-		env.Status("\n%s is an apex domain: most DNS providers do not allow a CNAME there.", d.Hostname)
-		env.Status("Use an ALIAS or ANAME record, or CNAME flattening, with the same value instead.")
+	if !strings.HasPrefix(d.Hostname, "www.") {
+		env.Status("\nIf %s is your root domain, most DNS providers do not allow a CNAME there:", d.Hostname)
+		env.Status("use an ALIAS or ANAME record, or CNAME flattening, with the same value instead.")
 	}
 	if d.Registering {
 		env.Status("\nThe TXT record that proves you own the domain appears once setup finishes. See it with: %s", showCmd)

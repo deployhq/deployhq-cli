@@ -439,6 +439,38 @@ func TestDomainsGlobal_DefaultProjectIsAllowed(t *testing.T) {
 	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
 }
 
+// Without a public suffix list the CLI cannot tell example.co.uk from a
+// subdomain, so the apex guidance is shown, conditionally, unless the hostname
+// plainly is not an apex.
+func TestWriteDNSRecords_ApexGuidance(t *testing.T) {
+	cases := []struct {
+		hostname string
+		want     bool
+	}{
+		{"example.com", true},
+		{"example.co.uk", true},
+		{"example.com.au", true},
+		{"blog.example.com", true},
+		{"www.example.com", false},
+		{"www.example.co.uk", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.hostname, func(t *testing.T) {
+			env, _, stderr := testLaunchEnvelope()
+			writeDNSRecords(env, &sdk.CustomDomain{Hostname: tc.hostname}, "dhq domains show")
+
+			if !tc.want {
+				assert.NotContains(t, stderr.String(), "ALIAS")
+				return
+			}
+			assert.Contains(t, stderr.String(), "If "+tc.hostname+" is your root domain")
+			assert.Contains(t, stderr.String(), "ALIAS or ANAME")
+			assert.Contains(t, stderr.String(), "CNAME flattening")
+			assert.NotContains(t, stderr.String(), "is an apex domain", "the CLI cannot know that")
+		})
+	}
+}
+
 func TestDomainsAdd_WithWWWSendsCounterpart(t *testing.T) {
 	withResolvableContext(t)
 	calls := domainsAPI(t, map[string]cannedResponse{
@@ -865,6 +897,6 @@ func TestWriteDNSRecords_NoApexNoteForSubdomain(t *testing.T) {
 		{Type: "TXT", Name: &txtName, Value: &txtValue},
 	}}
 	writeDNSRecords(env, d, "dhq domains show www.example.com")
-	assert.NotContains(t, stderr.String(), "apex domain")
+	assert.NotContains(t, stderr.String(), "root domain")
 	assert.NotContains(t, stderr.String(), "not issued yet")
 }
