@@ -77,7 +77,7 @@ dhq launch --vps --dry-run --json
 | `--size` | Managed VPS size slug (e.g. `s-1vcpu-1gb`). List via `dhq api GET /managed_hosting/sizes` |
 | `--accept-cost` | Acknowledge Managed VPS provisioning — free for early customers during beta, billed monthly afterwards. **Required** for non-interactive VPS provisioning |
 | `--branch` | Branch to deploy (default: repo default) |
-| `--project` | Existing project permalink to reuse (skips project creation) |
+| `--project` | Existing project permalink to reuse (skips project creation). Without it, see "Which project a launch uses" |
 | `--cleanup-on-failure` | Delete the provisioned server if the deploy fails (prevents orphaned managed resources) |
 | `--non-interactive` / `--yes` | Never prompt; fail fast with structured errors. Auto-enabled for agents / piped output |
 | `--interactive` | Force prompts even in a piped / agent context |
@@ -88,7 +88,8 @@ dhq launch --vps --dry-run --json
 
 - **Config precedence:** flags → env (`DEPLOYHQ_*`) → `.deployhq.toml` → framework detection. A missing required value with no TTY fails fast naming the exact flag — it never hangs.
 - **Cost guardrail:** a Managed VPS is a managed resource (free for early customers during beta, billed monthly afterwards); in non-interactive mode it is **never** provisioned without `--accept-cost` (`--yes` alone is not enough). Static Hosting is safe under `--yes`.
-- **`--dry-run`** emits `{would, requires, warning}` and makes no changes — use it to preview cost and confirm before provisioning a Managed VPS.
+- **Which project a launch uses:** `--project`, `DEPLOYHQ_PROJECT` or `.deployhq.toml` when set. Otherwise, without prompting: the account's only project if it has exactly one (whichever repository it is connected to), else the one project connected to this repository, else a new project named after the repository, created and connected by the launch. So an empty account needs no `dhq projects create` first. Two projects connected to this repository, or a project with the repository's name on another repository, stop with `project_ambiguous` and nothing is created.
+- **`--dry-run`** emits `{would, requires, warning}` and makes no changes — use it to preview cost and confirm before provisioning a Managed VPS. `would.project` is the existing project it would use; `would.create_project` and `would.project_name` are set when it would create one instead; `requires` lists `a git remote` when there is none. It stops with the same `project_ambiguous` error a real launch would.
 - **Success (`--json`)** emits one object: `{status, target, url, project, server, deployment, custom_domain}`, with `custom_domain` present only when one was asked for. In plain mode the final stdout line is the live URL, and the DNS records go to stderr.
 - **Idempotent:** re-running reads `.deployhq.toml` and resolves the existing project/server instead of double-provisioning.
 - **Eligibility is checked before anything is created:** the `plan_limit_reached` check runs before a project is created or a repository connected. Whether the account has a payment method on file cannot be checked in advance, so that refusal only arrives at provisioning time, as `payment_method_required`.
@@ -106,6 +107,8 @@ On failure the error carries a stable `reason`, a `retryable` boolean, a `next_s
 | `beta_enroll_required` | 1 | Managed-resources beta not enabled and the user isn't an admin — `details.admin_required=true`; an admin enables it (or use your own server via `dhq init`) |
 | `accept_cost_required` | 1 | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
 | `repo_unreachable` | 1 | No git remote DeployHQ can deploy from, or DeployHQ rejected the repository (for SSH URLs usually a missing deploy key; `next_step` has the key and how to resume). A failure while connecting keeps its own code: 4 for a network failure, 2 for a server error, 3 for 401/403, 5 for 404 |
+| `project_ambiguous` | 1 | No project is configured and more than one could be meant; nothing was created. `details.projects` lists the permalinks: ask the person, then re-run with `--project <permalink>` |
+| `project_create_failed` | 1 | No project is configured and creating one failed; the message has the API's reason. Fix it and re-run, or create it with `dhq projects create` and pass `--project`. A network or server failure keeps its own code (4 or 2), and 401/403 is 3 |
 | `plan_limit_reached` | 1 | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
 | `payment_method_required` | 1 | Provisioning was refused because the account has no accepted payment method for the hosting requested (a Managed VPS always needs one). A person must add a card at `details.payment_url` (the account's Payment Details page); an agent cannot do this. If `details.project_created` is `true`, the project named in `details.project` was created by this run and has no server: re-run the same `dhq launch` command with `--project <permalink>` added once the card is in place (the project is also saved to `.deployhq.toml`), or remove it with `dhq projects delete <permalink>`. `launch` never deletes it automatically |
 | `subdomain_taken` | 6 | Static Hosting subdomain already in use — choose another `--subdomain` |

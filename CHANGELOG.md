@@ -47,6 +47,19 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   rather than the raw JSON body. `APIError.RetryAfter` also reads a
   `retry_after` in the response body when the header is missing.
 
+### Fixed
+
+- **`dhq launch` works non-interactively with no project configured**, so an
+  agent or CI job can launch from an empty account. It used to stop with "No
+  project specified". It now reuses the project already connected to this
+  repository, or creates one named after the repository as the interactive
+  "Create a new project" choice does. With exactly one project in the account
+  that project is still used, as before. Two projects connected to the
+  repository, or a project with the repository's name on another repository,
+  refuse with `project_ambiguous` (exit 1) and nothing is created; a failed
+  create reports `project_create_failed`. `--dry-run` creates nothing and reports
+  `would.create_project` and `would.project_name`.
+
 ### Changed
 
 - **Installed copies of the skill are reported as outdated** (its version is

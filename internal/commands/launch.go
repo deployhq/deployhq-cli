@@ -106,6 +106,10 @@ type dryRunWould struct {
 	// CustomDomain and WithCounterpart are the custom domain the launch would add.
 	CustomDomain    string `json:"custom_domain,omitempty"`
 	WithCounterpart bool   `json:"with_counterpart,omitempty"`
+	// CreateProject and ProjectName report the project the launch would create
+	// because none exists for this repository.
+	CreateProject bool   `json:"create_project,omitempty"`
+	ProjectName   string `json:"project_name,omitempty"`
 }
 
 // launchErrorReason is the machine-readable error code taxonomy.
@@ -131,6 +135,11 @@ const (
 	// the backend's deploy gate blocks it. Handled gracefully (wait-and-retry
 	// interactively, structured fail non-interactively) — not a raw 403.
 	reasonEmailVerificationRequired = "email_verification_required"
+	// reasonProjectAmbiguous: non-interactively, more than one existing project
+	// could be the one meant, so none is picked and none is created.
+	reasonProjectAmbiguous = "project_ambiguous"
+	// reasonProjectCreateFailed: no project was resolved and creating one failed.
+	reasonProjectCreateFailed = "project_create_failed"
 )
 
 // launchError is a structured error that carries machine-readable next-step
@@ -162,7 +171,7 @@ func (e *launchError) ExitCode() int {
 	}
 	switch e.Reason {
 	case reasonPlanLimitReached, reasonAcceptCostRequired, reasonBetaEnrollRequired,
-		reasonRepoUnreachable, reasonRateLimited, reasonCustomDomainInvalid, "payment_method_required":
+		reasonRepoUnreachable, reasonRateLimited, reasonCustomDomainInvalid, reasonProjectAmbiguous, "payment_method_required":
 		return output.ExitUserError
 	case reasonAuthRequired, reasonEmailVerificationRequired:
 		return output.ExitAuthError
@@ -490,7 +499,14 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 			}
 			return capsErr
 		}
-		return launchDryRun(ctx, env, cfg, client, caps)
+		if err := launchDryRun(ctx, env, cfg, client, caps); err != nil {
+			var le *launchError
+			if errors.As(err, &le) {
+				return writeLaunchError(env, cfg, le.Reason, err)
+			}
+			return err
+		}
+		return nil
 	}
 
 	// ── Step 3: Capability pre-flight ───────────────────────────────────────
@@ -1113,6 +1129,11 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 	if cfg.customDomain != "" {
 		dr.Warning = strings.TrimSpace(dr.Warning + " Custom domains need a paid plan: on other plans the site still launches, without the domain. The DNS records to publish are printed after the deploy.")
 	}
+	if cfg.projectID == "" {
+		if err := launchDryRunProject(ctx, env, client, &dr); err != nil {
+			return err
+		}
+	}
 
 	if env.WantsJSON() {
 		return env.WriteJSON(output.NewResponse(dr, "Dry run — no changes made"))
@@ -1121,6 +1142,11 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 	env.Status("DRY RUN — no side effects")
 	env.Status("")
 	env.Status("Would provision: %s", dr.Would.Provision)
+	if dr.Would.CreateProject {
+		env.Status("  Project:       would create project %q", dr.Would.ProjectName)
+	} else if dr.Would.Project != "" {
+		env.Status("  Project:       %s", dr.Would.Project)
+	}
 	if dr.Would.Subdomain != "" {
 		env.Status("  Subdomain:     %s.deployhq-sites.com", dr.Would.Subdomain)
 	}
@@ -1210,11 +1236,157 @@ func launchEnsureProject(ctx context.Context, env *output.Envelope, cfg launchCo
 		return launchPromptOrCreateProject(ctx, env, cfg, client, projects, gitRemote)
 	}
 
-	// Non-interactive, no project configured: fail fast
-	return "", false, &output.UserError{
-		Message: "No project specified",
-		Hint:    "Pass --project <permalink> or set DEPLOYHQ_PROJECT. Run 'dhq projects list' to see available projects.",
+	// Non-interactive, no project configured: reuse the one for this repository,
+	// or create it the way the interactive "Create a new project" choice does.
+	existing, projectName, err := launchPlanProject(projects, gitRemote)
+	if err != nil {
+		return "", false, err
 	}
+	if existing != nil {
+		env.Status("Using project %s, which already deploys this repository.", existing.Permalink)
+		if err := launchEnsureRepo(ctx, env, cfg, client, existing.Permalink, gitRemote); err != nil {
+			return "", false, launchRepoFailure(err)
+		}
+		return existing.Permalink, false, nil
+	}
+	permalink, err := launchCreateProject(ctx, env, cfg, client, gitRemote)
+	if err != nil {
+		return "", false, launchProjectCreateFailure(err, projectName)
+	}
+	return permalink, true, nil
+}
+
+// launchPlanProject decides, without changing anything, which project a launch
+// with no project configured uses when it cannot ask: the sole project, else
+// the one already connected to gitRemote. It returns the name to create when
+// there is none, and refuses rather than guess between several candidates.
+func launchPlanProject(projects []sdk.Project, gitRemote string) (*sdk.Project, string, error) {
+	if len(projects) == 1 {
+		return &projects[0], "", nil
+	}
+	matches := projectsConnectedTo(projects, gitRemote)
+	if len(matches) == 1 {
+		return &matches[0], "", nil
+	}
+	if len(matches) > 1 {
+		return nil, "", launchAmbiguousProjectError(
+			fmt.Sprintf("More than one project already deploys this repository: %s.", describeProjects(matches)),
+			fmt.Sprintf("Choose one by re-running the same dhq launch command with --project %s (or another of those permalinks).", quoteRerunArg(matches[0].Permalink)),
+			matches)
+	}
+	name := projectNameFromRemote(gitRemote)
+	if named := projectsNamed(projects, name); len(named) > 0 {
+		return nil, "", launchAmbiguousProjectError(
+			fmt.Sprintf("A project named %q already exists but is not connected to this repository: %s.", name, describeProjects(named)),
+			fmt.Sprintf("To use it, re-run the same dhq launch command with --project %s. To keep it separate, create a project with another name (dhq projects create --name <name>) and pass its permalink with --project.", quoteRerunArg(named[0].Permalink)),
+			named)
+	}
+	return nil, name, nil
+}
+
+func launchAmbiguousProjectError(message, nextStep string, candidates []sdk.Project) *launchError {
+	permalinks := make([]string, 0, len(candidates))
+	for _, p := range candidates {
+		permalinks = append(permalinks, p.Permalink)
+	}
+	return &launchError{
+		Reason:   reasonProjectAmbiguous,
+		Message:  message,
+		NextStep: nextStep,
+		Details:  map[string]string{"projects": strings.Join(permalinks, ",")},
+	}
+}
+
+// launchProjectCreateFailure explains a failed create of the project named
+// name. Errors that already say what to do are kept, and the exit code stays
+// the one the underlying failure has.
+func launchProjectCreateFailure(err error, name string) error {
+	var le *launchError
+	if errors.As(err, &le) {
+		return le
+	}
+	return &launchError{
+		Reason:   reasonProjectCreateFailed,
+		Message:  fmt.Sprintf("Could not create project %q: %s", name, err.Error()),
+		NextStep: "Fix the cause and re-run the same dhq launch command, or create the project yourself with dhq projects create and pass its permalink with --project.",
+		exitCode: output.ClassifyError(err),
+	}
+}
+
+// projectsConnectedTo returns the projects whose repository is gitRemote, however
+// each URL is written.
+func projectsConnectedTo(projects []sdk.Project, gitRemote string) []sdk.Project {
+	want := repoIdentity(gitRemote)
+	if want == "" {
+		return nil
+	}
+	var matches []sdk.Project
+	for _, p := range projects {
+		url := ""
+		if p.Repository != nil {
+			url = p.Repository.URL
+		}
+		if url == "" && p.RepositoryURL != nil {
+			url = *p.RepositoryURL
+		}
+		if repoIdentity(url) == want {
+			matches = append(matches, p)
+		}
+	}
+	return matches
+}
+
+// repoIdentity reduces a git URL to host/path, so the SSH, scp-like and HTTPS
+// forms of one repository compare equal. Credentials and ports are dropped.
+func repoIdentity(raw string) string {
+	s := strings.TrimSpace(raw)
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	} else if colon, slash := strings.Index(s, ":"), strings.Index(s, "/"); colon >= 0 && (slash < 0 || colon < slash) {
+		s = s[:colon] + "/" + s[colon+1:]
+	}
+	host, path, _ := strings.Cut(s, "/")
+	if i := strings.LastIndex(host, "@"); i >= 0 {
+		host = host[i+1:]
+	}
+	if i := strings.Index(host, ":"); i >= 0 {
+		host = host[:i]
+	}
+	path = strings.TrimSuffix(strings.TrimRight(path, "/"), ".git")
+	if host == "" || path == "" {
+		return ""
+	}
+	return strings.ToLower(host + "/" + path)
+}
+
+// launchDryRunProject fills in which project the launch would use when none is
+// configured. In a terminal with several projects the person picks, so nothing
+// is predicted. A launch refused here is refused the same way by the real run.
+func launchDryRunProject(ctx context.Context, env *output.Envelope, client *sdk.Client, dr *dryRunResult) error {
+	gitRemote := detectGitRemote()
+	if gitRemote == "" {
+		dr.Requires = append(dr.Requires, "a git remote")
+		return nil
+	}
+	projects, err := client.ListProjects(ctx, nil)
+	if err != nil {
+		dr.Warning = strings.TrimSpace(dr.Warning + " Could not list projects, so the project the launch would use is unknown.")
+		return nil
+	}
+	if !env.NonInteractive && len(projects) > 1 {
+		return nil
+	}
+	existing, name, err := launchPlanProject(projects, gitRemote)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		dr.Would.Project = existing.Permalink
+		return nil
+	}
+	dr.Would.CreateProject = true
+	dr.Would.ProjectName = name
+	return nil
 }
 
 func launchPromptOrCreateProject(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, existing []sdk.Project, gitRemote string) (string, bool, error) {
