@@ -61,6 +61,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `would.create_project` and `would.project_name`.
 - **`dhq launch --static --vps` is refused (exit 1)** before any API call. Static
   Hosting used to win silently and a real deploy followed.
+- **A rate-limited `dhq domains` command reports `retry_after`** as a number of
+  seconds in its `--json` error, next to `retryable`, instead of only in the
+  suggestion text.
 
 ### Changed
 

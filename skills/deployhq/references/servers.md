@@ -118,6 +118,9 @@ other server types return not-found). Launching a new site? `dhq launch
 - Name the server with `-p <project> -s <server>`, or `--global -s <server>`
   for a global Static Hosting server (no project needed; adding, removing or
   checking a domain on one needs an account administrator).
+- A rate-limited command (a `check` repeated within a minute, too many changes)
+  exits 1 with `retryable: true` and, when known, `retry_after` in seconds in
+  its `--json` error. Wait that long before repeating it.
 - At most 2 domains per site: an apex + www pair. The first added is the
   primary; the other redirects to it. `add` adds both by default, so a bare
   domain gets `www` too. DeployHQ skips the other half without an error for a

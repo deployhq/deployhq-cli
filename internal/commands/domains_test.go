@@ -601,6 +601,49 @@ func TestDomainsCheck_RateLimitedSaysWhenToRetry(t *testing.T) {
 	assert.True(t, data.Retryable, "agents can repeat a rate-limited check")
 }
 
+func TestDomainsCheck_RateLimitJSONHasNumericRetryAfter(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+		"POST " + domainsBase + "/dom-1/refresh": {429,
+			`{"error":"This domain was checked moments ago. Try again shortly.","retry_after":42}`},
+	})
+
+	err := runServersCmd(t, "domains", "check", "www.example.com", "-s", "srv-static")
+	require.Error(t, err)
+
+	raw, marshalErr := json.Marshal(output.ErrorResponseFromErr(err))
+	require.NoError(t, marshalErr)
+	var resp struct {
+		Data map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &resp), string(raw))
+	assert.Equal(t, true, resp.Data["retryable"])
+	assert.Equal(t, float64(42), resp.Data["retry_after"], string(raw))
+
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr))
+	assert.Equal(t, "Try again in 42 seconds.", userErr.Hint, "the human text is unchanged")
+	assert.NotContains(t, err.Error(), "retry_after")
+}
+
+func TestDomainsCheck_RateLimitWithoutRetryAfterOmitsTheField(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":           {200, domainsServersJSON},
+		"GET " + domainsBase:                     {200, "[" + domainJSON + "]"},
+		"POST " + domainsBase + "/dom-1/refresh": {429, `{"error":"Slow down"}`},
+	})
+
+	err := runServersCmd(t, "domains", "check", "www.example.com", "-s", "srv-static")
+	require.Error(t, err)
+
+	raw, marshalErr := json.Marshal(output.ErrorResponseFromErr(err))
+	require.NoError(t, marshalErr)
+	assert.NotContains(t, string(raw), "retry_after")
+}
+
 func TestDomainsCheck_NotPendingIsExplained(t *testing.T) {
 	withResolvableContext(t)
 	domainsAPI(t, map[string]cannedResponse{

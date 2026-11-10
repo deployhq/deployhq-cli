@@ -248,7 +248,7 @@ func explainDomainsError(err error, target domainsTarget) error {
 		if apiErr.RetryAfter > 0 {
 			hint = fmt.Sprintf("Try again in %d seconds.", apiErr.RetryAfter)
 		}
-		return &output.UserError{Message: msg, Hint: hint, Retryable: true}
+		return &output.UserError{Message: msg, Hint: hint, Retryable: true, RetryAfter: apiErr.RetryAfter}
 	case apiErr.StatusCode == 503:
 		msg := apiErr.Message
 		if msg == "" {
