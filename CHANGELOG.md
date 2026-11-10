@@ -59,6 +59,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   refuse with `project_ambiguous` (exit 1) and nothing is created; a failed
   create reports `project_create_failed`. `--dry-run` creates nothing and reports
   `would.create_project` and `would.project_name`.
+- **`dhq launch --static --vps` is refused (exit 1)** before any API call. Static
+  Hosting used to win silently and a real deploy followed.
 
 ### Changed
 

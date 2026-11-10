@@ -1032,3 +1032,21 @@ func TestLaunchCommand_DryRunWithCustomDomainMakesNoChanges(t *testing.T) {
 		assert.False(t, strings.HasPrefix(req, "POST /projects/"), "dry run must not change anything: %s", req)
 	}
 }
+
+func TestLaunchCommand_StaticWithVPSRefusedBeforeAnyRequest(t *testing.T) {
+	for name, args := range map[string][]string{
+		"without a custom domain": {"launch", "--static", "--vps", "--json"},
+		"with a custom domain":    {"launch", "--static", "--vps", "--custom-domain", "example.com", "--json"},
+		"as a dry run":            {"launch", "--static", "--vps", "--dry-run", "--json"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			withResolvableContext(t)
+			calls := domainsAPI(t, map[string]cannedResponse{})
+			_, err := runCmdCapturingStdout(t, args...)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "--static and --vps cannot be used together")
+			assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+			assert.Empty(t, *calls, "refused before any API call")
+		})
+	}
+}

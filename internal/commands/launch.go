@@ -363,6 +363,13 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := cliCtx.Envelope
 
+			if flagStatic && flagVPS {
+				return &output.UserError{
+					Message: "--static and --vps cannot be used together",
+					Hint:    "Choose one: --static for Static Hosting, or --vps for a Managed VPS.",
+				}
+			}
+
 			// Local --non-interactive flag merges with the global one.
 			if flagNonInteract {
 				env.NonInteractive = true
