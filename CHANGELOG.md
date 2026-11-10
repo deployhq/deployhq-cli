@@ -64,6 +64,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **A rate-limited `dhq domains` command reports `retry_after`** as a number of
   seconds in its `--json` error, next to `retryable`, instead of only in the
   suggestion text.
+- **`dhq domains` uses the configured server when `-s` is absent**: `-s` first,
+  then `DEPLOYHQ_SERVER`, then `server` in `.deployhq.toml`, which `dhq launch`
+  writes. It used to exit 2 asking for `-s`. `--global` still needs `-s`, because
+  the configured server belongs to the folder's project. With no server at all
+  the error now exits 1.
 
 ### Changed
 

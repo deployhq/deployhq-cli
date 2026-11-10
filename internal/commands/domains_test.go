@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -1059,4 +1062,86 @@ func TestWriteDNSRecords_NoApexNoteForSubdomain(t *testing.T) {
 	writeDNSRecords(env, d, "dhq domains show www.example.com")
 	assert.NotContains(t, stderr.String(), "root domain")
 	assert.NotContains(t, stderr.String(), "not issued yet")
+}
+
+// inFolderLinkedTo moves the test into a folder whose .deployhq.toml names
+// project and server, with no global config to interfere.
+func inFolderLinkedTo(t *testing.T, project, server string) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("DEPLOYHQ_PROJECT", "")
+	t.Setenv("DEPLOYHQ_SERVER", "")
+	toml := fmt.Sprintf("project = %q\nserver = %q\n", project, server)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".deployhq.toml"), []byte(toml), 0o600))
+	t.Chdir(dir)
+}
+
+func TestDomainsList_UsesServerFromProjectConfig(t *testing.T) {
+	withResolvableContext(t)
+	inFolderLinkedTo(t, "my-app", "srv-static")
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "list"))
+	require.NotEmpty(t, *calls)
+	assert.Equal(t, domainsBase, (*calls)[len(*calls)-1].path)
+}
+
+func TestDomains_EnvironmentServerBeatsProjectConfig(t *testing.T) {
+	withResolvableContext(t)
+	inFolderLinkedTo(t, "my-app", "srv-ssh")
+	t.Setenv("DEPLOYHQ_SERVER", "srv-static")
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "list"))
+	assert.Equal(t, domainsBase, (*calls)[len(*calls)-1].path)
+}
+
+func TestDomains_ExplicitServerBeatsProjectConfig(t *testing.T) {
+	withResolvableContext(t)
+	inFolderLinkedTo(t, "my-app", "srv-ssh")
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "list", "-s", "My Site"))
+	assert.Equal(t, domainsBase, (*calls)[len(*calls)-1].path)
+}
+
+// The configured server belongs to the folder's project, so it never names a
+// global server.
+func TestDomains_GlobalIgnoresServerFromProjectConfig(t *testing.T) {
+	withResolvableContext(t)
+	inFolderLinkedTo(t, "my-app", "srv-static")
+	calls := domainsAPI(t, map[string]cannedResponse{})
+
+	err := runServersCmd(t, "domains", "list", "--global")
+
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Equal(t, "--server is required", userErr.Message)
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Empty(t, *calls)
+}
+
+func TestDomains_NoServerAnywhereIsAUserError(t *testing.T) {
+	withResolvableContext(t)
+	inFolderLinkedTo(t, "my-app", "")
+	calls := domainsAPI(t, map[string]cannedResponse{})
+
+	err := runServersCmd(t, "domains", "list")
+
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Equal(t, "--server is required", userErr.Message)
+	assert.Contains(t, userErr.Hint, "-s")
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Empty(t, *calls)
 }

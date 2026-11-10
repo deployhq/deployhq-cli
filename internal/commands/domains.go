@@ -58,8 +58,9 @@ func newDomainsCmd() *cobra.Command {
 ` + customDomainRules + `
 
 Every command takes the project (-p) and the Static Hosting server (-s, name or
-identifier). For a global Static Hosting server, pass --global instead of the
-project. Other server types do not support custom domains.`,
+identifier). Without -s, the server from DEPLOYHQ_SERVER or .deployhq.toml is
+used; dhq launch saves it there. For a global Static Hosting server, pass --global
+instead of the project, with -s. Other server types do not support custom domains.`,
 		Example: `  dhq domains add www.example.com -p my-site -s "My Site"
   dhq domains list -p my-site -s "My Site"
   dhq domains show www.example.com -p my-site -s "My Site"
@@ -84,12 +85,10 @@ type domainsServerFlags struct {
 	global bool
 }
 
-// addDomainsServerFlags registers the required -s/--server flag and --global,
-// and refuses --global alongside a --project given on this command line. A
+// addDomainsServerFlags registers the -s/--server flag and --global, and refuses --global alongside a --project given on this command line. A
 // default project from the config or environment does not conflict.
 func addDomainsServerFlags(cmd *cobra.Command, f *domainsServerFlags) {
-	cmd.Flags().StringVarP(&f.server, "server", "s", "", "Static Hosting server (name or identifier, required)")
-	_ = cmd.MarkFlagRequired("server")
+	cmd.Flags().StringVarP(&f.server, "server", "s", "", "Static Hosting server, name or identifier (default: the server in .deployhq.toml; required with --global)")
 	cmd.Flags().BoolVar(&f.global, "global", false, "--server is a global server (no project needed)")
 	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
 		if f.global && cmd.Flags().Changed("project") {
@@ -128,9 +127,14 @@ func (t domainsTarget) listServersCmd() string {
 }
 
 // openDomainsTarget resolves the flags to a server: the project (unless
-// --global) and the -s value, as a name or an identifier.
+// --global) and the -s value, as a name or an identifier. Without -s it uses the
+// configured server, which comes from the environment or .deployhq.toml. That
+// server belongs to the folder's project, so it never stands in for --global.
 func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, domainsTarget, error) {
 	target := domainsTarget{server: strings.TrimSpace(f.server), global: f.global}
+	if target.server == "" && !f.global {
+		target.server = strings.TrimSpace(cliCtx.Config.Server)
+	}
 	if !f.global {
 		projectID, err := cliCtx.RequireProject()
 		if err != nil {
@@ -158,10 +162,11 @@ func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, 
 func resolveDomainsServer(ctx context.Context, client *sdk.Client, target domainsTarget) (string, error) {
 	in := target.server
 	if in == "" {
-		return "", &output.UserError{
-			Message: "--server is required",
-			Hint:    "Find the Static Hosting server with: " + target.listServersCmd(),
+		hint := "Pass it with -s. Find the Static Hosting server with: " + target.listServersCmd()
+		if !target.global {
+			hint += "\nTo remember it for this folder: dhq config set server <identifier>"
 		}
+		return "", &output.UserError{Message: "--server is required", Hint: hint}
 	}
 	// A canonical UUID is taken as an identifier without a listing.
 	if isCanonicalUUID(in) {

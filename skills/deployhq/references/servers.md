@@ -117,7 +117,10 @@ other server types return not-found). Launching a new site? `dhq launch
 
 - Name the server with `-p <project> -s <server>`, or `--global -s <server>`
   for a global Static Hosting server (no project needed; adding, removing or
-  checking a domain on one needs an account administrator).
+  checking a domain on one needs an account administrator). `-s` can be left
+  out in a folder `dhq launch` has set up: the `server` in `.deployhq.toml` (or
+  `DEPLOYHQ_SERVER`) is used, and an explicit `-s` wins. `--global` always needs
+  `-s`.
 - A rate-limited command (a `check` repeated within a minute, too many changes)
   exits 1 with `retryable: true` and, when known, `retry_after` in seconds in
   its `--json` error. Wait that long before repeating it.
