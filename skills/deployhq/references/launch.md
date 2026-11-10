@@ -32,6 +32,7 @@ agent runs `dhq launch`. A good sequence:
   any must not be published (a deploy script, local config), create the project first
   with `dhq projects create`, add them with `dhq excluded-files create -p <permalink> --path <path>`,
   then run `dhq launch --project <permalink>`.
+- **Your own domain (Static Hosting):** `dhq launch --custom-domain example.com` (a bare domain gets `www` too by default). The site is live at once on its `deployhq-sites.com` address; the domain only goes live after the person publishes the DNS records `launch` prints. See "Custom domains" below.
 - Offer the choice: run `dhq launch`, or go step by step (`dhq projects create`,
   `dhq repos create`, `dhq beta enroll`, `dhq servers create --protocol-type static_hosting`,
   `dhq deploy`), approving each action on its own. See "Set up DeployHQ for this
@@ -56,6 +57,9 @@ dhq launch --vps
 dhq launch --static --subdomain my-app --json
 dhq launch --vps --accept-cost --region lon1 --size s-1vcpu-1gb --json
 
+# Static Hosting on your own domain
+dhq launch --static --subdomain my-app --custom-domain example.com --json
+
 # Inspect intended actions + cost without doing anything (no side effects)
 dhq launch --vps --dry-run --json
 ```
@@ -64,14 +68,16 @@ dhq launch --vps --dry-run --json
 
 | Flag | Description |
 |------|-------------|
-| `--static` | Force Static Hosting target (skips the target prompt) |
-| `--vps` | Force Managed VPS target |
+| `--static` | Force Static Hosting target (skips the target prompt). Refused with `--vps` (exit 1) |
+| `--vps` | Force Managed VPS target. Refused with `--static` (exit 1) |
 | `--subdomain` | Static Hosting subdomain (default: repo / project name) |
+| `--custom-domain` | Static Hosting only, paid plans only: a custom domain for the site (e.g. `www.example.com`). Refused with `--vps` (exit 1). `launch` waits up to a minute for the domain's registration, then reports the DNS records to publish |
+| `--no-pair` | With `--custom-domain`: add only that hostname, not the other half of its apex and www pair (added by default; DeployHQ skips it silently for a hostname that is neither an apex nor its www form, and on a site that already has another custom domain). Refused without `--custom-domain` (exit 1) |
 | `--region` | Managed VPS region slug (e.g. `lon1`, `nyc3`). List via `dhq api GET /managed_hosting/regions` |
 | `--size` | Managed VPS size slug (e.g. `s-1vcpu-1gb`). List via `dhq api GET /managed_hosting/sizes` |
 | `--accept-cost` | Acknowledge Managed VPS provisioning — free for early customers during beta, billed monthly afterwards. **Required** for non-interactive VPS provisioning |
 | `--branch` | Branch to deploy (default: repo default) |
-| `--project` | Existing project permalink to reuse (skips project creation) |
+| `--project` | Existing project permalink to reuse (skips project creation). Without it, see "Which project a launch uses" |
 | `--cleanup-on-failure` | Delete the provisioned server if the deploy fails (prevents orphaned managed resources) |
 | `--non-interactive` / `--yes` | Never prompt; fail fast with structured errors. Auto-enabled for agents / piped output |
 | `--interactive` | Force prompts even in a piped / agent context |
@@ -82,8 +88,9 @@ dhq launch --vps --dry-run --json
 
 - **Config precedence:** flags → env (`DEPLOYHQ_*`) → `.deployhq.toml` → framework detection. A missing required value with no TTY fails fast naming the exact flag — it never hangs.
 - **Cost guardrail:** a Managed VPS is a managed resource (free for early customers during beta, billed monthly afterwards); in non-interactive mode it is **never** provisioned without `--accept-cost` (`--yes` alone is not enough). Static Hosting is safe under `--yes`.
-- **`--dry-run`** emits `{would, requires, warning}` and makes no changes — use it to preview cost and confirm before provisioning a Managed VPS.
-- **Success (`--json`)** emits one object: `{status, target, url, project, server, deployment}`. In plain mode the final stdout line is the live URL.
+- **Which project a launch uses:** `--project`, `DEPLOYHQ_PROJECT` or `.deployhq.toml` when set. Otherwise, without prompting: the account's only project if it has exactly one (whichever repository it is connected to), else the one project connected to this repository, else a new project named after the repository, created and connected by the launch. So an empty account needs no `dhq projects create` first. Two projects connected to this repository, or a project with the repository's name on another repository, stop with `project_ambiguous` and nothing is created.
+- **`--dry-run`** emits `{would, requires, warning}` and makes no changes — use it to preview cost and confirm before provisioning a Managed VPS. `would.project` is the existing project it would use; `would.create_project` and `would.project_name` are set when it would create one instead; `requires` lists `a git remote` when there is none. It stops with the same `project_ambiguous` error a real launch would.
+- **Success (`--json`)** emits one object: `{status, target, url, project, server, deployment, custom_domain}`, with `custom_domain` present only when one was asked for. In plain mode the final stdout line is the live URL, and the DNS records go to stderr.
 - **Idempotent:** re-running reads `.deployhq.toml` and resolves the existing project/server instead of double-provisioning.
 - **Eligibility is checked before anything is created:** the `plan_limit_reached` check runs before a project is created or a repository connected. Whether the account has a payment method on file cannot be checked in advance, so that refusal only arrives at provisioning time, as `payment_method_required`.
 
@@ -100,12 +107,39 @@ On failure the error carries a stable `reason`, a `retryable` boolean, a `next_s
 | `beta_enroll_required` | 1 | Managed-resources beta not enabled and the user isn't an admin — `details.admin_required=true`; an admin enables it (or use your own server via `dhq init`) |
 | `accept_cost_required` | 1 | Managed VPS requested non-interactively without `--accept-cost` — re-run with `--accept-cost` |
 | `repo_unreachable` | 1 | No git remote DeployHQ can deploy from, or DeployHQ rejected the repository (for SSH URLs usually a missing deploy key; `next_step` has the key and how to resume). A failure while connecting keeps its own code: 4 for a network failure, 2 for a server error, 3 for 401/403, 5 for 404 |
+| `project_ambiguous` | 1 | No project is configured and more than one could be meant; nothing was created. `details.projects` lists the permalinks: ask the person, then re-run with `--project <permalink>` |
+| `project_create_failed` | 1 | No project is configured and creating one failed; the message has the API's reason. Fix it and re-run, or create it with `dhq projects create` and pass `--project`. A network or server failure keeps its own code (4 or 2), and 401/403 is 3 |
 | `plan_limit_reached` | 1 | Free-plan limit hit (e.g. 1 static site) — upgrade or remove an existing resource |
 | `payment_method_required` | 1 | Provisioning was refused because the account has no accepted payment method for the hosting requested (a Managed VPS always needs one). A person must add a card at `details.payment_url` (the account's Payment Details page); an agent cannot do this. If `details.project_created` is `true`, the project named in `details.project` was created by this run and has no server: re-run the same `dhq launch` command with `--project <permalink>` added once the card is in place (the project is also saved to `.deployhq.toml`), or remove it with `dhq projects delete <permalink>`. `launch` never deletes it automatically |
 | `subdomain_taken` | 6 | Static Hosting subdomain already in use — choose another `--subdomain` |
+| `custom_domain_invalid` | 1 | The API refused the hostname given with `--custom-domain` (not a valid domain, or one DeployHQ cannot use, or already in use). No server was created. Pass a different `--custom-domain`, or launch without it and add the domain later with `dhq domains add`. If `details.project_created` is `true`, this run created the project named in `details.project`, as with `payment_method_required` |
 | `rate_limited` | 1 | Per-account provisioning rate limit hit (HTTP 429) — **retryable** (`retryable: true`); back off for `details.retry_after` seconds and re-run the same command. Distinct from `plan_limit_reached` (a hard 422 cap) |
 | `provision_failed` | 2 | The server failed to provision — check the named resource; retry. 2 is for a server-side or unknown failure; a network failure keeps its own code (4), and a refused API call keeps its own (1 for a 422, 3 for 401/403, 5 for 404) |
 | `deploy_failed` | 2 | Provisioning succeeded but the deploy failed — the managed-resource server is named with its teardown command; `--cleanup-on-failure` removes it automatically. A failure with a known kind (auth, network, not found) keeps its own code |
+
+## Custom domains
+
+A custom domain is requested along with the site. It is reported in the JSON
+result under `custom_domain`, whose `status` is one of:
+
+| `custom_domain.status` | Meaning | What to do |
+|---|---|---|
+| `dns_records_required` | The domain is on the site. `custom_domain.domains[].dns_records` holds the CNAME and TXT records | Hand both records to the person (for an apex domain they use an ALIAS/ANAME or CNAME flattening). It goes live automatically once both are detected |
+| `registering` | Still being set up when `launch` stopped waiting (a minute): the TXT record is not issued yet | Get it later with `dhq domains show <domain> -p <project> -s <server> --json` |
+| `active` | The domain is live | Nothing |
+| `failed` | Registering it failed; `custom_domain.errors` says why | `next_step`: remove it and add it again with `dhq domains` |
+| `expired` | A re-run found the domain on the site, but it was not verified in time: publishing DNS records will not bring it back. The site itself is live | `next_step` has the exact commands: remove it, then add it again, and hand the person the new records |
+| `not_added` | The domain was refused (no paid plan, too many requests) or the server does not support this: nothing was added | Read `custom_domain.errors`, then follow `custom_domain.next_step`. `custom_domain.retryable` is `true` for a rate limit |
+
+Only a hostname the API refuses (`custom_domain_invalid`, exit 1) fails the launch:
+any other problem with the domain leaves `launch` exiting 0 with `status: "live"`,
+because the site is up. `url` stays the `deployhq-sites.com` address until the domain
+is `active`; report that address to the person until then.
+
+`dhq launch --custom-domain` on a folder that has already launched adds the domain
+to the existing site, or reports it if it is already there. `--dry-run` shows the
+domain under `would` without calling the API. With a terminal and no flag, `launch`
+offers to add a custom domain; it never asks when no one is there to answer.
 
 ## Notes
 

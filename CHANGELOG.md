@@ -9,6 +9,72 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 ## [Unreleased]
 
+### Added
+
+- **`dhq domains list | show | add | remove | check`**: custom domains for a
+  Static Hosting site, scoped by `-p <project>` and `-s <server>` (name or
+  identifier), or by `--global -s <server>` for a global server (no project
+  needed). `add` prints the two DNS records to create (the CNAME, with an
+  ALIAS/ANAME note for an apex domain, and the TXT ownership record); the
+  domain goes live automatically once both are detected. `add` also adds the
+  other half of the apex and www pair by default, so a bare domain gets `www`
+  too; `--no-pair` adds only the hostname you typed. DeployHQ registers a domain in
+  the background and the TXT record exists only once that finishes, so `add`
+  waits up to a minute for it: `--no-wait` skips the wait and prints what the
+  server returned; if the wait runs out, `add` says so, exits 0 and names the
+  command that shows the records later; a domain that cannot be set up prints
+  the reason and exits non-zero. `check` asks for a pending domain to be
+  checked now (at most once a minute). `show` repeats the records and any
+  verification errors. `remove` takes a hostname or identifier and asks for
+  confirmation unless `--yes`, which non-interactive mode requires. Custom
+  domains need a paid plan: that refusal now explains itself (error code
+  `paid_plan_required`, with the API's hint and a link to the plans page).
+- **`dhq launch --custom-domain <hostname>` and `--no-pair`**: launch Static
+  Hosting on your own domain. Refused with `--vps` (exit 1). A hostname the API
+  refuses fails the launch with `custom_domain_invalid` (exit 1) and nothing is
+  provisioned; any other problem with the domain (no paid plan, rate limit,
+  failed registration) leaves the launch exiting 0 and `status: "live"`, with the
+  problem and a concrete `next_step` under `custom_domain` in `--json`. After the
+  deploy, launch waits up to a minute for the domain to register and prints the
+  CNAME and TXT records to publish, on stderr so the final stdout line stays the
+  live URL. The site keeps its `deployhq-sites.com` URL until the domain is live.
+  Re-running launch adds the domain to the existing site, or reports it if it is
+  already there.
+- **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`,
+  `RefreshCustomDomain`, scoped with `ProjectServerDomains` or
+  `GlobalServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.
+  Error responses with an `error_code` but no `error` field now report the code
+  rather than the raw JSON body. `APIError.RetryAfter` also reads a
+  `retry_after` in the response body when the header is missing.
+
+### Fixed
+
+- **`dhq launch` works non-interactively with no project configured**, so an
+  agent or CI job can launch from an empty account. It used to stop with "No
+  project specified". It now reuses the project already connected to this
+  repository, or creates one named after the repository as the interactive
+  "Create a new project" choice does. With exactly one project in the account
+  that project is still used, as before. Two projects connected to the
+  repository, or a project with the repository's name on another repository,
+  refuse with `project_ambiguous` (exit 1) and nothing is created; a failed
+  create reports `project_create_failed`. `--dry-run` creates nothing and reports
+  `would.create_project` and `would.project_name`.
+- **`dhq launch --static --vps` is refused (exit 1)** before any API call. Static
+  Hosting used to win silently and a real deploy followed.
+- **A rate-limited `dhq domains` command reports `retry_after`** as a number of
+  seconds in its `--json` error, next to `retryable`, instead of only in the
+  suggestion text.
+- **`dhq domains` uses the configured server when `-s` is absent**: `-s` first,
+  then `DEPLOYHQ_SERVER`, then `server` in `.deployhq.toml`, which `dhq launch`
+  writes. It used to exit 2 asking for `-s`. `--global` still needs `-s`, because
+  the configured server belongs to the folder's project. With no server at all
+  the error now exits 1.
+
+### Changed
+
+- **Installed copies of the skill are reported as outdated** (its version is
+  now 3), so they pick up `dhq domains`.
+
 ## [0.25.0] - 2026-11-06
 
 ### Added
