@@ -191,6 +191,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - User mentions "environment variable", "env var", "config", "secret" → configuration
 - User mentions "branch", "commit", "repository" → repo management
 - User mentions a custom domain, "my domain", "www", "DNS records" for a site → "Put this site on my own domain"; check with the person before adding or removing one
+- User says they published DNS records or asks whether their domain is live → `dhq domains check` then `dhq domains show` (a public DNS lookup cannot tell you whether DeployHQ has verified it)
 - User mentions "set up DeployHQ", "deploy this site/repo" for the first time → "Set up DeployHQ for this project": ask about their account, then where to deploy
 - User mentions "managed hosting", "managed VPS", "static hosting" → DeployHQ hosting; offer the step-by-step path or `dhq launch` and let the person choose (see [launch.md](references/launch.md))
 - User mentions "DeployHQ", "deployhq", "dhq" → general CLI usage
