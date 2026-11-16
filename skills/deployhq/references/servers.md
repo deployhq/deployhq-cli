@@ -117,7 +117,8 @@ URLs end in a slash, so existing links and search rankings keep working. With
 Files with an extension (`/style.css`) are never redirected. `dhq servers update
 <server> -p <project> --trailing-slash force` changes it on an existing site
 (`dhq global-servers update <id> --trailing-slash force` for a global one); the
-CLI warns if the server is not a Static Hosting site or does not confirm the mode.
+CLI warns if the server does not confirm the mode, and an update that sends only
+`--trailing-slash` to another server type is refused with that explanation.
 
 **Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;
 other server types return not-found). Launching a new site? `dhq launch
@@ -137,12 +138,18 @@ other server types return not-found). Launching a new site? `dhq launch
   the account and site (a `422` says when the limit is reached). The first
   added is the primary, and every non-primary domain redirects to the primary.
   `primary` makes another active domain the primary (a domain that is not
-  active is refused with the reason). For an apex or `www` hostname, `add`
-  adds the other half of the pair by default, so a bare domain gets `www` too.
-  DeployHQ skips the other half without an error for a hostname that is
-  neither an apex nor its www form, and on a site that already has another
-  custom domain. `--no-pair` adds only the typed hostname. Read
-  `counterpart` and `counterpart_errors` in the output.
+  active is refused with the reason; while a deployment of the site is
+  running it is refused with a retryable error, and nothing changes). For an
+  apex or `www` hostname, `add` adds the other half of the pair by default, so
+  a bare domain gets `www` too, on the first domain of a site and on later ones
+  alike. The other half is never primary: it redirects to the typed hostname
+  on a site with no custom domains yet, and to the site's primary otherwise.
+  DeployHQ skips it without an error for a hostname that is neither an apex
+  nor its www form, and when it is already one of the site's custom domains.
+  When the site has no room left for it, it is refused in
+  `counterpart_errors` (a warning; the typed hostname is still added).
+  `--no-pair` adds only the typed hostname. Read `counterpart` and
+  `counterpart_errors` in the output.
 - DeployHQ registers the domain in the background and `add` waits up to a
   minute for the TXT record. `--no-wait` skips that. While `registering` is
   `true`, `dns_records` holds only the CNAME: get the rest with `show`. If the
@@ -190,8 +197,9 @@ server types return not-found). Server flags as for `dhq domains`: `-p <project>
 - File rules are checked first: if both match a URL, the file wins. `list`
   shows the managed rules, then the file's rules and skipped lines
   (`file_rules`, `file_warnings`, from the active deployment; `deployment_uuid`
-  is null before the first deploy). A managed rule with `shadowed_by` never
-  applies: a file rule (named by its line) matches first.
+  is null before the first deploy). A managed rule with `shadowed_by` is
+  overridden, for some or all of the URLs it matches, by a file rule (named by
+  its line) that is checked first.
 - Unsupported lines in the file are skipped with a warning, never approximated:
   200 rewrites, 404 lines and `Country`/`Language`/`Role`/`Cookie` conditions.
 - Sources are paths (`/old`, `/blog/:slug`, `/docs/*`); destinations are paths
@@ -203,9 +211,9 @@ server types return not-found). Server flags as for `dhq domains`: `-p <project>
   keys must be present (`p=123` requires that exact value); other parameters
   (`utm_*`) do not stop a match. Several: `"p=:id lang=en"`.
 - `add` appends unless `--position N`. `update <identifier>` changes only the
-  flags given (`--query ""` removes the query matcher). `reorder <id>...` sends
-  the identifiers in the new order; the API refuses an order it cannot apply,
-  and the CLI relays the reason. `remove` needs `--yes` in non-interactive mode
+  flags given (`--query ""` removes the query matcher; `--position N` moves
+  the rule). `reorder <id>...` must name every rule of the site exactly once,
+  in the new order; any other list is refused and nothing moves. `remove` needs `--yes` in non-interactive mode
   and only removes managed rules (a file rule goes by editing the file and
   deploying). Identifiers come from `list`.
 
@@ -215,6 +223,7 @@ dhq servers redirects add /old-page /new-page -p my-site -s "My Site" --json
 dhq servers redirects add / /posts/:id --query "p=:id" -p my-site -s "My Site" --json   # WordPress ?p=123
 dhq servers redirects add /blog/* /news/:splat --status 302 --position 1 -p my-site -s "My Site" --json
 dhq servers redirects update <identifier> --destination /articles/:id -p my-site -s "My Site" --json
+dhq servers redirects update <identifier> --position 1 -p my-site -s "My Site" --json   # check it first
 dhq servers redirects reorder <identifier> <identifier> -p my-site -s "My Site" --json
 dhq servers redirects remove <identifier> -p my-site -s "My Site" --yes --json
 ```

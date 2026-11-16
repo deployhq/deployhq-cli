@@ -46,15 +46,18 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   away, without a deploy. `add <source> <destination>` takes `--status` (301,
   302, 307 or 308, checked before any request), `--query "p=:id"` to match
   query parameters (e.g. WordPress `?p=` links) and `--position`. `update
-  <identifier>` sends only the flags given; `--query ""` removes the matcher.
-  `reorder <identifier>...` sets the order rules are checked in. `remove` asks
+  <identifier>` sends only the flags given; `--query ""` removes the matcher
+  and `--position` moves the rule. `reorder <identifier>...` sets the order
+  rules are checked in and must name every rule exactly once. `remove` asks
   for confirmation unless `--yes`, which non-interactive mode requires. `list`
   also shows the rules and skipped lines of the active deployment's
   `_redirects` file (checked first, so it wins), and warns about a rule that a
-  file rule hides.
+  file rule overrides for some or all of the URLs it matches. A failed publish
+  is a retryable error that changed nothing.
 - **`dhq domains primary <hostname>`**: make an active custom domain the one
   visitors land on. A domain that is not active is refused with the reason;
-  one that is already primary is left as it is. The `dhq domains` help now
+  one that is already primary is left as it is. While a deployment of the site
+  is running the change is refused with a retryable error and nothing changes. The `dhq domains` help now
   describes several custom domains per site (as many as the account allows,
   any hostnames), each non-primary one redirecting to the primary.
 - **`--trailing-slash strip|force|preserve`** for Static Hosting on `dhq
@@ -63,8 +66,15 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   treats `/about` and `/about/`. `force` keeps the URLs of a site moved from
   WordPress working. Unknown values, other server types and `--vps` are refused
   before any request. `dhq servers update` warns when the server does not
-  confirm the mode, and a `dhq launch` re-run applies it to the existing site.
-- **SDK**: `ListRedirectRules`, `CreateRedirectRule`, `UpdateRedirectRule`,
+  confirm the mode (a site that never chose one counts as `strip`), explains
+  an update that sends only `--trailing-slash` to another server type, and a
+  `dhq launch` re-run applies it to the existing site.
+- **`dhq domains add`** (and `dhq launch --custom-domain`) help and the skill
+  now say the other half of the apex and www pair is also offered on later
+  adds, redirecting to the site's primary domain; it is skipped only when it
+  is already on the site or the hostname has no pair.
+- **SDK**: `ListRedirectRules`, `CreateRedirectRule`, `UpdateRedirectRule`
+  (`RedirectRuleUpdateRequest.Position` moves a rule),
   `DeleteRedirectRule` and `ReorderRedirectRules`, scoped with
   `ProjectServerRedirects` or `GlobalServerRedirects`;
   `MakeCustomDomainPrimary`; `HostedWebsiteAttributes.TrailingSlash`,
