@@ -154,8 +154,12 @@ dhq servers       list | show | create | update | delete | reset-host-key
                   protocols: ssh, ftp, ftps, rsync, s3, s3_compatible, digitalocean,
                              hetzner_cloud, heroku, netlify, shopify,
                              static_hosting (beta), managed_vps (beta)
+                  (static_hosting: --trailing-slash strip|force|preserve)
+dhq servers redirects list | add | update | remove | reorder -p <project> -s <server>
+                  (redirect rules for a Static Hosting site, alongside its
+                  _redirects file; --global -s <server> for a global server)
 dhq server-groups list | show | create | update | delete
-dhq domains       list | show | add | remove | check -p <project> -s <server>
+dhq domains       list | show | add | remove | check | primary -p <project> -s <server>
                   (custom domains for a Static Hosting site; paid plans;
                   --global -s <server> for a global server; add --no-pair --no-wait)
 dhq deployments   list | show | create | abort | rollback | logs | watch

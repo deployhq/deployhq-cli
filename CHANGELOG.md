@@ -40,6 +40,33 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   live URL. The site keeps its `deployhq-sites.com` URL until the domain is live.
   Re-running launch adds the domain to the existing site, or reports it if it is
   already there.
+- **`dhq servers redirects list | add | update | remove | reorder`**: redirect
+  rules for a Static Hosting site, scoped like `dhq domains` (`-p` and `-s`, or
+  `--global -s`; `-s` defaults to the configured server). Rules apply straight
+  away, without a deploy. `add <source> <destination>` takes `--status` (301,
+  302, 307 or 308, checked before any request), `--query "p=:id"` to match
+  query parameters (e.g. WordPress `?p=` links) and `--position`. `update
+  <identifier>` sends only the flags given; `--query ""` removes the matcher.
+  `reorder <identifier>...` sets the order rules are checked in. `remove` asks
+  for confirmation unless `--yes`, which non-interactive mode requires. `list`
+  also shows the rules and skipped lines of the active deployment's
+  `_redirects` file (checked first, so it wins), and warns about a rule that a
+  file rule hides.
+- **`dhq domains primary <hostname>`**: make an active custom domain the one
+  visitors land on. A domain that is not active is refused with the reason;
+  one that is already primary is left as it is.
+- **`--trailing-slash strip|force|preserve`** for Static Hosting on `dhq
+  servers create`, `dhq servers update` and `dhq launch --static`: how the site
+  treats `/about` and `/about/`. `force` keeps the URLs of a site moved from
+  WordPress working. Unknown values, other server types and `--vps` are refused
+  before any request. `dhq servers update` warns when the server does not
+  confirm the mode, and a `dhq launch` re-run applies it to the existing site.
+- **SDK**: `ListRedirectRules`, `CreateRedirectRule`, `UpdateRedirectRule`,
+  `DeleteRedirectRule` and `ReorderRedirectRules`, scoped with
+  `ProjectServerRedirects` or `GlobalServerRedirects`;
+  `MakeCustomDomainPrimary`; `HostedWebsiteAttributes.TrailingSlash`,
+  `ServerUpdateRequest.HostedWebsite` (sent as top-level
+  `hosted_website_attributes`) and `StaticHostingInfo.TrailingSlash`.
 - **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`,
   `RefreshCustomDomain`, scoped with `ProjectServerDomains` or
   `GlobalServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.

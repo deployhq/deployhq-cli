@@ -792,6 +792,88 @@
       },
       "must_not_contain": ["-p "],
       "notes": "Global servers take --global instead of a project."
+    },
+    {
+      "id": "redirect-wordpress-query",
+      "category": "redirects",
+      "prompt": "My old WordPress links look like example.com/?p=123. On server srv-1 of my-site, redirect them to /posts/123",
+      "expected": {
+        "command": "dhq servers redirects add",
+        "args": [
+          "/",
+          "/posts/:id"
+        ],
+        "flags": [
+          "--query",
+          "p=:id",
+          "-p",
+          "my-site",
+          "-s",
+          "srv-1"
+        ]
+      },
+      "must_not_contain": [
+        "dhq api"
+      ],
+      "notes": "A query rule: the source is the path, --query matches ?p= and captures it for the destination."
+    },
+    {
+      "id": "redirect-list",
+      "category": "redirects",
+      "prompt": "Which redirects are active on the Static Hosting server srv-1 of project my-site, including the ones from my _redirects file?",
+      "expected": {
+        "command": "dhq servers redirects list",
+        "flags": [
+          "-p",
+          "my-site",
+          "-s",
+          "srv-1"
+        ]
+      },
+      "must_not_contain": [
+        "dhq api"
+      ]
+    },
+    {
+      "id": "trailing-slash-force",
+      "category": "redirects",
+      "prompt": "I moved my site from WordPress and all my URLs end in a slash. Make the Static Hosting server srv-1 in my-site keep the trailing slash",
+      "expected": {
+        "command": "dhq servers update",
+        "args": [
+          "srv-1"
+        ],
+        "flags": [
+          "-p",
+          "my-site",
+          "--trailing-slash",
+          "force"
+        ]
+      },
+      "must_not_contain": [
+        "redirects add"
+      ]
+    },
+    {
+      "id": "custom-domain-make-primary",
+      "category": "domains",
+      "prompt": "Make example.com the primary custom domain of server srv-1 in my-site instead of www.example.com",
+      "expected": {
+        "command": "dhq domains primary",
+        "args": [
+          "example.com"
+        ],
+        "flags": [
+          "-p",
+          "my-site",
+          "-s",
+          "srv-1"
+        ]
+      },
+      "must_not_contain": [
+        "domains remove",
+        "domains add"
+      ]
     }
   ]
 }

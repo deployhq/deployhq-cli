@@ -84,7 +84,7 @@ In non-interactive mode, any ambiguity (e.g. multiple servers, missing required 
 |-------|-------------|-----------|
 | **launch** | All-in-one setup for DeployHQ Static Hosting or a Managed VPS (an option when the person picks DeployHQ hosting) | [launch.md](references/launch.md) |
 | **projects** | Create, list, update, delete projects | [projects.md](references/projects.md) |
-| **servers** | Manage deployment targets (SSH, FTP, S3, etc.); `dhq domains` adds custom domains to a Static Hosting site | [servers.md](references/servers.md) |
+| **servers** | Manage deployment targets (SSH, FTP, S3, etc.); `dhq domains` adds custom domains to a Static Hosting site, `dhq servers redirects` manages its redirect rules | [servers.md](references/servers.md) |
 | **deployments** | Create, monitor, rollback deployments | [deployments.md](references/deployments.md) |
 | **repos** | Repository configuration, branches, commits | [repos.md](references/repos.md) |
 | **configuration** | Env vars, config files, build commands, exclusions, deployment checks, cache files, build languages, known hosts | [configuration.md](references/configuration.md) |
@@ -124,6 +124,13 @@ Small steps, each one something the person can approve on its own:
 3. Hand the person both records from `dns_records` (CNAME, and TXT once `registering` is false; for an apex domain they use an ALIAS/ANAME or CNAME flattening). `dhq domains show <domain> -p <project> -s <server> --json` repeats them.
 4. After they publish the records: `dhq domains check <domain> -p <project> -s <server> --json`, then `dhq domains show` until `status` is `active`. Until then, report the `deployhq-sites.com` URL as the site's address.
 5. Custom domains need a paid plan. `dhq launch` with a domain refused for any reason other than a bad hostname still launches: read `custom_domain.status` and `custom_domain.next_step` in the JSON.
+6. To make another active domain the one visitors land on: `dhq domains primary <domain> -p <project> -s <server> --json`.
+
+### "Keep my old URLs working" (redirects, e.g. after moving from WordPress)
+1. Find the Static Hosting server and see what already applies: `dhq servers redirects list -p <project> -s <server> --json` (managed `rules`, plus `file_rules` and `file_warnings` from the `_redirects` file of the active deployment).
+2. Choose where the rules live, with the person. A `_redirects` file in the published folder (`/old /new 301`, one per line) is versioned with the code and applies on the next deploy: prefer it when the site is generated from the repository or there are many rules. `dhq servers redirects add <source> <destination>` applies straight away without a deploy: use it for a few rules or a quick fix. File rules are checked first and win.
+3. WordPress-style URLs: `dhq servers update <server> -p <project> --trailing-slash force` when the old URLs end in a slash (`/about/`), and a query rule for `?p=` links: `dhq servers redirects add / /posts/:id --query "p=:id" ...` (or the file line `/ p=:id /posts/:id 301`). A new site can start with it: `dhq launch --static --trailing-slash force` or `dhq servers create ... --trailing-slash force`.
+4. Report a rule with `shadowed_by` (a file rule hides it) and any `file_warnings` (skipped lines: 200 rewrites, 404 lines and conditions are not supported). Check with the person before removing or reordering rules.
 
 ### "Check what's deployed"
 1. `dhq deployments list -p <project> --json` — recent deployments
@@ -192,6 +199,7 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - User mentions "branch", "commit", "repository" → repo management
 - User mentions a custom domain, "my domain", "www", "DNS records" for a site → "Put this site on my own domain"; check with the person before adding or removing one
 - User says they published DNS records or asks whether their domain is live → `dhq domains check` then `dhq domains show` (a public DNS lookup cannot tell you whether DeployHQ has verified it)
+- User mentions redirects, old URLs, broken links after a migration, "moving from WordPress", `_redirects`, or a trailing slash on a Static Hosting site → "Keep my old URLs working"
 - User mentions "set up DeployHQ", "deploy this site/repo" for the first time → "Set up DeployHQ for this project": ask about their account, then where to deploy
 - User mentions "managed hosting", "managed VPS", "static hosting" → DeployHQ hosting; offer the step-by-step path or `dhq launch` and let the person choose (see [launch.md](references/launch.md))
 - User mentions "DeployHQ", "deployhq", "dhq" → general CLI usage

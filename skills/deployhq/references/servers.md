@@ -109,6 +109,14 @@ dhq servers show srv-001 -p my-app --json=branch,preferred_branch
 | `--subdomain` | Globally unique subdomain under deployhq-sites.com |
 | `--spa-mode` | Enable SPA routing (rewrites all paths to index.html) |
 | `--subdirectory` | Output subdirectory to publish (e.g. dist) |
+| `--trailing-slash` | `strip` (default: `/about/` redirects to `/about`), `force` (`/about` redirects to `/about/`) or `preserve` (both work, no redirect). Needs `--subdomain` on create; also on `dhq servers update` |
+
+Use `--trailing-slash force` for a site moved from WordPress, or any site whose
+URLs end in a slash, so existing links and search rankings keep working. With
+`preserve` the site answers on both forms, so it should carry canonical tags.
+Files with an extension (`/style.css`) are never redirected. `dhq servers update
+<server> -p <project> --trailing-slash force` changes it on an existing site; the
+CLI warns if the server is not a Static Hosting site or does not confirm the mode.
 
 **Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;
 other server types return not-found). Launching a new site? `dhq launch
@@ -125,7 +133,8 @@ other server types return not-found). Launching a new site? `dhq launch
   exits 1 with `retryable: true` and, when known, `retry_after` in seconds in
   its `--json` error. Wait that long before repeating it.
 - At most 2 domains per site: an apex + www pair. The first added is the
-  primary; the other redirects to it. `add` adds both by default, so a bare
+  primary; the other redirects to it. `primary` makes another active domain
+  the primary (a domain that is not active is refused with the reason). `add` adds both by default, so a bare
   domain gets `www` too. DeployHQ skips the other half without an error for a
   hostname that is neither an apex nor its www form, and on a site that already
   has another custom domain. `--no-pair` adds only the typed hostname. Read
@@ -158,7 +167,52 @@ dhq domains list -p my-site -s "My Site" --json
 dhq domains show www.example.com -p my-site -s "My Site" --json=status,registering,dns_records,verification_errors
 dhq domains check www.example.com -p my-site -s "My Site" --json
 dhq domains remove www.example.com -p my-site -s "My Site" --yes --json
+dhq domains primary example.com -p my-site -s "My Site" --json   # visitors land on example.com
 dhq domains list --global -s "Shared Site" --json   # a global Static Hosting server
+```
+
+**Redirect rules for a Static Hosting site** (`dhq servers redirects`; other
+server types return not-found). Server flags as for `dhq domains`: `-p <project>
+-s <server>`, or `--global -s <server>`, and `-s` defaults to the server in
+`.deployhq.toml`.
+
+- Two sources of rules. A `_redirects` file in the published folder (one rule
+  per line: `/old /new 301`, `/ p=:id /posts/:id 301` for a query rule) is
+  versioned with the code and applies on deploy. Rules managed with these
+  commands apply straight away, without a deploy. Prefer the file when the
+  person's repository is the source of truth (a static-site generator, a
+  migration script that writes redirects); use the commands for one-off fixes
+  or when there is no repository change to make.
+- File rules are checked first: if both match a URL, the file wins. `list`
+  shows the managed rules, then the file's rules and skipped lines
+  (`file_rules`, `file_warnings`, from the active deployment; `deployment_uuid`
+  is null before the first deploy). A managed rule with `shadowed_by` never
+  applies: a file rule (named by its line) matches first.
+- Unsupported lines in the file are skipped with a warning, never approximated:
+  200 rewrites, 404 lines and `Country`/`Language`/`Role`/`Cookie` conditions.
+- Sources are paths (`/old`, `/blog/:slug`, `/docs/*`); destinations are paths
+  or http(s) URLs that can use `:name` captures and `:splat`. Matching ignores a
+  trailing slash. Status: 301 (default), 302, 307 or 308. Rules apply in
+  `position` order and the first match wins, so put specific rules first.
+- `--query` matches query parameters as well as the path: `--query "p=:id"` on
+  source `/` matches WordPress's `/?p=123` and captures `123` as `:id`. Listed
+  keys must be present (`p=123` requires that exact value); other parameters
+  (`utm_*`) do not stop a match. Several: `"p=:id lang=en"`.
+- `add` appends unless `--position N`. `update <identifier>` changes only the
+  flags given (`--query ""` removes the query matcher). `reorder <id>...` sends
+  the identifiers in the new order; the API refuses an order it cannot apply,
+  and the CLI relays the reason. `remove` needs `--yes` in non-interactive mode
+  and only removes managed rules (a file rule goes by editing the file and
+  deploying). Identifiers come from `list`.
+
+```bash
+dhq servers redirects list -p my-site -s "My Site" --json
+dhq servers redirects add /old-page /new-page -p my-site -s "My Site" --json
+dhq servers redirects add / /posts/:id --query "p=:id" -p my-site -s "My Site" --json   # WordPress ?p=123
+dhq servers redirects add /blog/* /news/:splat --status 302 --position 1 -p my-site -s "My Site" --json
+dhq servers redirects update <identifier> --destination /articles/:id -p my-site -s "My Site" --json
+dhq servers redirects reorder <identifier> <identifier> -p my-site -s "My Site" --json
+dhq servers redirects remove <identifier> -p my-site -s "My Site" --yes --json
 ```
 
 **Managed VPS flags (beta, requires managed-resources beta on account):**
@@ -291,6 +345,10 @@ dhq servers create -p my-app --name Netlify --protocol-type netlify \
 # Note: requires managed-resources beta enabled; use `dhq launch` for guided setup
 dhq servers create -p my-app --name "My Site" --protocol-type static_hosting \
   --subdomain my-app --subdirectory dist --json
+
+# Static Hosting site for a former WordPress site (URLs end in a slash)
+dhq servers create -p my-app --name "My Site" --protocol-type static_hosting \
+  --subdomain my-app --trailing-slash force --json
 
 # Managed VPS (beta)
 # Note: requires managed-resources beta enabled; use `dhq launch` for guided setup
