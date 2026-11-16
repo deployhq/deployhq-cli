@@ -22,7 +22,7 @@ const redirectRulesHelp = `Redirect rules come from two places:
     straight away, without a deploy.
 Rules from the _redirects file are checked first: when a rule of each kind
 matches a URL, the file wins. "list" shows both, and which rules here a file
-rule hides. Lines of the file that cannot be honoured (200 rewrites, 404 lines,
+rule overrides. Lines of the file that cannot be honoured (200 rewrites, 404 lines,
 Country/Language/Role/Cookie conditions) are skipped and listed as warnings.
 
 A source is a path such as /old-page, /blog/:slug or /docs/*. A destination is
@@ -114,6 +114,9 @@ func explainRedirectsError(err error, target domainsTarget) error {
 		return err
 	}
 	listCmd := redirectsListCmd(target)
+	if deleting := siteBeingDeletedError(apiErr, target); deleting != nil {
+		return deleting
+	}
 	switch {
 	case apiErr.IsNotFound():
 		return &output.UserError{
@@ -155,7 +158,7 @@ func explainRedirectsError(err error, target domainsTarget) error {
 		}
 		return &output.UserError{
 			Message:   msg,
-			Hint:      "The CDN behind Static Hosting is unavailable right now. Retry in a few minutes, then check the rules with: " + listCmd,
+			Hint:      "Nothing was changed: the rules could not be published to the live site. Retry in a few minutes, then check the rules with: " + listCmd,
 			Retryable: true,
 		}
 	case apiErr.IsValidationError():
@@ -170,6 +173,26 @@ func explainRedirectsError(err error, target domainsTarget) error {
 		}
 	}
 	return err
+}
+
+// explainRedirectsReorderError explains a refused reorder: a 422 for anything
+// but a site being deleted means the identifiers were not every rule exactly
+// once.
+func explainRedirectsReorderError(err error, target domainsTarget) error {
+	var apiErr *sdk.APIError
+	if errors.As(err, &apiErr) && apiErr.IsValidationError() && siteBeingDeletedError(apiErr, target) == nil {
+		msg := strings.Join(apiErr.Errors, "; ")
+		if msg == "" {
+			msg = apiErr.Message
+		}
+		listCmd := redirectsListCmd(target)
+		return &output.UserError{
+			Message:  "Redirect rules not reordered: " + msg,
+			Hint:     "Name every rule of the site exactly once, in the new order, or move one rule with \"update <identifier> --position N\". See the rules with: " + listCmd,
+			Recovery: []output.Breadcrumb{{Action: "list_redirects", Cmd: listCmd + " --json"}},
+		}
+	}
+	return explainRedirectsError(err, target)
 }
 
 // queryText renders a nullable query matcher.
@@ -197,12 +220,12 @@ func writeRedirectRulesTable(env *output.Envelope, rules []sdk.RedirectRule) {
 	env.WriteTable([]string{"Position", "Source", "Query", "Destination", "Status", "Identifier"}, rows)
 }
 
-// warnShadowed says which rules never apply because a _redirects rule matches
-// the same requests first.
+// warnShadowed says which rules a _redirects rule takes over, for some or all
+// of the URLs they match: the file's rules are checked first.
 func warnShadowed(env *output.Envelope, rules []sdk.RedirectRule) {
 	for _, r := range rules {
 		if r.ShadowedBy != nil {
-			env.Warn("Rule %d (%s) never applies: line %d of the _redirects file (%s) matches first.",
+			env.Warn("Rule %d (%s) is overridden, for some or all of the URLs it matches, by line %d of the _redirects file (%s), which is checked first.",
 				r.Position, r.Source, r.ShadowedBy.Line, r.ShadowedBy.Source)
 		}
 	}
@@ -246,7 +269,7 @@ func newRedirectsListCmd() *cobra.Command {
 the rules and skipped lines of the _redirects file of the active deployment.
 
 With --json, "rules" holds the rules managed in DeployHQ (a rule that a file rule
-hides has "shadowed_by"), "file_rules" and "file_warnings" the _redirects file's
+overrides, for some or all of the URLs it matches, has "shadowed_by"), "file_rules" and "file_warnings" the _redirects file's
 rules and skipped lines, and "deployment_uuid" the deployment they come from
 (null before the first deploy).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -358,16 +381,18 @@ go last unless --position is given.
 func newRedirectsUpdateCmd() *cobra.Command {
 	var flags domainsServerFlags
 	var source, destination, query string
-	var status int
+	var status, position int
 	cmd := &cobra.Command{
 		Use:   "update <identifier>",
 		Short: "Change a redirect rule",
 		Long: `Change a redirect rule. Only the flags given are changed. --query "" removes
-the query matcher, so the rule matches on the path alone. Use "reorder" to move
-a rule. Find identifiers with "dhq servers redirects list".`,
+the query matcher, so the rule matches on the path alone. --position moves the
+rule (1 = checked first; past the end moves it last); "reorder" sets the order
+of every rule at once. Find identifiers with "dhq servers redirects list".`,
 		Example: `  dhq servers redirects update <identifier> --destination /new-home -p my-site -s "My Site"
   dhq servers redirects update <identifier> --status 302 -p my-site -s "My Site"
-  dhq servers redirects update <identifier> --query "" -p my-site -s "My Site"`,
+  dhq servers redirects update <identifier> --query "" -p my-site -s "My Site"
+  dhq servers redirects update <identifier> --position 1 -p my-site -s "My Site"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var req sdk.RedirectRuleUpdateRequest
@@ -390,10 +415,16 @@ a rule. Find identifiers with "dhq servers redirects list".`,
 				v := strings.TrimSpace(query)
 				req.Query = &v
 			}
+			if changed("position") {
+				if err := validateRedirectPosition(position); err != nil {
+					return err
+				}
+				req.Position = &position
+			}
 			if req == (sdk.RedirectRuleUpdateRequest{}) {
 				return &output.UserError{
 					Message: "Nothing to change",
-					Hint:    "Pass at least one of --source, --destination, --status or --query.",
+					Hint:    "Pass at least one of --source, --destination, --status, --query or --position.",
 				}
 			}
 
@@ -409,6 +440,9 @@ a rule. Find identifiers with "dhq servers redirects list".`,
 
 			env := cliCtx.Envelope
 			summary := redirectRuleSummary(rule.Source, rule.Query, rule.Destination, rule.Status)
+			if req.Position != nil {
+				summary = fmt.Sprintf("%s, now at position %d", summary, rule.Position)
+			}
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(rule,
 					"Updated redirect "+summary,
@@ -425,6 +459,7 @@ a rule. Find identifiers with "dhq servers redirects list".`,
 	cmd.Flags().StringVar(&destination, "destination", "", "New destination path or URL")
 	cmd.Flags().IntVar(&status, "status", 0, "New status: 301, 302, 307 or 308")
 	cmd.Flags().StringVar(&query, "query", "", `New query matcher, e.g. "p=:id" ("" removes it)`)
+	cmd.Flags().IntVar(&position, "position", 0, "Move the rule to this position (1 = checked first)")
 	return cmd
 }
 
@@ -528,8 +563,10 @@ func newRedirectsReorderCmd() *cobra.Command {
 		Use:   "reorder <identifier>...",
 		Short: "Change the order redirect rules are checked in",
 		Long: `Put the redirect rules in the order given: the first identifier is checked
-first. The first rule that matches a URL applies, so put specific rules before
-general ones (e.g. /blog/archive before /blog/*). Find identifiers with
+first. List every rule of the site exactly once; any other list is refused and
+nothing moves. To move a single rule, use "update <identifier> --position N".
+The first rule that matches a URL applies, so put specific rules before general
+ones (e.g. /blog/archive before /blog/*). Find identifiers with
 "dhq servers redirects list".`,
 		Example: `  dhq servers redirects reorder rr-3 rr-1 rr-2 -p my-site -s "My Site"`,
 		Args:    cobra.MinimumNArgs(1),
@@ -541,7 +578,7 @@ general ones (e.g. /blog/archive before /blog/*). Find identifiers with
 			}
 			rules, err := client.ReorderRedirectRules(ctx, redirectScope(target), args)
 			if err != nil {
-				return explainRedirectsError(err, target)
+				return explainRedirectsReorderError(err, target)
 			}
 
 			env := cliCtx.Envelope

@@ -130,7 +130,7 @@ Small steps, each one something the person can approve on its own:
 1. Find the Static Hosting server and see what already applies: `dhq servers redirects list -p <project> -s <server> --json` (managed `rules`, plus `file_rules` and `file_warnings` from the `_redirects` file of the active deployment).
 2. Choose where the rules live, with the person. A `_redirects` file in the published folder (`/old /new 301`, one per line) is versioned with the code and applies on the next deploy: prefer it when the site is generated from the repository or there are many rules. `dhq servers redirects add <source> <destination>` applies straight away without a deploy: use it for a few rules or a quick fix. File rules are checked first and win.
 3. WordPress-style URLs: `dhq servers update <server> -p <project> --trailing-slash force` when the old URLs end in a slash (`/about/`), and a query rule for `?p=` links: `dhq servers redirects add / /posts/:id --query "p=:id" ...` (or the file line `/ p=:id /posts/:id 301`). A new site can start with it: `dhq launch --static --trailing-slash force` or `dhq servers create ... --trailing-slash force`.
-4. Report a rule with `shadowed_by` (a file rule hides it) and any `file_warnings` (skipped lines: 200 rewrites, 404 lines and conditions are not supported). Check with the person before removing or reordering rules.
+4. Report a rule with `shadowed_by` (a file rule overrides it for some or all of the URLs it matches) and any `file_warnings` (skipped lines: 200 rewrites, 404 lines and conditions are not supported). Check with the person before removing or reordering rules.
 
 ### "Check what's deployed"
 1. `dhq deployments list -p <project> --json` — recent deployments

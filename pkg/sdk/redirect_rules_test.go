@@ -162,3 +162,19 @@ func TestReorderRedirectRules(t *testing.T) {
 	require.Len(t, rules, 2)
 	assert.Equal(t, "rr-2", rules[0].Identifier)
 }
+
+func TestUpdateRedirectRule_SendsPosition(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, map[string]any{"position": float64(1)}, body["redirect_rule"])
+		_, _ = w.Write([]byte(redirectRuleJSON))
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	position := 1
+	_, err := c.UpdateRedirectRule(context.Background(), ProjectServerRedirects("my-app", "srv1"), "rr-1",
+		RedirectRuleUpdateRequest{Position: &position})
+	require.NoError(t, err)
+}

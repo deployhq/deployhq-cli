@@ -133,7 +133,8 @@ func TestWarnShadowed_NamesTheFileLine(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(redirectRulesJSON), &rules))
 
 	warnShadowed(env, rules.Rules)
-	assert.Contains(t, stderr.String(), "Rule 2 (/old) never applies: line 4")
+	assert.Contains(t, stderr.String(), "Rule 2 (/old)")
+	assert.Contains(t, stderr.String(), "line 4 of the _redirects file (/old)")
 	assert.NotContains(t, stderr.String(), "Rule 1")
 }
 
@@ -326,4 +327,93 @@ func TestRedirects_ProjectFlagWithGlobalIsRefused(t *testing.T) {
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "--global")
+}
+
+func TestRedirectsUpdate_PositionMovesTheRule(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":     {200, domainsServersJSON},
+		"PATCH " + redirectsBase + "/rr-1": {200, redirectRuleJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "update", "rr-1", "--position", "2", "-s", "srv-static", "--json"))
+	assert.Equal(t, map[string]any{"redirect_rule": map[string]any{"position": float64(2)}}, (*calls)[len(*calls)-1].body,
+		"--position alone moves the rule without changing it")
+}
+
+func TestRedirectsUpdate_RejectsBadPosition_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	blockNetwork(t)
+	err := runServersCmd(t, "servers", "redirects", "update", "rr-1", "--position", "0", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "--position 0")
+}
+
+// The API refuses a reorder that does not name every rule exactly once; the
+// hint is about that, not about how to write a rule.
+func TestRedirectsReorder_IncompleteListIsExplained(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":      {200, domainsServersJSON},
+		"PUT " + redirectsBase + "/reorder": {422, `{"errors":["List every redirect rule of the site exactly once, in the new order."]}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "reorder", "rr-2", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "exactly once")
+	assert.Contains(t, userErr.Hint, "every rule")
+	assert.Contains(t, userErr.Hint, "dhq servers redirects list -p my-app -s srv-static")
+	assert.NotContains(t, userErr.Hint, "A source is a path")
+}
+
+func TestRedirectsReorder_HelpSaysEveryRule(t *testing.T) {
+	cmd := newRedirectsReorderCmd()
+	assert.Contains(t, cmd.Long, "every rule")
+}
+
+// A site being deleted refuses every change with a 422 that has nothing to do
+// with the rule itself.
+func TestRedirects_SiteBeingDeletedIsNotARuleProblem(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + redirectsBase:        {422, `{"errors":["This site is being deleted"]}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "This site is being deleted")
+	assert.NotContains(t, userErr.Message, "Redirect rule refused")
+	assert.NotContains(t, userErr.Hint, "A source is a path")
+}
+
+func TestRedirectsAdd_PublishFailureIsRetryable(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + redirectsBase:        {503, `{"error":"The redirect rules could not be published, so nothing was changed. Try again in a moment."}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.True(t, userErr.Retryable)
+	assert.Contains(t, userErr.Message, "nothing was changed")
+	assert.Contains(t, userErr.Hint, "Nothing was changed")
+}
+
+// shadowed_by is also set when a file rule takes over only some of the URLs a
+// rule matches, so the warning must not say the rule never applies.
+func TestWarnShadowed_DoesNotOverstate(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
+	var rules sdk.RedirectRules
+	require.NoError(t, json.Unmarshal([]byte(redirectRulesJSON), &rules))
+
+	warnShadowed(env, rules.Rules)
+	assert.NotContains(t, stderr.String(), "never applies")
+	assert.Contains(t, stderr.String(), "line 4")
 }

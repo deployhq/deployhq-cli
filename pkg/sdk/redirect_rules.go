@@ -12,8 +12,9 @@ import (
 // answer with.
 var RedirectStatuses = []int{301, 302, 307, 308}
 
-// RedirectRuleShadow names the rule of the site's _redirects file that matches
-// the same requests as a redirect rule first, so the rule never applies.
+// RedirectRuleShadow names the rule of the site's _redirects file that takes
+// over some or all of the requests a redirect rule matches: file rules are
+// checked first, and the first match wins.
 type RedirectRuleShadow struct {
 	Source string `json:"source"`
 	Line   int    `json:"line"`
@@ -32,7 +33,8 @@ type RedirectRule struct {
 	// present, and a ":name" value captures it for the destination. Nil when the
 	// rule matches on the path alone.
 	Query *string `json:"query"`
-	// ShadowedBy is set when a rule of the _redirects file matches first.
+	// ShadowedBy is set when a rule of the _redirects file matches some or all
+	// of the same requests first.
 	ShadowedBy *RedirectRuleShadow `json:"shadowed_by"`
 }
 
@@ -95,12 +97,14 @@ type RedirectRuleCreateRequest struct {
 
 // RedirectRuleUpdateRequest changes a redirect rule. Only the non-nil fields
 // are sent, so the others are left as they are. An empty Query removes the
-// query matcher.
+// query matcher. Position (1 = checked first) moves the rule; a position past
+// the end moves it last.
 type RedirectRuleUpdateRequest struct {
 	Source      *string `json:"source,omitempty"`
 	Destination *string `json:"destination,omitempty"`
 	Status      *int    `json:"status,omitempty"`
 	Query       *string `json:"query,omitempty"`
+	Position    *int    `json:"position,omitempty"`
 }
 
 // RedirectRuleScope names the Static Hosting server whose redirect rules a call
@@ -134,7 +138,8 @@ func (c *Client) ListRedirectRules(ctx context.Context, scope RedirectRuleScope)
 }
 
 // CreateRedirectRule adds a redirect rule. The site's configuration is
-// republished straight away; an invalid rule is a 422.
+// republished straight away; an invalid rule, or a site being deleted, is a
+// 422, and a failed publish is a 503 that changed nothing.
 func (c *Client) CreateRedirectRule(ctx context.Context, scope RedirectRuleScope, req RedirectRuleCreateRequest) (*RedirectRule, error) {
 	body := map[string]any{"redirect_rule": req}
 	var rule RedirectRule
@@ -160,7 +165,8 @@ func (c *Client) DeleteRedirectRule(ctx context.Context, scope RedirectRuleScope
 }
 
 // ReorderRedirectRules puts the rules in the order of identifiers and returns
-// them in their new order.
+// them in their new order. identifiers must name every rule of the site exactly
+// once; any other list is a 422 and nothing is moved.
 func (c *Client) ReorderRedirectRules(ctx context.Context, scope RedirectRuleScope, identifiers []string) ([]RedirectRule, error) {
 	body := map[string]any{"identifiers": identifiers}
 	var resp struct {
