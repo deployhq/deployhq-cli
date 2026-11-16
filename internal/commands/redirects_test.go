@@ -1,0 +1,329 @@
+package commands
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"testing"
+
+	"github.com/deployhq/deployhq-cli/internal/output"
+	"github.com/deployhq/deployhq-cli/pkg/sdk"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	redirectsBase       = "/projects/my-app/servers/srv-static/redirect_rules"
+	globalRedirectsBase = "/global_servers/srv-global/redirect_rules"
+
+	redirectRuleJSON = `{"identifier":"rr-1","position":1,"source":"/","destination":"/posts/:id",` +
+		`"status":301,"query":"p=:id","shadowed_by":null}`
+	redirectRulesJSON = `{"rules":[` + redirectRuleJSON + `,` +
+		`{"identifier":"rr-2","position":2,"source":"/old","destination":"/new","status":302,"query":null,` +
+		`"shadowed_by":{"source":"/old","line":4}}],` +
+		`"file_rules":[{"source":"/blog/*","destination":"/news/:splat","status":301,"query":null,"line":1}],` +
+		`"file_warnings":[{"line":3,"code":"rewrite_unsupported","reason":"200 rewrites are not supported"}],` +
+		`"deployment_uuid":"dep-uuid"}`
+)
+
+func TestRedirectsCmd_Structure(t *testing.T) {
+	cmd := newServersRedirectsCmd()
+	names := map[string]bool{}
+	for _, sub := range cmd.Commands() {
+		names[sub.Name()] = true
+		assert.NotNil(t, sub.Flags().Lookup("server"), "%s needs --server", sub.Name())
+		assert.NotNil(t, sub.Flags().Lookup("global"), "%s needs --global", sub.Name())
+	}
+	for _, want := range []string{"list", "add", "update", "remove", "reorder"} {
+		assert.True(t, names[want], "missing subcommand %q", want)
+	}
+}
+
+func TestRedirectsHelp_ExplainsFileVersusCommands(t *testing.T) {
+	cmd := newServersRedirectsCmd()
+	for _, want := range []string{"_redirects", "file wins", "301", "308", "--query", "p=:id", "--global"} {
+		assert.Contains(t, cmd.Long, want)
+	}
+}
+
+func TestRedirectsList_ResolvesServerAndListsJSON(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + redirectsBase:         {200, redirectRulesJSON},
+	})
+
+	stdout, err := runCmdCapturingStdout(t, "servers", "redirects", "list", "-s", "My Site", "--json")
+	require.NoError(t, err)
+	require.Len(t, *calls, 2)
+	assert.Equal(t, redirectsBase, (*calls)[1].path)
+
+	var resp struct {
+		Data sdk.RedirectRules `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "stdout: %s", stdout)
+	require.Len(t, resp.Data.Rules, 2)
+	require.Len(t, resp.Data.FileRules, 1)
+	require.Len(t, resp.Data.FileWarnings, 1)
+	require.NotNil(t, resp.Data.Rules[1].ShadowedBy)
+}
+
+func TestRedirectsList_GlobalServer(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":        {200, globalServersJSON},
+		"GET " + globalRedirectsBase: {200, `{"rules":[],"file_rules":[],"file_warnings":[],"deployment_uuid":null}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "list", "--global", "-s", "Shared Site", "--json"))
+	assert.Equal(t, globalRedirectsBase, (*calls)[len(*calls)-1].path)
+}
+
+func TestRedirectsList_UsesServerFromProjectConfig(t *testing.T) {
+	withResolvableContext(t)
+	inFolderLinkedTo(t, "my-app", "srv-static")
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + redirectsBase:         {200, redirectRulesJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "list", "--json"))
+	assert.Equal(t, redirectsBase, (*calls)[len(*calls)-1].path)
+}
+
+func TestRedirectsList_NotStaticHostingIsExplained(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":                        {200, domainsServersJSON},
+		"GET /projects/my-app/servers/srv-ssh/redirect_rules": {404, `{"error":"Not found"}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "list", "-s", "Production")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "not a Static Hosting server")
+	assert.Contains(t, userErr.Hint, "dhq servers list -p my-app")
+}
+
+func TestWriteRedirectFile_ShowsFileRulesAndWarnings(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
+	var rules sdk.RedirectRules
+	require.NoError(t, json.Unmarshal([]byte(redirectRulesJSON), &rules))
+
+	writeRedirectFile(env, &rules)
+	assert.Contains(t, stdout.String(), "/news/:splat")
+	assert.Contains(t, stderr.String(), "checked first")
+	assert.Contains(t, stderr.String(), "line 3: 200 rewrites are not supported")
+}
+
+func TestWriteRedirectFile_BeforeFirstDeploy(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
+	writeRedirectFile(env, &sdk.RedirectRules{})
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "once the site has been deployed")
+}
+
+func TestWarnShadowed_NamesTheFileLine(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
+	var rules sdk.RedirectRules
+	require.NoError(t, json.Unmarshal([]byte(redirectRulesJSON), &rules))
+
+	warnShadowed(env, rules.Rules)
+	assert.Contains(t, stderr.String(), "Rule 2 (/old) never applies: line 4")
+	assert.NotContains(t, stderr.String(), "Rule 1")
+}
+
+func TestRedirectsAdd_SendsWrappedRule(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + redirectsBase:        {201, redirectRuleJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "add", "/", "/posts/:id",
+		"--query", "p=:id", "--status", "308", "--position", "1", "-s", "srv-static", "--json"))
+	post := (*calls)[len(*calls)-1]
+	assert.Equal(t, http.MethodPost, post.method)
+	assert.Equal(t, map[string]any{"redirect_rule": map[string]any{
+		"source": "/", "destination": "/posts/:id", "query": "p=:id", "status": float64(308), "position": float64(1),
+	}}, post.body)
+}
+
+func TestRedirectsAdd_OmitsUnsetFlags(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + redirectsBase:        {201, redirectRuleJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "-s", "srv-static", "--json"))
+	post := (*calls)[len(*calls)-1]
+	assert.Equal(t, map[string]any{"redirect_rule": map[string]any{"source": "/old", "destination": "/new"}}, post.body,
+		"status and position are left to the API's defaults")
+}
+
+func TestRedirectsAdd_RejectsBadStatus_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	blockNetwork(t)
+	err := runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "--status", "200", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "--status 200")
+	assert.Contains(t, userErr.Hint, "301")
+}
+
+func TestRedirectsAdd_RejectsBadPosition_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	blockNetwork(t)
+	err := runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "--position", "0", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "--position 0")
+}
+
+func TestRedirectsAdd_ValidationErrorsPassThrough(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + redirectsBase:        {422, `{"errors":["Source must start with /"]}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "add", "old", "/new", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "Source must start with /")
+	assert.Contains(t, userErr.Hint, "dhq servers redirects list -p my-app -s srv-static")
+}
+
+func TestRedirectsAdd_GlobalServer(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"POST /global_servers/0b9f3c2e-1d4a-4c8b-9e2f-123456789abc/redirect_rules": {201, redirectRuleJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "add", "/old", "/new",
+		"--global", "-s", "0b9f3c2e-1d4a-4c8b-9e2f-123456789abc", "--json"))
+	require.Len(t, *calls, 1)
+}
+
+func TestRedirectsUpdate_SendsOnlyGivenFlags(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":     {200, domainsServersJSON},
+		"PATCH " + redirectsBase + "/rr-1": {200, redirectRuleJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "update", "rr-1",
+		"--destination", "/articles/:id", "--query", "", "-s", "srv-static", "--json"))
+	patch := (*calls)[len(*calls)-1]
+	assert.Equal(t, http.MethodPatch, patch.method)
+	assert.Equal(t, map[string]any{"redirect_rule": map[string]any{"destination": "/articles/:id", "query": ""}}, patch.body,
+		`only the given flags are sent; --query "" removes the matcher`)
+}
+
+func TestRedirectsUpdate_StatusOnly(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":     {200, domainsServersJSON},
+		"PATCH " + redirectsBase + "/rr-1": {200, redirectRuleJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "update", "rr-1", "--status", "302", "-s", "srv-static", "--json"))
+	assert.Equal(t, map[string]any{"redirect_rule": map[string]any{"status": float64(302)}}, (*calls)[len(*calls)-1].body)
+}
+
+func TestRedirectsUpdate_NothingToChange_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	blockNetwork(t)
+	err := runServersCmd(t, "servers", "redirects", "update", "rr-1", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "Nothing to change")
+}
+
+func TestRedirectsUpdate_RejectsBadStatus_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	blockNetwork(t)
+	err := runServersCmd(t, "servers", "redirects", "update", "rr-1", "--status", "404", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "--status 404")
+}
+
+func TestRedirectsRemove_NonInteractiveNeedsYes_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	blockNetwork(t)
+	err := runServersCmd(t, "servers", "redirects", "remove", "rr-1", "-s", "srv-static", "--json")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Hint, "--yes")
+}
+
+func TestRedirectsRemove_WithYes(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":      {200, domainsServersJSON},
+		"GET " + redirectsBase:              {200, redirectRulesJSON},
+		"DELETE " + redirectsBase + "/rr-2": {204, ``},
+	})
+
+	stdout, err := runCmdCapturingStdout(t, "servers", "redirects", "remove", "rr-2", "-s", "srv-static", "--yes", "--json")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodDelete, (*calls)[len(*calls)-1].method)
+	assert.Contains(t, stdout, `"removed"`)
+}
+
+func TestRedirectsRemove_UnknownRuleDoesNotDelete(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + redirectsBase:         {200, redirectRulesJSON},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "remove", "rr-9", "-s", "srv-static", "--yes")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, `"rr-9"`)
+	assert.Contains(t, userErr.Hint, "rr-1 (/)")
+	for _, c := range *calls {
+		assert.NotEqual(t, http.MethodDelete, c.method)
+	}
+}
+
+func TestRedirectsReorder_SendsIdentifiersInOrder(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":      {200, domainsServersJSON},
+		"PUT " + redirectsBase + "/reorder": {200, `{"rules":[{"identifier":"rr-2","position":1},{"identifier":"rr-1","position":2}]}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "redirects", "reorder", "rr-2", "rr-1", "-s", "srv-static", "--json"))
+	put := (*calls)[len(*calls)-1]
+	assert.Equal(t, map[string]any{"identifiers": []any{"rr-2", "rr-1"}}, put.body)
+}
+
+func TestRedirectsReorder_RefusalPassesThrough(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":      {200, domainsServersJSON},
+		"PUT " + redirectsBase + "/reorder": {422, `{"error":"Identifiers must list every rule once"}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "reorder", "rr-2", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "must list every rule once")
+}
+
+func TestRedirects_ProjectFlagWithGlobalIsRefused(t *testing.T) {
+	withResolvableContext(t)
+	blockNetwork(t)
+	err := runServersCmd(t, "servers", "redirects", "list", "-p", "my-app", "--global", "-s", "Shared Site")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "--global")
+}

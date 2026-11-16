@@ -105,6 +105,7 @@ func addDomainsServerFlags(cmd *cobra.Command, f *domainsServerFlags) {
 type domainsTarget struct {
 	scope     sdk.CustomDomainScope
 	projectID string // empty for a global server
+	serverID  string // the resolved server identifier
 	server    string // as the user typed it, for the commands we suggest
 	global    bool
 }
@@ -150,6 +151,7 @@ func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, 
 	if err != nil {
 		return nil, target, err
 	}
+	target.serverID = serverID
 	if f.global {
 		target.scope = sdk.GlobalServerDomains(serverID)
 	} else {

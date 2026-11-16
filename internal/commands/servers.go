@@ -242,6 +242,7 @@ Use these commands to create, configure, and list the servers attached to a proj
 		newServersResetHostKeyCmd(),
 		newServersFromGlobalCmd(),
 		newServersMetricsCmd(),
+		newServersRedirectsCmd(),
 	)
 
 	return cmd
