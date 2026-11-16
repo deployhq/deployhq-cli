@@ -503,8 +503,8 @@ func TestDomainsAdd_WithWWWFlagIsGone(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown flag: --with-www")
 }
 
-// The server skips the other half for a subdomain, or a site with another
-// domain: asking for the default pair is not a mistake to warn about.
+// The server skips the other half for a subdomain, or when it is already on
+// the site: asking for the default pair is not a mistake to warn about.
 func TestDomainsAdd_SkippedPairIsNotAWarning(t *testing.T) {
 	withResolvableContext(t)
 	blog := strings.ReplaceAll(domainJSON, "www.example.com", "blog.example.com")
@@ -1220,4 +1220,77 @@ func TestDomainsPrimary_GlobalServer(t *testing.T) {
 
 	require.NoError(t, runServersCmd(t, "domains", "primary", "example.com", "--global", "-s", "Shared Site", "--json"))
 	assert.Equal(t, globalDomainsBase+"/dom-2/primary", (*calls)[len(*calls)-1].path)
+}
+
+func primaryRefusal(t *testing.T, status int, body string) *output.UserError {
+	t.Helper()
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":           {200, domainsServersJSON},
+		"GET " + domainsBase:                     {200, "[" + domainJSON + "," + activeApexDomainJSON + "]"},
+		"POST " + domainsBase + "/dom-2/primary": {status, body},
+	})
+	err := runServersCmd(t, "domains", "primary", "example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	return userErr
+}
+
+// A running deployment holds the site, so the change is refused with 409:
+// nothing changed, and trying again later works.
+func TestDomainsPrimary_DeploymentRunningIsRetryable(t *testing.T) {
+	userErr := primaryRefusal(t, 409,
+		`{"error":"A deployment of this site is running, so example.com could not be made primary. Try again once it has finished"}`)
+	assert.Contains(t, userErr.Message, "A deployment of this site is running")
+	assert.True(t, userErr.Retryable)
+	assert.Contains(t, userErr.Hint, "dhq domains primary example.com -p my-app -s srv-static")
+}
+
+func TestDomainsPrimary_PushFailureIsRetryable(t *testing.T) {
+	userErr := primaryRefusal(t, 503,
+		`{"error":"We couldn't make example.com the primary domain right now. Please try again in a few minutes"}`)
+	assert.Contains(t, userErr.Message, "couldn't make example.com the primary domain")
+	assert.True(t, userErr.Retryable)
+}
+
+func TestDomainsPrimary_RateLimitIsRetryable(t *testing.T) {
+	userErr := primaryRefusal(t, 429, `{"error":"Too many custom domain changes","retry_after":3600}`)
+	assert.True(t, userErr.Retryable)
+	assert.Equal(t, 3600, userErr.RetryAfter)
+}
+
+// A 422 is not always about the domain's status: a site being deleted refuses
+// it too.
+func TestDomainsPrimary_SiteBeingDeletedIsNotAboutActivation(t *testing.T) {
+	userErr := primaryRefusal(t, 422, `{"error":"This site is being deleted"}`)
+	assert.Contains(t, userErr.Message, "This site is being deleted")
+	assert.NotContains(t, userErr.Hint, "Only an active domain")
+}
+
+// The counterpart is offered on later adds too: a site that already has a
+// primary still asks for the pair, and both new domains redirect to the
+// primary.
+func TestDomainsAdd_LaterAddStillAsksForThePair(t *testing.T) {
+	withResolvableContext(t)
+	newDomain := func(id, hostname string) string {
+		return `{"identifier":"` + id + `","hostname":"` + hostname + `","primary":false,"status":"pending","registering":false,` +
+			`"verification_errors":[],"dns_records":[]}`
+	}
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + domainsBase: {201, strings.TrimSuffix(newDomain("dom-2", "example.org"), "}") +
+			`,"counterpart":` + newDomain("dom-3", "www.example.org") + `,"counterpart_errors":[]}`},
+	})
+
+	stdout, err := runCmdCapturingStdout(t, "domains", "add", "example.org", "-s", "srv-static", "--no-wait", "--json")
+	require.NoError(t, err)
+	post := (*calls)[len(*calls)-1]
+	assert.Equal(t, map[string]any{"custom_domain": map[string]any{"hostname": "example.org", "with_counterpart": true}}, post.body)
+	assert.Contains(t, stdout, "www.example.org")
+}
+
+func TestDomainsAdd_HelpDoesNotSaySecondAddSkipsThePair(t *testing.T) {
+	cmd := newDomainsAddCmd()
+	assert.NotContains(t, cmd.Long, "already has another custom domain")
+	assert.Contains(t, cmd.Long, "to the site's primary domain otherwise")
 }

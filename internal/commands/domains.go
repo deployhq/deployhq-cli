@@ -284,6 +284,27 @@ func explainDomainsError(err error, target domainsTarget) error {
 	return err
 }
 
+// siteBeingDeletedError explains a 422 refused because the Static Hosting site
+// is being deleted: nothing about the request can fix it. It returns nil for
+// any other error.
+func siteBeingDeletedError(apiErr *sdk.APIError, target domainsTarget) error {
+	if apiErr == nil || !apiErr.IsValidationError() {
+		return nil
+	}
+	msg := apiErr.Message
+	if msg == "" {
+		msg = strings.Join(apiErr.Errors, "; ")
+	}
+	if !strings.Contains(strings.ToLower(msg), "being deleted") {
+		return nil
+	}
+	return &output.UserError{
+		Message:  msg,
+		Hint:     "The site is being deleted, so it can no longer be changed. See the servers with: " + target.listServersCmd(),
+		Recovery: []output.Breadcrumb{{Action: "list_servers", Cmd: target.listServersCmd() + " --json"}},
+	}
+}
+
 // recordField renders a nullable DNS record field.
 func recordField(s *string) string {
 	if s == nil || *s == "" {
@@ -547,9 +568,13 @@ record); get the TXT record later with "dhq domains show". A domain that cannot
 be set up prints the reason and exits non-zero.
 
 By default the other half of the apex and www pair is added too: example.com
-brings www.example.com, and www.example.com brings example.com. DeployHQ skips
-it for a hostname that is neither an apex nor its www form, and on a site that
-already has another custom domain. --no-pair adds only the hostname you typed.
+brings www.example.com, and www.example.com brings example.com. It is never the
+primary: it redirects to the domain you typed on a site with no custom domains
+yet, and to the site's primary domain otherwise. DeployHQ skips it for a
+hostname that is neither an apex nor its www form, and when it is already one of
+the site's custom domains. When the site has no room left for it, it is refused
+with a warning and the domain you typed is still added. --no-pair adds only the
+hostname you typed.
 
 ` + customDomainRules,
 		Example: `  dhq domains add www.example.com -p my-site -s "My Site"
@@ -991,11 +1016,31 @@ it is.`,
 }
 
 // explainDomainsPrimaryError passes on why a domain cannot be made primary. A
-// 422 carries the API's reason (typically that the domain is not active yet);
-// the other refusals are shared with the rest of the domains commands.
+// 422 carries the API's reason (typically that the domain is not active yet,
+// or that the site is being deleted); a 409 means a deployment of the site is
+// running. Nothing changes in either case. The other refusals (429, 503) are
+// shared with the rest of the domains commands.
 func explainDomainsPrimaryError(err error, d *sdk.CustomDomain, target domainsTarget) error {
 	var apiErr *sdk.APIError
-	if errors.As(err, &apiErr) && apiErr.IsValidationError() {
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	if deleting := siteBeingDeletedError(apiErr, target); deleting != nil {
+		return deleting
+	}
+	primaryCmd := fmt.Sprintf("dhq domains primary %s %s", d.Hostname, target.flags())
+	switch {
+	case apiErr.StatusCode == 409:
+		msg := apiErr.Message
+		if msg == "" {
+			msg = fmt.Sprintf("A deployment of this site is running, so %s could not be made primary", d.Hostname)
+		}
+		return &output.UserError{
+			Message:   msg,
+			Hint:      "Nothing was changed. Run it again once the deployment has finished: " + primaryCmd,
+			Retryable: true,
+		}
+	case apiErr.IsValidationError():
 		msg := apiErr.Message
 		if msg == "" {
 			msg = strings.Join(apiErr.Errors, "; ")

@@ -75,7 +75,7 @@ dhq launch --vps --dry-run --json
 | `--vps` | Force Managed VPS target. Refused with `--static` (exit 1) |
 | `--subdomain` | Static Hosting subdomain (default: repo / project name) |
 | `--custom-domain` | Static Hosting only, paid plans only: a custom domain for the site (e.g. `www.example.com`). Refused with `--vps` (exit 1). `launch` waits up to a minute for the domain's registration, then reports the DNS records to publish |
-| `--no-pair` | With `--custom-domain`: add only that hostname, not the other half of its apex and www pair (added by default; DeployHQ skips it silently for a hostname that is neither an apex nor its www form, and on a site that already has another custom domain). Refused without `--custom-domain` (exit 1) |
+| `--no-pair` | With `--custom-domain`: add only that hostname, not the other half of its apex and www pair (added by default; DeployHQ skips it silently for a hostname that is neither an apex nor its www form, and when it is already one of the site's custom domains; on a re-run against a site that has a primary, both new domains redirect to that primary). Refused without `--custom-domain` (exit 1) |
 | `--trailing-slash` | Static Hosting only: `strip` (default; `/about/` redirects to `/about`), `force` (`/about` redirects to `/about/`; use for a site moved from WordPress) or `preserve` (both work, no redirect). Refused with `--vps` or an unknown value (exit 1). Shown by `--dry-run`; a re-run applies it to the existing site, and a failure there is only a warning |
 | `--region` | Managed VPS region slug (e.g. `lon1`, `nyc3`). List via `dhq api GET /managed_hosting/regions` |
 | `--size` | Managed VPS size slug (e.g. `s-1vcpu-1gb`). List via `dhq api GET /managed_hosting/sizes` |

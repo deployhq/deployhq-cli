@@ -141,8 +141,12 @@ func (c *Client) RefreshCustomDomain(ctx context.Context, scope CustomDomainScop
 }
 
 // MakeCustomDomainPrimary makes a custom domain the one visitors land on; the
-// site's other custom domains redirect to it. Only an active domain can be
-// made primary: any other is a 422 whose message says why.
+// site's other custom domains redirect to it. A domain that is already primary
+// is left as it is (200). Only an active domain can be made primary: any other
+// is a 422 whose message says why, as is a site being deleted. A running
+// deployment of the site refuses the change with a 409, and a failure to apply
+// it with a 503; neither changes anything. It counts towards the same hourly
+// limit as adding and removing domains (429).
 func (c *Client) MakeCustomDomainPrimary(ctx context.Context, scope CustomDomainScope, identifier string) (*CustomDomain, error) {
 	var domain CustomDomain
 	if err := c.post(ctx, scope.domainPath(identifier)+"/primary", nil, &domain); err != nil {
