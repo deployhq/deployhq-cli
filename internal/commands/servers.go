@@ -388,6 +388,7 @@ func newServersCreateCmd() *cobra.Command {
 	var subdomain string
 	var spaMode bool
 	var subdirectory string
+	var trailingSlash string
 	// Managed VPS (beta)
 	var region, size, osImage, keyPairIdentifier string
 	// Billing guardrail (mirrors the gate in `dhq launch`)
@@ -426,6 +427,10 @@ func newServersCreateCmd() *cobra.Command {
   dhq servers create -p my-app --name site --protocol-type static_hosting \
     --subdomain my-app --subdirectory dist
 
+  # Static Hosting site for a former WordPress site, whose URLs end in a slash
+  dhq servers create -p my-app --name site --protocol-type static_hosting \
+    --subdomain my-app --trailing-slash force
+
   # Managed VPS droplet (beta — requires managed-resources beta)
   dhq servers create -p my-app --name vps --protocol-type managed_vps \
     --region lon1 --size s-1vcpu-1gb
@@ -457,6 +462,25 @@ func newServersCreateCmd() *cobra.Command {
 			// client is built, so a malformed invocation never touches the network.
 			if err := deployFlags.validate(); err != nil {
 				return err
+			}
+			if cmd.Flags().Changed("trailing-slash") {
+				if protocolType != "static_hosting" {
+					return &output.UserError{
+						Message: fmt.Sprintf("--trailing-slash is only valid with --protocol-type static_hosting (got %q)", protocolType),
+						Hint:    "Drop --trailing-slash: other server types serve URLs as your web server is configured.",
+					}
+				}
+				mode, err := parseTrailingSlash(trailingSlash)
+				if err != nil {
+					return err
+				}
+				if subdomain == "" {
+					return &output.UserError{
+						Message: "--trailing-slash needs --subdomain",
+						Hint:    "A Static Hosting site is created with its subdomain, e.g. --subdomain my-site --trailing-slash " + mode,
+					}
+				}
+				trailingSlash = mode
 			}
 			if keyPairIdentifier != "" {
 				// The identifier is hoisted to the Managed VPS provisioning
@@ -562,9 +586,10 @@ func newServersCreateCmd() *cobra.Command {
 			// Static Hosting (beta) — nested attributes
 			if protocolType == "static_hosting" && subdomain != "" {
 				req.HostedWebsiteAttributes = &sdk.HostedWebsiteAttributes{
-					Subdomain:    subdomain,
-					SPAMode:      spaMode,
-					Subdirectory: subdirectory,
+					Subdomain:     subdomain,
+					SPAMode:       spaMode,
+					Subdirectory:  subdirectory,
+					TrailingSlash: trailingSlash,
 				}
 			}
 			if cmd.Flags().Changed("port") {
@@ -738,6 +763,7 @@ func newServersCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&subdomain, "subdomain", "", "Globally unique subdomain under deployhq-sites.com (static_hosting)")
 	cmd.Flags().BoolVar(&spaMode, "spa-mode", false, "Enable SPA routing: all paths rewrite to index.html (static_hosting)")
 	cmd.Flags().StringVar(&subdirectory, "subdirectory", "", "Output subdirectory to publish, e.g. dist (static_hosting)")
+	cmd.Flags().StringVar(&trailingSlash, "trailing-slash", "", trailingSlashFlagHelp)
 
 	// Managed VPS (beta) — requires managed-resources beta on the account
 	cmd.Flags().StringVar(&region, "region", "", "DigitalOcean region slug, e.g. lon1, nyc3 (managed_vps)")
@@ -755,7 +781,7 @@ func newServersCreateCmd() *cobra.Command {
 }
 
 func newServersUpdateCmd() *cobra.Command {
-	var name, serverPath, environment string
+	var name, serverPath, environment, trailingSlash string
 	// Deployment configuration shared with `dhq servers create`
 	deployFlags := &serverDeploymentFlags{}
 
@@ -771,12 +797,22 @@ func newServersUpdateCmd() *cobra.Command {
   dhq servers update prod -p my-app --atomic --atomic-strategy copy_cache --atomic-retention 5
 
   # Turn auto-deploy off without touching any other setting
-  dhq servers update prod -p my-app --auto-deploy=false`,
+  dhq servers update prod -p my-app --auto-deploy=false
+
+  # Make a Static Hosting site add a trailing slash (/about -> /about/)
+  dhq servers update site -p my-app --trailing-slash force`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Local, offline validation — runs before a project is resolved or a
 			// client is built, so a malformed invocation never touches the network.
 			if err := deployFlags.validate(); err != nil {
 				return err
+			}
+			if cmd.Flags().Changed("trailing-slash") {
+				mode, err := parseTrailingSlash(trailingSlash)
+				if err != nil {
+					return err
+				}
+				trailingSlash = mode
 			}
 
 			projectID, err := cliCtx.RequireProject()
@@ -793,6 +829,9 @@ func newServersUpdateCmd() *cobra.Command {
 			// Only flags the operator actually supplied reach the payload, so an
 			// update never disturbs deployment settings that were left unnamed.
 			deployFlags.applyToUpdate(&req)
+			if trailingSlash != "" {
+				req.HostedWebsite = &sdk.HostedWebsiteUpdate{TrailingSlash: trailingSlash}
+			}
 
 			server, err := client.UpdateServer(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
@@ -802,6 +841,7 @@ func newServersUpdateCmd() *cobra.Command {
 			env := cliCtx.Envelope
 			warnIfBranchDormant(env, deployFlags.supplied("branch"), server)
 			warnIfAtomicNotApplied(env, deployFlags.supplied("atomic") && deployFlags.atomic, server)
+			warnIfTrailingSlashNotApplied(env, trailingSlash, server)
 
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Updated server: %s", server.Name)))
@@ -814,6 +854,7 @@ func newServersUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Server name")
 	cmd.Flags().StringVar(&serverPath, "path", "", "Server path")
 	cmd.Flags().StringVar(&environment, "environment", "", "Environment name")
+	cmd.Flags().StringVar(&trailingSlash, "trailing-slash", "", trailingSlashFlagHelp)
 	deployFlags.register(cmd)
 	return cmd
 }
