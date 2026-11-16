@@ -2,7 +2,10 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -113,4 +116,158 @@ func TestWarnIfTrailingSlashNotApplied(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLaunchStatic_SendsTrailingSlash(t *testing.T) {
+	srv, body := launchDomainServer(t, http.StatusCreated, launchActiveServerJSON(""))
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+	cfg.trailingSlash = "force"
+
+	_, err := launchProvisionStatic(t.Context(), env, &cfg, newTestClient(t, srv))
+	require.NoError(t, err)
+	var payload struct {
+		Attrs map[string]any `json:"hosted_website_attributes"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(*body), &payload))
+	assert.Equal(t, "force", payload.Attrs["trailing_slash"])
+}
+
+func TestLaunchStatic_OmitsTrailingSlashWhenNotGiven(t *testing.T) {
+	srv, body := launchDomainServer(t, http.StatusCreated, launchActiveServerJSON(""))
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+
+	_, err := launchProvisionStatic(t.Context(), env, &cfg, newTestClient(t, srv))
+	require.NoError(t, err)
+	assert.NotContains(t, *body, "trailing_slash")
+}
+
+func TestValidateLaunchTrailingSlash(t *testing.T) {
+	cfg := launchConfig{trailingSlash: "Preserve"}
+	require.NoError(t, validateLaunchTrailingSlash(&cfg))
+	assert.Equal(t, "preserve", cfg.trailingSlash)
+
+	bad := launchConfig{trailingSlash: "always"}
+	require.Error(t, validateLaunchTrailingSlash(&bad))
+
+	vps := launchConfig{trailingSlash: "force", targetProtocol: "managed_vps"}
+	err := validateLaunchTrailingSlash(&vps)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only applies to Static Hosting")
+}
+
+func TestResolveLaunchTrailingSlashTarget(t *testing.T) {
+	undecided := launchConfig{trailingSlash: "force"}
+	require.NoError(t, resolveLaunchTrailingSlashTarget(&undecided))
+	assert.Equal(t, "static_hosting", undecided.targetProtocol)
+
+	vps := launchConfig{trailingSlash: "force", targetProtocol: "managed_vps"}
+	require.Error(t, resolveLaunchTrailingSlashTarget(&vps))
+
+	none := launchConfig{targetProtocol: "managed_vps"}
+	require.NoError(t, resolveLaunchTrailingSlashTarget(&none))
+}
+
+func TestLaunchCommand_VPSWithTrailingSlashRefusedBeforeAnyRequest(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{})
+	_, err := runCmdCapturingStdout(t, "launch", "--vps", "--trailing-slash", "force", "--accept-cost", "--json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only applies to Static Hosting")
+	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
+	assert.Empty(t, *calls, "refused before any API call")
+}
+
+func TestLaunchCommand_BadTrailingSlashRefusedBeforeAnyRequest(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{})
+	_, err := runCmdCapturingStdout(t, "launch", "--static", "--trailing-slash", "on", "--json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a trailing-slash mode")
+	assert.Empty(t, *calls, "refused before any API call")
+}
+
+func TestLaunchDryRun_TrailingSlash(t *testing.T) {
+	env, stdout, _ := testLaunchEnvelopeJSON()
+	caps := &sdk.AccountCapabilities{BetaFeatures: true, StaticHostingEligible: true}
+	cfg := launchDomainCfg("")
+	cfg.dryRun = true
+	cfg.trailingSlash = "force"
+
+	require.NoError(t, launchDryRun(t.Context(), env, cfg, nil, caps))
+	var resp struct{ Data map[string]any }
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &resp))
+	assert.Equal(t, "force", resp.Data["would"].(map[string]any)["trailing_slash"])
+}
+
+// launchSettingsAPI answers a server update and records each request.
+func launchSettingsAPI(t *testing.T, status int, body string) (*httptest.Server, *[]capturedBody) {
+	t.Helper()
+	var requests []capturedBody
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		requests = append(requests, capturedBody{method: r.Method, path: r.URL.Path, body: b})
+		if r.Method == http.MethodPut && r.URL.Path == "/projects/my-app/servers/srv-1" {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &requests
+}
+
+type capturedBody struct {
+	method, path string
+	body         map[string]any
+}
+
+func TestLaunchEnsureTrailingSlash_AppliesToExistingSite(t *testing.T) {
+	srv, requests := launchSettingsAPI(t, http.StatusOK,
+		`{"identifier":"srv-1","protocol_type":"static_hosting","static_hosting":{"trailing_slash":"force"}}`)
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+	cfg.trailingSlash = "force"
+	server := launchStaticServer()
+
+	launchEnsureTrailingSlashOnServer(t.Context(), env, cfg, newTestClient(t, srv), server)
+	require.Len(t, *requests, 1)
+	assert.Equal(t, map[string]any{"trailing_slash": "force"}, (*requests)[0].body["hosted_website_attributes"])
+	require.NotNil(t, server.StaticHosting.TrailingSlash)
+	assert.Equal(t, "force", *server.StaticHosting.TrailingSlash)
+}
+
+func TestLaunchEnsureTrailingSlash_AlreadySetMakesNoRequest(t *testing.T) {
+	srv, requests := launchSettingsAPI(t, http.StatusOK, `{}`)
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+	cfg.trailingSlash = "force"
+	server := launchStaticServer()
+	force := "force"
+	server.StaticHosting.TrailingSlash = &force
+
+	launchEnsureTrailingSlashOnServer(t.Context(), env, cfg, newTestClient(t, srv), server)
+	assert.Empty(t, *requests)
+}
+
+func TestLaunchEnsureTrailingSlash_NotRequestedMakesNoRequest(t *testing.T) {
+	srv, requests := launchSettingsAPI(t, http.StatusOK, `{}`)
+	env, _, _ := testLaunchEnvelope()
+
+	launchEnsureTrailingSlashOnServer(t.Context(), env, launchDomainCfg(""), newTestClient(t, srv), launchStaticServer())
+	assert.Empty(t, *requests)
+}
+
+func TestLaunchEnsureTrailingSlash_FailureIsAWarning(t *testing.T) {
+	srv, _ := launchSettingsAPI(t, http.StatusUnprocessableEntity, `{"error":"Trailing slash is not included in the list"}`)
+	env, _, stderr := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+	cfg.trailingSlash = "preserve"
+
+	launchEnsureTrailingSlashOnServer(t.Context(), env, cfg, newTestClient(t, srv), launchStaticServer())
+	assert.Contains(t, stderr.String(), "dhq servers update srv-1 -p my-app --trailing-slash preserve")
 }

@@ -52,6 +52,9 @@ type launchConfig struct {
 	subdomain    string
 	subdirectory string
 	spaMode      bool
+	// trailingSlash is the --trailing-slash mode (strip, force or preserve);
+	// empty leaves DeployHQ's default.
+	trailingSlash string
 	// customDomain is an optional custom domain to add to the new site, along
 	// with the other half of its apex and www pair unless noPair is set.
 	customDomain string
@@ -103,6 +106,8 @@ type dryRunWould struct {
 	Subdomain   string `json:"subdomain,omitempty"`
 	Project     string `json:"project,omitempty"`
 	Branch      string `json:"branch,omitempty"`
+	// TrailingSlash is the trailing-slash mode the site would be created with.
+	TrailingSlash string `json:"trailing_slash,omitempty"`
 	// CustomDomain and WithCounterpart are the custom domain the launch would add.
 	CustomDomain    string `json:"custom_domain,omitempty"`
 	WithCounterpart bool   `json:"with_counterpart,omitempty"`
@@ -329,6 +334,7 @@ func newLaunchCmd() *cobra.Command {
 		flagDryRun        bool
 		flagCustomDomain  string
 		flagNoPair        bool
+		flagTrailingSlash string
 	)
 
 	cmd := &cobra.Command{
@@ -358,6 +364,9 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
   # Launch on your own domain (Static Hosting, paid plans): prints the DNS records to publish
   dhq launch --static --subdomain my-app --custom-domain example.com
 
+  # A site moved from WordPress, whose URLs end in a slash (/about/)
+  dhq launch --static --subdomain my-blog --trailing-slash force
+
   # Opt out to own-server setup
   # At the target prompt, choose "Use my own server" → branches into dhq init`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -383,6 +392,7 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 			cfg := resolveLaunchConfig(flagStatic, flagVPS, flagSubdomain, flagRegion, flagSize, flagBranch, flagProject, flagAcceptCost, flagCleanupOnFail, flagDryRun)
 			cfg.customDomain = strings.TrimSpace(flagCustomDomain)
 			cfg.noPair = flagNoPair
+			cfg.trailingSlash = flagTrailingSlash
 
 			return runLaunch(env, cfg)
 		},
@@ -403,6 +413,7 @@ Equivalent of 'netlify deploy' / 'vercel' / 'fly launch' for DeployHQ's own infr
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Print intended actions and cost without executing (no side effects)")
 	cmd.Flags().StringVar(&flagCustomDomain, "custom-domain", "", "Custom domain for the Static Hosting site (e.g. www.example.com). Paid plans only; prints the DNS records to publish. If it cannot be added the site still launches")
 	cmd.Flags().BoolVar(&flagNoPair, "no-pair", false, "With --custom-domain, add only that hostname, not the other half of its apex and www pair")
+	cmd.Flags().StringVar(&flagTrailingSlash, "trailing-slash", "", "How the Static Hosting site treats a trailing slash: strip (default; /about/ redirects to /about), force (/about redirects to /about/; for sites moved from WordPress) or preserve (both work)")
 
 	return cmd
 }
@@ -466,6 +477,9 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	if err := validateLaunchCustomDomain(&cfg); err != nil {
 		return err
 	}
+	if err := validateLaunchTrailingSlash(&cfg); err != nil {
+		return err
+	}
 
 	// ── Step 1: Auth / bootstrap ────────────────────────────────────────────
 	client, accountSubdomain, err := launchEnsureAuth(ctx, env, cfg)
@@ -490,6 +504,9 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 	}
 	// Runs for a dry run too, so the preview refuses what the launch would.
 	if err := resolveLaunchCustomDomainTarget(&cfg); err != nil {
+		return err
+	}
+	if err := resolveLaunchTrailingSlashTarget(&cfg); err != nil {
 		return err
 	}
 
@@ -619,6 +636,7 @@ func runLaunch(env *output.Envelope, cfg launchConfig) error {
 			if err := launchEnsureCustomDomainOnServer(ctx, env, &cfg, client, server); err != nil {
 				return writeLaunchError(env, cfg, reasonCustomDomainInvalid, err)
 			}
+			launchEnsureTrailingSlashOnServer(ctx, env, cfg, client, server)
 		} else {
 			// Server no longer exists (404) or there's an error — fall through to provision.
 			env.Status("Persisted server %s not found (%v) — provisioning new server.", cfg.serverID, pollErr)
@@ -1091,6 +1109,7 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 		if dr.Would.Subdomain == "" {
 			dr.Would.Subdomain = "<repo-name>"
 		}
+		dr.Would.TrailingSlash = cfg.trailingSlash
 		dr.Would.CustomDomain = cfg.customDomain
 		dr.Would.WithCounterpart = cfg.customDomain != "" && !cfg.noPair
 	case detect.ProtocolManagedVPS:
@@ -1156,6 +1175,9 @@ func launchDryRun(ctx context.Context, env *output.Envelope, cfg launchConfig, c
 	}
 	if dr.Would.Subdomain != "" {
 		env.Status("  Subdomain:     %s.deployhq-sites.com", dr.Would.Subdomain)
+	}
+	if dr.Would.TrailingSlash != "" {
+		env.Status("  Trailing slash: %s", dr.Would.TrailingSlash)
 	}
 	if dr.Would.CustomDomain != "" {
 		line := dr.Would.CustomDomain
@@ -1738,6 +1760,7 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg *launc
 			Subdomain:                   subdomain,
 			SPAMode:                     cfg.spaMode,
 			Subdirectory:                cfg.subdirectory,
+			TrailingSlash:               cfg.trailingSlash,
 			CustomDomainHostname:        cfg.customDomain,
 			CustomDomainWithCounterpart: cfg.customDomain != "" && !cfg.noPair,
 		},

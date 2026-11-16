@@ -1,9 +1,11 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	"github.com/deployhq/deployhq-cli/internal/detect"
 	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/deployhq/deployhq-cli/pkg/sdk"
 )
@@ -50,4 +52,65 @@ func warnIfTrailingSlashNotApplied(env *output.Envelope, requested string, serve
 		env.Warn("The server did not confirm --trailing-slash %s. Check the site's settings with: dhq servers show %s",
 			requested, server.Identifier)
 	}
+}
+
+// validateLaunchTrailingSlash checks --trailing-slash before any request: the
+// value, and that the target (when already known) is Static Hosting.
+func validateLaunchTrailingSlash(cfg *launchConfig) error {
+	if cfg.trailingSlash == "" {
+		return nil
+	}
+	mode, err := parseTrailingSlash(cfg.trailingSlash)
+	if err != nil {
+		return err
+	}
+	cfg.trailingSlash = mode
+	return refuseTrailingSlashTarget(cfg.targetProtocol)
+}
+
+// resolveLaunchTrailingSlashTarget makes --trailing-slash choose Static Hosting
+// when nothing else chose a target, and refuses it for any other target.
+func resolveLaunchTrailingSlashTarget(cfg *launchConfig) error {
+	if cfg.trailingSlash == "" {
+		return nil
+	}
+	if cfg.targetProtocol == "" {
+		cfg.targetProtocol = detect.ProtocolStaticHosting
+		return nil
+	}
+	return refuseTrailingSlashTarget(cfg.targetProtocol)
+}
+
+func refuseTrailingSlashTarget(target string) error {
+	if target == "" || target == detect.ProtocolStaticHosting {
+		return nil
+	}
+	return &output.UserError{
+		Message: "--trailing-slash only applies to Static Hosting, not " + hostingName(target),
+		Hint:    "Launch without --trailing-slash, or choose Static Hosting with --static.",
+	}
+}
+
+// launchEnsureTrailingSlashOnServer applies --trailing-slash to the site a
+// re-run found, when it has a different mode. A failure is a warning: the
+// site still deploys, and the warning names the command that sets it.
+func launchEnsureTrailingSlashOnServer(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, server *sdk.Server) {
+	if cfg.trailingSlash == "" || server == nil || server.ProtocolType != detect.ProtocolStaticHosting {
+		return
+	}
+	if server.StaticHosting != nil && server.StaticHosting.TrailingSlash != nil && *server.StaticHosting.TrailingSlash == cfg.trailingSlash {
+		return
+	}
+	setCmd := fmt.Sprintf("dhq servers update %s -p %s --trailing-slash %s", server.Identifier, cfg.projectID, cfg.trailingSlash)
+	updated, err := client.UpdateServer(ctx, cfg.projectID, server.Identifier, sdk.ServerUpdateRequest{
+		HostedWebsite: &sdk.HostedWebsiteUpdate{TrailingSlash: cfg.trailingSlash},
+	})
+	if err != nil {
+		env.Warn("Could not set --trailing-slash %s on the existing site: %v. Set it later with: %s", cfg.trailingSlash, err, setCmd)
+		return
+	}
+	if updated.StaticHosting != nil {
+		server.StaticHosting = updated.StaticHosting
+	}
+	env.Status("Trailing slash set to %s.", cfg.trailingSlash)
 }
