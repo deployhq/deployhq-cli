@@ -263,7 +263,8 @@ type ServerUpdateRequest struct {
 
 	// HostedWebsite changes settings of a Static Hosting site. Like the
 	// create-time attributes it is sent as a top-level sibling of `server`
-	// (UpdateServer hoists it); other server types ignore it.
+	// (UpdateServer and UpdateGlobalServer hoist it); other server types
+	// ignore it.
 	HostedWebsite *HostedWebsiteUpdate `json:"-"`
 }
 

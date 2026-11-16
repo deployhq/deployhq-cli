@@ -237,3 +237,17 @@ func TestServer_DecodesStaticHostingTrailingSlash(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(`{"static_hosting":{"trailing_slash":null}}`), &s))
 	assert.Nil(t, s.StaticHosting.TrailingSlash)
 }
+
+func TestUpdateGlobalServer_HoistsHostedWebsiteSettings(t *testing.T) {
+	var body map[string]any
+	srv := captureUpdateBody(t, &body)
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.UpdateGlobalServer(context.Background(), "srv-global", ServerUpdateRequest{
+		HostedWebsite: &HostedWebsiteUpdate{TrailingSlash: "preserve"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"trailing_slash": "preserve"}, body["hosted_website_attributes"])
+	assert.NotContains(t, body["server"].(map[string]any), "trailing_slash")
+}

@@ -37,9 +37,12 @@ func (c *Client) CreateGlobalServer(ctx context.Context, req ServerCreateRequest
 }
 
 func (c *Client) UpdateGlobalServer(ctx context.Context, serverID string, req ServerUpdateRequest) (*Server, error) {
-	body := struct {
-		Server ServerUpdateRequest `json:"server"`
-	}{Server: req}
+	// Static Hosting site settings are a top-level sibling of `server`, as for
+	// a project's server.
+	body := map[string]any{"server": req}
+	if req.HostedWebsite != nil {
+		body["hosted_website_attributes"] = req.HostedWebsite
+	}
 	var server Server
 	if err := c.put(ctx, fmt.Sprintf("/global_servers/%s", serverID), body, &server); err != nil {
 		return nil, err

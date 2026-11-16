@@ -101,14 +101,14 @@ func TestWarnIfTrailingSlashNotApplied(t *testing.T) {
 		{"applied", &sdk.Server{ProtocolType: "static_hosting", StaticHosting: &sdk.StaticHostingInfo{TrailingSlash: &force}}, ""},
 		{"no site block", &sdk.Server{ProtocolType: "static_hosting"}, ""},
 		{"other server type", &sdk.Server{Name: "prod", ProtocolType: "ssh"}, "only applies to Static Hosting"},
-		{"different mode", &sdk.Server{Identifier: "srv-1", ProtocolType: "static_hosting", StaticHosting: &sdk.StaticHostingInfo{TrailingSlash: &strip}}, "did not confirm"},
+		{"different mode", &sdk.Server{Identifier: "srv-1", ProtocolType: "static_hosting", StaticHosting: &sdk.StaticHostingInfo{TrailingSlash: &strip}}, "did not confirm --trailing-slash force. Check the site's settings with: dhq servers show srv-1 -p my-app"},
 		{"not reported", &sdk.Server{ProtocolType: "static_hosting", StaticHosting: &sdk.StaticHostingInfo{}}, "did not confirm"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
-			warnIfTrailingSlashNotApplied(env, "force", tc.server)
+			warnIfTrailingSlashNotApplied(env, "force", tc.server, "dhq servers show srv-1 -p my-app")
 			if tc.warn == "" {
 				assert.Empty(t, stderr.String())
 			} else {
@@ -270,4 +270,36 @@ func TestLaunchEnsureTrailingSlash_FailureIsAWarning(t *testing.T) {
 
 	launchEnsureTrailingSlashOnServer(t.Context(), env, cfg, newTestClient(t, srv), launchStaticServer())
 	assert.Contains(t, stderr.String(), "dhq servers update srv-1 -p my-app --trailing-slash preserve")
+}
+
+func TestGlobalServersUpdate_TrailingSlashIsHoisted(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"PUT /global_servers/srv-global": {200, `{"identifier":"srv-global","name":"Shared Site","protocol_type":"static_hosting"}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "global-servers", "update", "srv-global", "--trailing-slash", "force"))
+	require.Len(t, *calls, 1)
+	body := (*calls)[0].body
+	assert.Equal(t, map[string]any{"trailing_slash": "force"}, body["hosted_website_attributes"])
+	assert.NotContains(t, body["server"], "trailing_slash")
+}
+
+func TestGlobalServersUpdate_NoTrailingSlashSendsNoSiteSettings(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"PUT /global_servers/srv-global": {200, `{"identifier":"srv-global","name":"Renamed"}`},
+	})
+
+	require.NoError(t, runServersCmd(t, "global-servers", "update", "srv-global", "--name", "Renamed"))
+	assert.NotContains(t, (*calls)[0].body, "hosted_website_attributes")
+}
+
+func TestGlobalServersUpdate_BadTrailingSlash_NoHTTP(t *testing.T) {
+	withResolvableContext(t)
+	blockNetwork(t)
+	err := runServersCmd(t, "global-servers", "update", "srv-global", "--trailing-slash", "maybe")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "--trailing-slash")
 }

@@ -35,8 +35,9 @@ func parseTrailingSlash(raw string) (string, error) {
 // warnIfTrailingSlashNotApplied says when a server update did not take the
 // requested trailing-slash mode: the server is not a Static Hosting site, or
 // it reports a different mode. A response without the site block says nothing
-// either way, so it is not warned about.
-func warnIfTrailingSlashNotApplied(env *output.Envelope, requested string, server *sdk.Server) {
+// either way, so it is not warned about. showCmd is the command that shows the
+// server.
+func warnIfTrailingSlashNotApplied(env *output.Envelope, requested string, server *sdk.Server, showCmd string) {
 	if requested == "" || server == nil {
 		return
 	}
@@ -49,8 +50,8 @@ func warnIfTrailingSlashNotApplied(env *output.Envelope, requested string, serve
 		return
 	}
 	if got := server.StaticHosting.TrailingSlash; got == nil || *got != requested {
-		env.Warn("The server did not confirm --trailing-slash %s. Check the site's settings with: dhq servers show %s",
-			requested, server.Identifier)
+		env.Warn("The server did not confirm --trailing-slash %s. Check the site's settings with: %s",
+			requested, showCmd)
 	}
 }
 

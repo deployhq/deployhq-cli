@@ -841,7 +841,7 @@ func newServersUpdateCmd() *cobra.Command {
 			env := cliCtx.Envelope
 			warnIfBranchDormant(env, deployFlags.supplied("branch"), server)
 			warnIfAtomicNotApplied(env, deployFlags.supplied("atomic") && deployFlags.atomic, server)
-			warnIfTrailingSlashNotApplied(env, trailingSlash, server)
+			warnIfTrailingSlashNotApplied(env, trailingSlash, server, fmt.Sprintf("dhq servers show %s -p %s", server.Identifier, projectID))
 
 			if env.WantsJSON() {
 				return env.WriteJSON(output.NewResponse(server, fmt.Sprintf("Updated server: %s", server.Name)))

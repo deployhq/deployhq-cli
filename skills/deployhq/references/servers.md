@@ -115,7 +115,8 @@ Use `--trailing-slash force` for a site moved from WordPress, or any site whose
 URLs end in a slash, so existing links and search rankings keep working. With
 `preserve` the site answers on both forms, so it should carry canonical tags.
 Files with an extension (`/style.css`) are never redirected. `dhq servers update
-<server> -p <project> --trailing-slash force` changes it on an existing site; the
+<server> -p <project> --trailing-slash force` changes it on an existing site
+(`dhq global-servers update <id> --trailing-slash force` for a global one); the
 CLI warns if the server is not a Static Hosting site or does not confirm the mode.
 
 **Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;

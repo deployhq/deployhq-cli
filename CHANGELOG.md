@@ -58,7 +58,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   describes several custom domains per site (as many as the account allows,
   any hostnames), each non-primary one redirecting to the primary.
 - **`--trailing-slash strip|force|preserve`** for Static Hosting on `dhq
-  servers create`, `dhq servers update` and `dhq launch --static`: how the site
+  servers create`, `dhq servers update`, `dhq global-servers update` and `dhq
+  launch --static`: how the site
   treats `/about` and `/about/`. `force` keeps the URLs of a site moved from
   WordPress working. Unknown values, other server types and `--vps` are refused
   before any request. `dhq servers update` warns when the server does not
@@ -68,7 +69,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `ProjectServerRedirects` or `GlobalServerRedirects`;
   `MakeCustomDomainPrimary`; `HostedWebsiteAttributes.TrailingSlash`,
   `ServerUpdateRequest.HostedWebsite` (sent as top-level
-  `hosted_website_attributes`) and `StaticHostingInfo.TrailingSlash`.
+  `hosted_website_attributes` by `UpdateServer` and `UpdateGlobalServer`) and `StaticHostingInfo.TrailingSlash`.
 - **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`,
   `RefreshCustomDomain`, scoped with `ProjectServerDomains` or
   `GlobalServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.
