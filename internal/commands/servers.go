@@ -835,7 +835,9 @@ func newServersUpdateCmd() *cobra.Command {
 
 			server, err := client.UpdateServer(cliCtx.Background(), projectID, args[0], req)
 			if err != nil {
-				return explainTrailingSlashOnlyError(err, onlyTrailingSlash(req), fmt.Sprintf("dhq servers show %s -p %s", args[0], projectID))
+				err = explainTrailingSlashOnlyError(err, onlyTrailingSlash(req), fmt.Sprintf("dhq servers show %s -p %s", args[0], projectID))
+				return explainTrailingSlashNotChanged(err, trailingSlash != "",
+					fmt.Sprintf("dhq servers update %s -p %s --trailing-slash %s", args[0], projectID, trailingSlash))
 			}
 
 			env := cliCtx.Envelope

@@ -69,6 +69,38 @@ func explainTrailingSlashOnlyError(err error, onlyTrailingSlash bool, showCmd st
 	}
 }
 
+// explainTrailingSlashNotChanged explains an update the API saved except for
+// the trailing slash: it answers 409 (the site is busy publishing), 429 (the
+// hourly limit on redirect changes) or 503 (it could not be published), with a
+// message that says the server was saved. Each is worth retrying; retryCmd
+// sets only the mode. Other errors are returned unchanged.
+func explainTrailingSlashNotChanged(err error, requested bool, retryCmd string) error {
+	var apiErr *sdk.APIError
+	if !requested || !errors.As(err, &apiErr) {
+		return err
+	}
+	switch apiErr.StatusCode {
+	case 409, 429, 503:
+	default:
+		return err
+	}
+	msg := apiErr.Message
+	if msg == "" {
+		msg = "The server was saved, but the trailing slash setting was not changed"
+	}
+	hint := "Only the trailing slash was not changed. Set it again in a moment with: " + retryCmd
+	if apiErr.RetryAfter > 0 {
+		hint = fmt.Sprintf("Only the trailing slash was not changed. Wait up to %d seconds, then set it with: %s", apiErr.RetryAfter, retryCmd)
+	}
+	return &output.UserError{
+		Message:    msg,
+		Hint:       hint,
+		Retryable:  true,
+		RetryAfter: apiErr.RetryAfter,
+		Recovery:   []output.Breadcrumb{{Action: "set_trailing_slash", Cmd: retryCmd}},
+	}
+}
+
 // warnIfTrailingSlashNotApplied says when a server update did not take the
 // requested trailing-slash mode: the server is not a Static Hosting site, or
 // it reports a different mode. A response without the site block says nothing
@@ -151,7 +183,16 @@ func launchEnsureTrailingSlashOnServer(ctx context.Context, env *output.Envelope
 		HostedWebsite: &sdk.HostedWebsiteUpdate{TrailingSlash: cfg.trailingSlash},
 	})
 	if err != nil {
-		env.Warn("Could not set --trailing-slash %s on the existing site: %v. Set it later with: %s", cfg.trailingSlash, err, setCmd)
+		var apiErr *sdk.APIError
+		switch {
+		case errors.As(err, &apiErr) && apiErr.RetryAfter > 0 && apiErr.Message != "":
+			env.Warn("--trailing-slash %s was not applied: %s Wait up to %d seconds, then set it with: %s",
+				cfg.trailingSlash, apiErr.Message, apiErr.RetryAfter, setCmd)
+		case errors.As(err, &apiErr) && apiErr.Message != "":
+			env.Warn("--trailing-slash %s was not applied: %s Set it later with: %s", cfg.trailingSlash, apiErr.Message, setCmd)
+		default:
+			env.Warn("Could not set --trailing-slash %s on the existing site: %v. Set it later with: %s", cfg.trailingSlash, err, setCmd)
+		}
 		return
 	}
 	if updated.StaticHosting != nil {

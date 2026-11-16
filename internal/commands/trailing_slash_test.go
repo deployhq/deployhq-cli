@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -387,4 +388,61 @@ func TestServersUpdate_TrailingSlashOnlyKeepsTheAPIReason(t *testing.T) {
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Hint, "param is missing")
+}
+
+// The API saves the rest of the server and answers 409, 429 or 503 when only
+// the trailing slash could not be published: report that, retryably.
+func TestServersUpdate_TrailingSlashNotPublishedIsAPartialSave(t *testing.T) {
+	cases := []struct {
+		status     int
+		body       string
+		retryAfter int
+	}{
+		{409, `{"error":"The server was saved, but the trailing slash setting was not changed: the site is busy publishing a deployment or another change. Try again in a moment."}`, 0},
+		{429, `{"error":"The server was saved, but the trailing slash setting was not changed: Too many redirect changes. Try again later.","retry_after":3600}`, 3600},
+		{503, `{"error":"The server was saved, but the trailing slash setting was not changed: it could not be published to the site. Try again in a moment."}`, 0},
+	}
+	for _, tc := range cases {
+		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+			withResolvableContext(t)
+			domainsAPI(t, map[string]cannedResponse{
+				"PUT /projects/my-app/servers/srv-1": {tc.status, tc.body},
+			})
+
+			err := runServersCmd(t, "servers", "update", "srv-1", "--name", "renamed", "--trailing-slash", "force")
+			var userErr *output.UserError
+			require.True(t, errors.As(err, &userErr), "got %v", err)
+			assert.Contains(t, userErr.Message, "The server was saved")
+			assert.True(t, userErr.Retryable)
+			assert.Equal(t, tc.retryAfter, userErr.RetryAfter)
+			assert.Contains(t, userErr.Hint, "dhq servers update srv-1 -p my-app --trailing-slash force")
+		})
+	}
+}
+
+func TestGlobalServersUpdate_TrailingSlashNotPublishedIsAPartialSave(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"PUT /global_servers/srv-global": {409, `{"error":"The server was saved, but the trailing slash setting was not changed: the site is busy publishing a deployment or another change. Try again in a moment."}`},
+	})
+
+	err := runServersCmd(t, "global-servers", "update", "srv-global", "--trailing-slash", "force")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.True(t, userErr.Retryable)
+	assert.Contains(t, userErr.Hint, "dhq global-servers update srv-global --trailing-slash force")
+}
+
+// A launch re-run keeps deploying; the warning says how long to wait.
+func TestLaunchEnsureTrailingSlash_RateLimitedWarnsWithTheWait(t *testing.T) {
+	srv, _ := launchSettingsAPI(t, http.StatusTooManyRequests,
+		`{"error":"The server was saved, but the trailing slash setting was not changed: Too many redirect changes. Try again later.","retry_after":3600}`)
+	env, _, stderr := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+	cfg.trailingSlash = "force"
+
+	launchEnsureTrailingSlashOnServer(t.Context(), env, cfg, newTestClient(t, srv), launchStaticServer())
+	assert.Contains(t, stderr.String(), "the trailing slash setting was not changed")
+	assert.Contains(t, stderr.String(), "3600 seconds")
+	assert.Contains(t, stderr.String(), "dhq servers update srv-1 -p my-app --trailing-slash force")
 }

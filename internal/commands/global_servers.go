@@ -134,7 +134,9 @@ func newGlobalServersUpdateCmd() *cobra.Command {
 			}
 			s, err := client.UpdateGlobalServer(cliCtx.Background(), args[0], req)
 			if err != nil {
-				return explainTrailingSlashOnlyError(err, onlyTrailingSlash(req), "dhq global-servers show "+args[0])
+				err = explainTrailingSlashOnlyError(err, onlyTrailingSlash(req), "dhq global-servers show "+args[0])
+				return explainTrailingSlashNotChanged(err, trailingSlash != "",
+					fmt.Sprintf("dhq global-servers update %s --trailing-slash %s", args[0], trailingSlash))
 			}
 			warnIfTrailingSlashNotApplied(cliCtx.Envelope, trailingSlash, s, "dhq global-servers show "+s.Identifier)
 			cliCtx.Envelope.Status("Updated global server: %s", s.Name)
