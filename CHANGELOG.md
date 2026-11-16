@@ -52,14 +52,17 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   for confirmation unless `--yes`, which non-interactive mode requires. `list`
   also shows the rules and skipped lines of the active deployment's
   `_redirects` file (checked first, so it wins), and warns about a rule that a
-  file rule overrides for some or all of the URLs it matches. A failed publish
-  is a retryable error that changed nothing.
+  file rule overrides for some or all of the URLs it matches. A change refused
+  while the site is publishing a deployment, or a failed publish, is a
+  retryable error that changed nothing. A `dhq launch` re-run warns when the
+  saved server is not Static Hosting and `--trailing-slash` cannot apply.
 - **`dhq domains primary <hostname>`**: make an active custom domain the one
   visitors land on. A domain that is not active is refused with the reason;
   one that is already primary is left as it is. While a deployment of the site
-  is running the change is refused with a retryable error and nothing changes. The `dhq domains` help now
-  describes several custom domains per site (as many as the account allows,
-  any hostnames), each non-primary one redirecting to the primary.
+  is running the change is refused with a retryable error and nothing
+  changes. The `dhq domains` help now describes several custom domains per
+  site (up to five by default, any hostnames), each non-primary one
+  redirecting to the primary.
 - **`--trailing-slash strip|force|preserve`** for Static Hosting on `dhq
   servers create`, `dhq servers update`, `dhq global-servers update` and `dhq
   launch --static`: how the site

@@ -20,9 +20,9 @@ var domainsRegistrationTimeout = 60 * time.Second
 
 // customDomainRules is the product behaviour every domains command explains:
 // what a site may have, what the customer has to do, and what happens next.
-const customDomainRules = `A Static Hosting site can have several custom domains, any hostnames you own;
-how many depends on your account and site. The first domain added is the
-primary, and every non-primary domain redirects to the primary. Once another
+const customDomainRules = `A Static Hosting site can have several custom domains, any hostnames you own:
+up to five by default (expired domains do not count). The first domain added
+is the primary, and every non-primary domain redirects to the primary. Once another
 domain is active, "dhq domains primary" makes it the primary instead. Custom
 domains need a paid plan.
 
@@ -277,7 +277,7 @@ func explainDomainsError(err error, target domainsTarget) error {
 		}
 		return &output.UserError{
 			Message:  "Custom domain refused: " + msg,
-			Hint:     "A custom domain must be a bare hostname such as www.example.com, and a site can have only as many custom domains as its account allows. See this site's domains with: dhq domains list " + target.flags(),
+			Hint:     "A custom domain must be a bare hostname such as www.example.com, and a site can have up to five custom domains by default. See this site's domains with: dhq domains list " + target.flags(),
 			Recovery: []output.Breadcrumb{{Action: "list_domains", Cmd: fmt.Sprintf("dhq domains list %s --json", target.flags())}},
 		}
 	}

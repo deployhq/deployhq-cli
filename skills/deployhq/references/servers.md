@@ -134,8 +134,9 @@ other server types return not-found). Launching a new site? `dhq launch
 - A rate-limited command (a `check` repeated within a minute, too many changes)
   exits 1 with `retryable: true` and, when known, `retry_after` in seconds in
   its `--json` error. Wait that long before repeating it.
-- A site can have several custom domains, any hostnames; how many depends on
-  the account and site (a `422` says when the limit is reached). The first
+- A site can have several custom domains, any hostnames: up to five by
+  default (a `422` says when the limit is reached; expired domains do not
+  count). The first
   added is the primary, and every non-primary domain redirects to the primary.
   `primary` makes another active domain the primary (a domain that is not
   active is refused with the reason; while a deployment of the site is
@@ -216,6 +217,10 @@ server types return not-found). Server flags as for `dhq domains`: `-p <project>
   in the new order; any other list is refused and nothing moves. `remove` needs `--yes` in non-interactive mode
   and only removes managed rules (a file rule goes by editing the file and
   deploying). Identifiers come from `list`.
+- While a deployment of the site (or another change) is publishing, a change
+  is refused with a retryable error and nothing changes; so is a change the
+  live site could not take. Run it again in a moment. A site being deleted
+  refuses every change.
 
 ```bash
 dhq servers redirects list -p my-site -s "My Site" --json
