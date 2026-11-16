@@ -1764,6 +1764,9 @@ func launchProvisionStatic(ctx context.Context, env *output.Envelope, cfg *launc
 					return nil, &output.UserError{Message: "Custom domain entry cancelled"}
 				}
 				answer = strings.TrimSpace(answer)
+				// Keep the subdomain chosen at the prompt for the retry, as
+				// the subdomain-taken branch below does.
+				cfg.subdomain = subdomain
 				if answer == "" || answer == cfg.customDomain {
 					cfg.customDomain, cfg.noPair = "", false
 					cfg.customDomainPrompted = true
