@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,17 +65,18 @@ func launchDomainServer(t *testing.T, status int, body string) (*httptest.Server
 }
 
 // launchDomainListServer answers the custom domains list with the given
-// bodies in order (the last repeats) and counts the calls.
-func launchDomainListServer(t *testing.T, bodies ...string) (*httptest.Server, *int) {
+// bodies in order (the last repeats) and counts the calls. The count is atomic:
+// a poll that times out abandons its request, so the handler can still be
+// counting while the test reads it.
+func launchDomainListServer(t *testing.T, bodies ...string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
-	calls := 0
+	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == launchDomainsPath {
-			idx := calls
+			idx := int(calls.Add(1)) - 1
 			if idx >= len(bodies) {
 				idx = len(bodies) - 1
 			}
-			calls++
 			_, _ = w.Write([]byte(bodies[idx]))
 			return
 		}
@@ -361,7 +363,7 @@ func TestLaunchFinishCustomDomain_PollsUntilRegistered(t *testing.T) {
 
 	got := launchFinishCustomDomain(t.Context(), env, launchDomainCfg("www.example.com"), newTestClient(t, srv), server, "acme", launchDomainLiveURL)
 	require.NotNil(t, got)
-	assert.Equal(t, 2, *calls, "polls until registering is false")
+	assert.Equal(t, int32(2), calls.Load(), "polls until registering is false")
 	assert.Equal(t, "dns_records_required", got.Status)
 	assert.True(t, got.Added)
 	require.Len(t, got.Domains, 1)
@@ -385,7 +387,7 @@ func TestLaunchFinishCustomDomain_StopsWaitingAfterTimeout(t *testing.T) {
 
 	got := launchFinishCustomDomain(t.Context(), env, launchDomainCfg("www.example.com"), newTestClient(t, srv), server, "acme", launchDomainLiveURL)
 	require.NotNil(t, got)
-	assert.Positive(t, *calls)
+	assert.Positive(t, calls.Load())
 	assert.Equal(t, "registering", got.Status)
 	assert.True(t, got.Domains[0].Registering)
 	assert.Contains(t, got.NextStep, "dhq domains show")
@@ -403,7 +405,7 @@ func TestLaunchFinishCustomDomain_OlderServerDomainIsNotPolled(t *testing.T) {
 
 	got := launchFinishCustomDomain(t.Context(), env, launchDomainCfg("www.example.com"), newTestClient(t, srv), server, "acme", launchDomainLiveURL)
 	require.NotNil(t, got)
-	assert.Zero(t, *calls)
+	assert.Zero(t, calls.Load())
 	assert.Equal(t, "dns_records_required", got.Status)
 }
 
