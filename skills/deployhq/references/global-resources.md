@@ -46,7 +46,8 @@ dhq global-servers copy 12345 -p my-app --name "My Staging" --json
 `--trailing-slash strip|force|preserve` sets how a global Static Hosting site
 treats a trailing slash (see [servers.md](servers.md)); the CLI warns if the
 server does not confirm the mode, and refuses an update that sends only
-`--trailing-slash` to a server that is not Static Hosting.
+`--trailing-slash` to a server that is not Static Hosting. A mode that could
+not be published leaves the rest of the update saved and exits 1, retryable.
 
 ```bash
 dhq global-servers update 12345 --name "Updated Name" --json

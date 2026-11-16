@@ -51,8 +51,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   rules are checked in and must name every rule exactly once. `remove` asks
   for confirmation unless `--yes`, which non-interactive mode requires. `list`
   also shows the rules and skipped lines of the active deployment's
-  `_redirects` file (checked first, so it wins), and warns about a rule that a
-  file rule overrides for some or all of the URLs it matches. A change refused
+  `_redirects` file (checked first, so it wins), lists notes on lines applied
+  in a normalised form apart from skipped ones, and warns about a rule that a
+  file rule overrides for some or all of the URLs it matches, or that an
+  earlier rule takes over completely. The account-wide limit of 60 redirect
+  changes per hour is a retryable error with the wait time. A change refused
   while the site is publishing a deployment, or a failed publish, is a
   retryable error that changed nothing. A `dhq launch` re-run warns when the
   saved server is not Static Hosting and `--trailing-slash` cannot apply.
@@ -70,13 +73,17 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   WordPress working. Unknown values, other server types and `--vps` are refused
   before any request. `dhq servers update` warns when the server does not
   confirm the mode (a site that never chose one counts as `strip`), explains
-  an update that sends only `--trailing-slash` to another server type, and a
+  an update that sends only `--trailing-slash` to another server type,
+  reports a mode that could not be published (site busy, hourly limit,
+  publish failed) as retryable while the rest of the update is saved, and a
   `dhq launch` re-run applies it to the existing site.
 - **`dhq domains add`** (and `dhq launch --custom-domain`) help and the skill
   now say the other half of the apex and www pair is also offered on later
   adds, redirecting to the site's primary domain; it is skipped only when it
   is already on the site or the hostname has no pair.
-- **SDK**: `ListRedirectRules`, `CreateRedirectRule`, `UpdateRedirectRule`
+- **SDK**: `RedirectRuleShadow.Line` is a pointer and
+  `RedirectRuleShadow.RuleIdentifier` names an earlier rule;
+  `RedirectFileWarning.IsNote()`; `ListRedirectRules`, `CreateRedirectRule`, `UpdateRedirectRule`
   (`RedirectRuleUpdateRequest.Position` moves a rule),
   `DeleteRedirectRule` and `ReorderRedirectRules`, scoped with
   `ProjectServerRedirects` or `GlobalServerRedirects`;

@@ -119,6 +119,10 @@ Files with an extension (`/style.css`) are never redirected. `dhq servers update
 (`dhq global-servers update <id> --trailing-slash force` for a global one); the
 CLI warns if the server does not confirm the mode, and an update that sends only
 `--trailing-slash` to another server type is refused with that explanation.
+When the mode cannot be published (the site is busy publishing, the hourly
+limit on redirect changes is reached, or publishing failed), the rest of the
+update is still saved: the command exits 1 with `retryable: true` and a hint
+that sets only the trailing slash again.
 
 **Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;
 other server types return not-found). Launching a new site? `dhq launch
@@ -198,9 +202,12 @@ server types return not-found). Server flags as for `dhq domains`: `-p <project>
 - File rules are checked first: if both match a URL, the file wins. `list`
   shows the managed rules, then the file's rules and skipped lines
   (`file_rules`, `file_warnings`, from the active deployment; `deployment_uuid`
-  is null before the first deploy). A managed rule with `shadowed_by` is
-  overridden, for some or all of the URLs it matches, by a file rule (named by
-  its line) that is checked first.
+  is null before the first deploy). A managed rule with `shadowed_by` is taken
+  over by another rule: a file rule (`line` set) for some or all of the URLs
+  it matches, or an earlier managed rule (`rule_identifier` set, `line` null)
+  for all of them, so it never applies. `file_warnings` with code
+  `source_normalised` or `slash_only_redirect` are notes on lines that were
+  applied, not skipped.
 - Unsupported lines in the file are skipped with a warning, never approximated:
   200 rewrites, 404 lines and `Country`/`Language`/`Role`/`Cookie` conditions.
 - Sources are paths (`/old`, `/blog/:slug`, `/docs/*`); destinations are paths
@@ -214,13 +221,16 @@ server types return not-found). Server flags as for `dhq domains`: `-p <project>
 - `add` appends unless `--position N`. `update <identifier>` changes only the
   flags given (`--query ""` removes the query matcher; `--position N` moves
   the rule). `reorder <id>...` must name every rule of the site exactly once,
-  in the new order; any other list is refused and nothing moves. `remove` needs `--yes` in non-interactive mode
-  and only removes managed rules (a file rule goes by editing the file and
+  in the new order; any other list is refused and nothing moves. `remove`
+  needs `--yes` in non-interactive mode and only removes managed rules (a file rule goes by editing the file and
   deploying). Identifiers come from `list`.
 - While a deployment of the site (or another change) is publishing, a change
   is refused with a retryable error and nothing changes; so is a change the
   live site could not take. Run it again in a moment. A site being deleted
   refuses every change.
+- An account can make 60 redirect changes per hour across its sites (adding,
+  changing, removing or reordering rules, and trailing-slash changes). Past
+  that, a change exits 1 with `retryable: true` and `retry_after` in seconds.
 
 ```bash
 dhq servers redirects list -p my-site -s "My Site" --json
