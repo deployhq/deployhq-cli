@@ -178,3 +178,62 @@ func TestUpdateServer_OmittedDeploymentSettingsAreAbsent(t *testing.T) {
 }
 
 func intPtr(i int) *int { return &i }
+
+func TestUpdateServer_HoistsHostedWebsiteSettings(t *testing.T) {
+	// Static Hosting site settings are a top-level sibling of `server`, as on
+	// create, and carry only what was set (no subdomain or spa_mode).
+	var body map[string]any
+	srv := captureUpdateBody(t, &body)
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.UpdateServer(context.Background(), "my-app", "srv-1", ServerUpdateRequest{
+		HostedWebsite: &HostedWebsiteUpdate{TrailingSlash: "force"},
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]any{"trailing_slash": "force"}, body["hosted_website_attributes"])
+	server := body["server"].(map[string]any)
+	assert.NotContains(t, server, "hosted_website_attributes")
+	assert.NotContains(t, server, "trailing_slash")
+}
+
+func TestUpdateServer_NoHostedWebsiteSettingsSendsNone(t *testing.T) {
+	var body map[string]any
+	srv := captureUpdateBody(t, &body)
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.UpdateServer(context.Background(), "my-app", "srv-1", ServerUpdateRequest{Name: "renamed"})
+	require.NoError(t, err)
+	assert.NotContains(t, body, "hosted_website_attributes")
+}
+
+func TestCreateServer_StaticHostingTrailingSlash(t *testing.T) {
+	var body map[string]any
+	srv := captureCreateBody(t, &body)
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.CreateServer(context.Background(), "my-app", ServerCreateRequest{
+		Name:         "site",
+		ProtocolType: "static_hosting",
+		HostedWebsiteAttributes: &HostedWebsiteAttributes{
+			Subdomain:     "my-site",
+			TrailingSlash: "force",
+		},
+	})
+	require.NoError(t, err)
+	attrs := body["hosted_website_attributes"].(map[string]any)
+	assert.Equal(t, "force", attrs["trailing_slash"])
+}
+
+func TestServer_DecodesStaticHostingTrailingSlash(t *testing.T) {
+	var s Server
+	require.NoError(t, json.Unmarshal([]byte(`{"static_hosting":{"url":"https://x.deployhq-sites.com","trailing_slash":"force"}}`), &s))
+	require.NotNil(t, s.StaticHosting.TrailingSlash)
+	assert.Equal(t, "force", *s.StaticHosting.TrailingSlash)
+
+	require.NoError(t, json.Unmarshal([]byte(`{"static_hosting":{"trailing_slash":null}}`), &s))
+	assert.Nil(t, s.StaticHosting.TrailingSlash)
+}

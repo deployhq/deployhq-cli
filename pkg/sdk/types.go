@@ -129,6 +129,10 @@ type HostedWebsiteAttributes struct {
 	// Subdirectory is the output folder within the server path to publish.
 	// Defaults to "" (the server path root) when empty.
 	Subdirectory string `json:"subdirectory,omitempty"`
+	// TrailingSlash is how the site treats a trailing slash on a URL: "strip"
+	// (redirect /about/ to /about), "force" (redirect /about to /about/) or
+	// "preserve" (serve both, no redirect). Empty leaves DeployHQ's default.
+	TrailingSlash string `json:"trailing_slash,omitempty"`
 	// CustomDomainHostname optionally asks for a custom domain on the new site.
 	// An invalid hostname fails the create with a 422; a refusal for any other
 	// reason (paid plan, rate limit) is reported in Server.CustomDomainErrors.
@@ -256,6 +260,23 @@ type ServerUpdateRequest struct {
 	Atomic          *bool   `json:"atomic,omitempty"`
 	AtomicStrategy  string  `json:"atomic_strategy,omitempty"`
 	AtomicRetention *int    `json:"atomic_retention,omitempty"`
+
+	// HostedWebsite changes settings of a Static Hosting site. Like the
+	// create-time attributes it is sent as a top-level sibling of `server`
+	// (UpdateServer hoists it); other server types ignore it.
+	HostedWebsite *HostedWebsiteUpdate `json:"-"`
+}
+
+// TrailingSlashModes are the values a Static Hosting site's trailing-slash
+// setting accepts.
+var TrailingSlashModes = []string{"strip", "force", "preserve"}
+
+// HostedWebsiteUpdate holds the Static Hosting site settings a server update
+// can change. Only the fields set are sent.
+type HostedWebsiteUpdate struct {
+	// TrailingSlash is "strip", "force" or "preserve"; see
+	// HostedWebsiteAttributes.TrailingSlash.
+	TrailingSlash string `json:"trailing_slash,omitempty"`
 }
 
 // ServerGroup represents a group of servers.
@@ -582,6 +603,9 @@ type StaticHostingInfo struct {
 	Subdomain string `json:"subdomain"`
 	// Status is the provisioning status of the underlying HostedWebsite.
 	Status string `json:"status,omitempty"`
+	// TrailingSlash is the site's trailing-slash mode ("strip", "force" or
+	// "preserve"); nil when it was never set, which behaves as "strip".
+	TrailingSlash *string `json:"trailing_slash,omitempty"`
 }
 
 // TwoFactorError is a sentinel returned by Signup when the API responds with 422

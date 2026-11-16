@@ -58,9 +58,12 @@ func (c *Client) CreateServer(ctx context.Context, projectID string, req ServerC
 
 // UpdateServer updates a server.
 func (c *Client) UpdateServer(ctx context.Context, projectID, serverID string, req ServerUpdateRequest) (*Server, error) {
-	body := struct {
-		Server ServerUpdateRequest `json:"server"`
-	}{Server: req}
+	// Static Hosting site settings are a top-level sibling of `server`, as on
+	// create.
+	body := map[string]any{"server": req}
+	if req.HostedWebsite != nil {
+		body["hosted_website_attributes"] = req.HostedWebsite
+	}
 	var server Server
 	if err := c.put(ctx, fmt.Sprintf("/projects/%s/servers/%s", projectID, serverID), body, &server); err != nil {
 		return nil, err

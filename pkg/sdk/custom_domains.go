@@ -139,3 +139,14 @@ func (c *Client) RefreshCustomDomain(ctx context.Context, scope CustomDomainScop
 	}
 	return &check, nil
 }
+
+// MakeCustomDomainPrimary makes a custom domain the one visitors land on; the
+// site's other custom domains redirect to it. Only an active domain can be
+// made primary: any other is a 422 whose message says why.
+func (c *Client) MakeCustomDomainPrimary(ctx context.Context, scope CustomDomainScope, identifier string) (*CustomDomain, error) {
+	var domain CustomDomain
+	if err := c.post(ctx, scope.domainPath(identifier)+"/primary", nil, &domain); err != nil {
+		return nil, err
+	}
+	return &domain, nil
+}
