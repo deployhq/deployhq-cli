@@ -231,13 +231,23 @@ func writeRedirectRulesTable(env *output.Envelope, rules []sdk.RedirectRule) {
 	env.WriteTable([]string{"Position", "Source", "Query", "Destination", "Status", "Identifier"}, rows)
 }
 
-// warnShadowed says which rules a _redirects rule takes over, for some or all
-// of the URLs they match: the file's rules are checked first.
+// warnShadowed says which rules another rule takes over: a _redirects rule
+// (checked first) for some or all of the URLs they match, or an earlier rule
+// managed here for all of them, so they never apply.
 func warnShadowed(env *output.Envelope, rules []sdk.RedirectRule) {
 	for _, r := range rules {
-		if r.ShadowedBy != nil {
+		s := r.ShadowedBy
+		switch {
+		case s == nil:
+		case s.RuleIdentifier != nil:
+			env.Warn("Rule %d (%s) never applies: earlier rule %s (%s) matches first.",
+				r.Position, r.Source, *s.RuleIdentifier, s.Source)
+		case s.Line != nil:
 			env.Warn("Rule %d (%s) is overridden, for some or all of the URLs it matches, by line %d of the _redirects file (%s), which is checked first.",
-				r.Position, r.Source, r.ShadowedBy.Line, r.ShadowedBy.Source)
+				r.Position, r.Source, *s.Line, s.Source)
+		default:
+			env.Warn("Rule %d (%s) is overridden, for some or all of the URLs it matches, by %s in the _redirects file, which is checked first.",
+				r.Position, r.Source, s.Source)
 		}
 	}
 }
@@ -259,14 +269,28 @@ func writeRedirectFile(env *output.Envelope, rules *sdk.RedirectRules) {
 		}
 		env.WriteTable([]string{"Line", "Source", "Query", "Destination", "Status"}, rows)
 	}
-	if len(rules.FileWarnings) > 0 {
-		env.Status("\nLines of the _redirects file that were skipped:")
-		for _, w := range rules.FileWarnings {
-			if w.Line != nil {
-				env.Status("  line %d: %s", *w.Line, w.Reason)
-			} else {
-				env.Status("  %s", w.Reason)
-			}
+	var skipped, notes []sdk.RedirectFileWarning
+	for _, w := range rules.FileWarnings {
+		if w.IsNote() {
+			notes = append(notes, w)
+		} else {
+			skipped = append(skipped, w)
+		}
+	}
+	writeFileWarnings(env, "\nLines of the _redirects file that were skipped:", skipped)
+	writeFileWarnings(env, "\nLines of the _redirects file that were applied in a normalised form:", notes)
+}
+
+func writeFileWarnings(env *output.Envelope, heading string, warnings []sdk.RedirectFileWarning) {
+	if len(warnings) == 0 {
+		return
+	}
+	env.Status("%s", heading)
+	for _, w := range warnings {
+		if w.Line != nil {
+			env.Status("  line %d: %s", *w.Line, w.Reason)
+		} else {
+			env.Status("  %s", w.Reason)
 		}
 	}
 }
@@ -279,10 +303,14 @@ func newRedirectsListCmd() *cobra.Command {
 		Long: `List the redirect rules managed in DeployHQ, in the order they are checked, then
 the rules and skipped lines of the _redirects file of the active deployment.
 
-With --json, "rules" holds the rules managed in DeployHQ (a rule that a file rule
-overrides, for some or all of the URLs it matches, has "shadowed_by"), "file_rules" and "file_warnings" the _redirects file's
-rules and skipped lines, and "deployment_uuid" the deployment they come from
-(null before the first deploy).`,
+With --json, "rules" holds the rules managed in DeployHQ. "shadowed_by" names the
+rule that takes one over: a _redirects line ("line") for some or all of the URLs
+it matches, or an earlier rule here ("rule_identifier") that takes all of them,
+so the rule never applies. "file_rules" and "file_warnings" hold the _redirects
+file's rules and its skipped lines (codes source_normalised and
+slash_only_redirect are notes on lines that were applied), and
+"deployment_uuid" the deployment they come from (null before the first
+deploy).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cliCtx.Background()
 			client, target, err := openDomainsTarget(ctx, flags)

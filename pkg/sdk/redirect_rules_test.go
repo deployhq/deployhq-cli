@@ -46,7 +46,9 @@ func TestListRedirectRules(t *testing.T) {
 	assert.Nil(t, first.ShadowedBy)
 	assert.Nil(t, rules.Rules[1].Query)
 	require.NotNil(t, rules.Rules[1].ShadowedBy)
-	assert.Equal(t, 4, rules.Rules[1].ShadowedBy.Line)
+	require.NotNil(t, rules.Rules[1].ShadowedBy.Line)
+	assert.Equal(t, 4, *rules.Rules[1].ShadowedBy.Line)
+	assert.Nil(t, rules.Rules[1].ShadowedBy.RuleIdentifier)
 
 	require.Len(t, rules.FileRules, 1)
 	assert.Equal(t, 1, rules.FileRules[0].Line)
@@ -177,4 +179,16 @@ func TestUpdateRedirectRule_SendsPosition(t *testing.T) {
 	_, err := c.UpdateRedirectRule(context.Background(), ProjectServerRedirects("my-app", "srv1"), "rr-1",
 		RedirectRuleUpdateRequest{Position: &position})
 	require.NoError(t, err)
+}
+
+// shadowed_by names either a _redirects line or an earlier DeployHQ rule that
+// takes the rule over completely (line null, rule_identifier set).
+func TestRedirectRuleShadow_EarlierRule(t *testing.T) {
+	var rule RedirectRule
+	require.NoError(t, json.Unmarshal([]byte(`{"identifier":"rr-2","position":2,"source":"/","destination":"/x","status":301,`+
+		`"query":"p=:id","shadowed_by":{"source":"/","line":null,"rule_identifier":"rr-1"}}`), &rule))
+	require.NotNil(t, rule.ShadowedBy)
+	assert.Nil(t, rule.ShadowedBy.Line)
+	require.NotNil(t, rule.ShadowedBy.RuleIdentifier)
+	assert.Equal(t, "rr-1", *rule.ShadowedBy.RuleIdentifier)
 }

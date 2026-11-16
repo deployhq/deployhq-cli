@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/deployhq/deployhq-cli/internal/output"
@@ -486,4 +487,36 @@ func TestRedirectsUpdate_UnknownRuleIsExplained(t *testing.T) {
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "the redirect rule does not exist")
 	assert.Contains(t, userErr.Hint, "dhq servers redirects list -p my-app -s srv-static")
+}
+
+// An earlier DeployHQ rule that takes a rule over completely means it never
+// applies; the warning names that rule rather than a _redirects line.
+func TestWarnShadowed_EarlierRuleNeverApplies(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
+	earlier := "rr-1"
+	warnShadowed(env, []sdk.RedirectRule{{Identifier: "rr-2", Position: 2, Source: "/",
+		ShadowedBy: &sdk.RedirectRuleShadow{Source: "/", RuleIdentifier: &earlier}}})
+	assert.Contains(t, stderr.String(), "Rule 2 (/) never applies: earlier rule rr-1 (/) matches first")
+	assert.NotContains(t, stderr.String(), "_redirects")
+}
+
+// Notes about lines that were applied in a normalised form are not skipped
+// lines.
+func TestWriteRedirectFile_SeparatesNotesFromSkippedLines(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
+	var rules sdk.RedirectRules
+	require.NoError(t, json.Unmarshal([]byte(`{"rules":[],"file_rules":[{"source":"/a","destination":"/b","status":301,"query":null,"line":1}],`+
+		`"file_warnings":[{"line":2,"code":"rewrite_unsupported","reason":"200 rewrites are not supported"},`+
+		`{"line":1,"code":"source_normalised","reason":"/a/ was applied as /a, the address visitors see."}],"deployment_uuid":"dep"}`), &rules))
+
+	writeRedirectFile(env, &rules)
+	out := stderr.String()
+	skipped := strings.Index(out, "were skipped")
+	notes := strings.Index(out, "were applied")
+	require.True(t, skipped >= 0 && notes >= 0, out)
+	assert.Contains(t, out[skipped:notes], "line 2")
+	assert.NotContains(t, out[skipped:notes], "line 1:")
+	assert.Contains(t, out[notes:], "line 1: /a/ was applied as /a")
 }

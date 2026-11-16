@@ -12,12 +12,15 @@ import (
 // answer with.
 var RedirectStatuses = []int{301, 302, 307, 308}
 
-// RedirectRuleShadow names the rule of the site's _redirects file that takes
-// over some or all of the requests a redirect rule matches: file rules are
-// checked first, and the first match wins.
+// RedirectRuleShadow names the rule that takes over requests a redirect rule
+// matches (the first match wins). Either a rule of the site's _redirects file,
+// which is checked first and may take some or all of them (Line set,
+// RuleIdentifier nil), or an earlier rule managed in DeployHQ that takes all
+// of them, so the rule never applies (RuleIdentifier set, Line nil).
 type RedirectRuleShadow struct {
-	Source string `json:"source"`
-	Line   int    `json:"line"`
+	Source         string  `json:"source"`
+	Line           *int    `json:"line"`
+	RuleIdentifier *string `json:"rule_identifier"`
 }
 
 // RedirectRule is a redirect rule managed in DeployHQ (dashboard, API or CLI)
@@ -34,7 +37,8 @@ type RedirectRule struct {
 	// rule matches on the path alone.
 	Query *string `json:"query"`
 	// ShadowedBy is set when a rule of the _redirects file matches some or all
-	// of the same requests first.
+	// of the same requests first, or an earlier DeployHQ rule matches all of
+	// them first.
 	ShadowedBy *RedirectRuleShadow `json:"shadowed_by"`
 }
 
@@ -49,11 +53,22 @@ type RedirectFileRule struct {
 }
 
 // RedirectFileWarning is a line of the _redirects file that was skipped, and
-// why. Line is nil for a problem with the file as a whole.
+// why, or a note about a line that was applied in a normalised form (see
+// IsNote). Line is nil for a problem with the file as a whole.
 type RedirectFileWarning struct {
 	Line   *int   `json:"line"`
 	Code   string `json:"code"`
 	Reason string `json:"reason"`
+}
+
+// redirectFileNoteCodes are the codes of warnings about _redirects lines that
+// WERE applied, in a normalised form, rather than skipped.
+var redirectFileNoteCodes = map[string]bool{"source_normalised": true, "slash_only_redirect": true}
+
+// IsNote reports whether the warning is a note about a line that was applied,
+// not a line that was skipped.
+func (w RedirectFileWarning) IsNote() bool {
+	return redirectFileNoteCodes[w.Code]
 }
 
 // UnmarshalJSON accepts a warning either as an object or as plain text.
