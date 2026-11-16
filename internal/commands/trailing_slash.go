@@ -64,7 +64,7 @@ func explainTrailingSlashOnlyError(err error, onlyTrailingSlash bool, showCmd st
 	}
 	return &output.UserError{
 		Message:  "--trailing-slash only applies to Static Hosting servers, and nothing else was given to update",
-		Hint:     "Check the server's type with: " + showCmd,
+		Hint:     fmt.Sprintf("Check the server's type with: %s (the API said: %s)", showCmd, apiErr.Message),
 		Recovery: []output.Breadcrumb{{Action: "show", Cmd: showCmd + " --json"}},
 	}
 }
@@ -133,7 +133,14 @@ func refuseTrailingSlashTarget(target string) error {
 // re-run found, when it has a different mode. A failure is a warning: the
 // site still deploys, and the warning names the command that sets it.
 func launchEnsureTrailingSlashOnServer(ctx context.Context, env *output.Envelope, cfg launchConfig, client *sdk.Client, server *sdk.Server) {
-	if cfg.trailingSlash == "" || server == nil || server.ProtocolType != detect.ProtocolStaticHosting {
+	if cfg.trailingSlash == "" || server == nil {
+		return
+	}
+	// A re-run reuses the server saved by an earlier launch, whatever its
+	// type; --static does not change it.
+	if server.ProtocolType != detect.ProtocolStaticHosting {
+		env.Warn("--trailing-slash %s was not applied: the saved server %s is not a Static Hosting server.",
+			cfg.trailingSlash, server.Identifier)
 		return
 	}
 	if server.StaticHosting != nil && effectiveTrailingSlash(server.StaticHosting.TrailingSlash) == cfg.trailingSlash {

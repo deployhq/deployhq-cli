@@ -359,3 +359,32 @@ func TestGlobalServersUpdate_TrailingSlashOnlyOnOtherServerIsExplained(t *testin
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "only applies to Static Hosting")
 }
+
+// A launch re-run whose saved server is not Static Hosting cannot apply
+// --trailing-slash: say so instead of skipping it silently.
+func TestLaunchEnsureTrailingSlash_OtherServerTypeWarns(t *testing.T) {
+	srv, requests := launchSettingsAPI(t, http.StatusOK, `{}`)
+	env, _, stderr := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+	cfg.trailingSlash = "force"
+	server := launchStaticServer()
+	server.ProtocolType = "managed_vps"
+
+	launchEnsureTrailingSlashOnServer(t.Context(), env, cfg, newTestClient(t, srv), server)
+	assert.Empty(t, *requests)
+	assert.Contains(t, stderr.String(), "--trailing-slash force was not applied")
+	assert.Contains(t, stderr.String(), "not a Static Hosting server")
+}
+
+// The API's own reason stays visible next to the explanation.
+func TestServersUpdate_TrailingSlashOnlyKeepsTheAPIReason(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"PUT /projects/my-app/servers/srv-ssh": {400, `{"error":"There was a problem in the JSON you submitted: param is missing or the value is empty: server","error_code":"invalid_json"}`},
+	})
+
+	err := runServersCmd(t, "servers", "update", "srv-ssh", "--trailing-slash", "force")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Hint, "param is missing")
+}
