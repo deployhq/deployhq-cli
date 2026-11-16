@@ -151,6 +151,17 @@ func explainRedirectsError(err error, target domainsTarget) error {
 			hint = fmt.Sprintf("Try again in %d seconds.", apiErr.RetryAfter)
 		}
 		return &output.UserError{Message: msg, Hint: hint, Retryable: true, RetryAfter: apiErr.RetryAfter}
+	case apiErr.StatusCode == 409:
+		msg := apiErr.Message
+		if msg == "" {
+			msg = "The site is busy publishing a deployment or another change"
+		}
+		return &output.UserError{
+			Message:   msg,
+			Hint:      "Nothing was changed. Run the command again in a moment, then check the rules with: " + listCmd,
+			Retryable: true,
+			Recovery:  []output.Breadcrumb{{Action: "list_redirects", Cmd: listCmd + " --json"}},
+		}
 	case apiErr.StatusCode == 503:
 		msg := apiErr.Message
 		if msg == "" {

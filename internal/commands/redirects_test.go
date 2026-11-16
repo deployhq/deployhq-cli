@@ -417,3 +417,73 @@ func TestWarnShadowed_DoesNotOverstate(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "never applies")
 	assert.Contains(t, stderr.String(), "line 4")
 }
+
+// A deployment or another change holds the site while it publishes: every
+// change is refused with 409 and nothing changes, so it is worth retrying.
+func TestRedirectsAdd_SiteBusyIsRetryable(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + redirectsBase:        {409, `{"error":"The site is busy publishing a deployment or another change, so nothing was changed. Try again in a moment."}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.True(t, userErr.Retryable)
+	assert.Contains(t, userErr.Message, "The site is busy")
+	assert.Contains(t, userErr.Hint, "Nothing was changed")
+}
+
+func TestRedirectsReorder_SiteBusyIsRetryable(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":      {200, domainsServersJSON},
+		"PUT " + redirectsBase + "/reorder": {409, `{"error":"The site is busy publishing a deployment or another change, so nothing was changed. Try again in a moment."}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "reorder", "rr-2", "rr-1", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.True(t, userErr.Retryable)
+}
+
+func TestRedirects_GlobalAccessDeniedIsAnAuthError(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"POST /global_servers/0b9f3c2e-1d4a-4c8b-9e2f-123456789abc/redirect_rules": {403, `{"error":"access_denied","error_code":"access_denied"}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "--global", "-s", "0b9f3c2e-1d4a-4c8b-9e2f-123456789abc")
+	var authErr *output.AuthError
+	require.True(t, errors.As(err, &authErr), "got %v", err)
+	assert.Contains(t, authErr.Hint, "account administrator")
+}
+
+func TestRedirectsAdd_RateLimitIsRetryable(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + redirectsBase:        {429, `{"error":"Too many requests","retry_after":30}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.True(t, userErr.Retryable)
+	assert.Equal(t, 30, userErr.RetryAfter)
+}
+
+func TestRedirectsUpdate_UnknownRuleIsExplained(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":     {200, domainsServersJSON},
+		"PATCH " + redirectsBase + "/rr-9": {404, `{"status":"not_found","error_code":"not_found"}`},
+	})
+
+	err := runServersCmd(t, "servers", "redirects", "update", "rr-9", "--status", "302", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "the redirect rule does not exist")
+	assert.Contains(t, userErr.Hint, "dhq servers redirects list -p my-app -s srv-static")
+}
