@@ -494,6 +494,13 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"custom_domain"},
 	},
 
+	"dhq domains primary": {
+		// Changes which domain visitors land on; the others redirect to it.
+		// Making the current primary primary again changes nothing.
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+
 	// Static Hosting redirect rules (all take -p <project> -s <server>, or
 	// --global -s <server> for a global server). Changes apply to the live site
 	// straight away, without a deploy.

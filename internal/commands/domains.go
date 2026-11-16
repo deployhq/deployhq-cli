@@ -22,7 +22,8 @@ var domainsRegistrationTimeout = 60 * time.Second
 // what a site may have, what the customer has to do, and what happens next.
 const customDomainRules = `A Static Hosting site can have at most 2 custom domains: an apex + www pair
 (e.g. example.com and www.example.com). The first domain added is the primary;
-the other redirects to it. Custom domains need a paid plan.
+the other redirects to it. Once another domain is active, "dhq domains primary"
+makes it the primary instead. Custom domains need a paid plan.
 
 For each domain, add BOTH DNS records that "dhq domains add" prints at your DNS
 provider:
@@ -66,6 +67,7 @@ instead of the project, with -s. Other server types do not support custom domain
   dhq domains show www.example.com -p my-site -s "My Site"
   dhq domains remove www.example.com -p my-site -s "My Site" --yes
   dhq domains check www.example.com -p my-site -s "My Site"
+  dhq domains primary example.com -p my-site -s "My Site"
   dhq domains list --global -s "Shared Site"`,
 	}
 
@@ -75,6 +77,7 @@ instead of the project, with -s. Other server types do not support custom domain
 		newDomainsAddCmd(),
 		newDomainsRemoveCmd(),
 		newDomainsCheckCmd(),
+		newDomainsPrimaryCmd(),
 	)
 	return cmd
 }
@@ -923,6 +926,86 @@ func explainDomainsCheckError(err error, d *sdk.CustomDomain, target domainsTarg
 		return &output.UserError{
 			Message:  msg,
 			Hint:     "Only a pending domain can be checked. See its status with: " + showCmd,
+			Recovery: []output.Breadcrumb{{Action: "show", Cmd: showCmd + " --json"}},
+		}
+	}
+	return explainDomainsError(err, target)
+}
+
+func newDomainsPrimaryCmd() *cobra.Command {
+	var flags domainsServerFlags
+	cmd := &cobra.Command{
+		Use:   "primary <hostname|identifier>",
+		Short: "Make a custom domain the one visitors land on",
+		Long: `Make a custom domain the primary: visitors land on it, and the site's other
+custom domains redirect to it. Only an active domain can be made primary; any
+other is refused with the reason. A domain that is already primary is left as
+it is.`,
+		Example: `  dhq domains primary example.com -p my-site -s "My Site"`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cliCtx.Background()
+			client, target, err := openDomainsTarget(ctx, flags)
+			if err != nil {
+				return err
+			}
+
+			// Resolve a hostname to its identifier (and confirm it exists).
+			domains, err := client.ListCustomDomains(ctx, target.scope)
+			if err != nil {
+				return explainDomainsError(err, target)
+			}
+			d := findDomain(domains, args[0])
+			if d == nil {
+				return domainNotFoundError(args[0], target, domains)
+			}
+
+			env := cliCtx.Envelope
+			listCrumb := output.Breadcrumb{Action: "list", Cmd: fmt.Sprintf("dhq domains list %s", target.flags())}
+			if d.Primary {
+				if env.WantsJSON() {
+					return env.WriteJSON(output.NewResponse(d, fmt.Sprintf("%s is already the primary domain", d.Hostname), listCrumb))
+				}
+				env.Status("%s is already the primary domain.", d.Hostname)
+				return nil
+			}
+
+			primary, err := client.MakeCustomDomainPrimary(ctx, target.scope, d.Identifier)
+			if err != nil {
+				return explainDomainsPrimaryError(err, d, target)
+			}
+
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(primary,
+					fmt.Sprintf("%s is now the primary domain; the other custom domains redirect to it", primary.Hostname),
+					listCrumb,
+				))
+			}
+			env.Status("%s is now the primary domain; the site's other custom domains redirect to it.", primary.Hostname)
+			return nil
+		},
+	}
+	addDomainsServerFlags(cmd, &flags)
+	return cmd
+}
+
+// explainDomainsPrimaryError passes on why a domain cannot be made primary. A
+// 422 carries the API's reason (typically that the domain is not active yet);
+// the other refusals are shared with the rest of the domains commands.
+func explainDomainsPrimaryError(err error, d *sdk.CustomDomain, target domainsTarget) error {
+	var apiErr *sdk.APIError
+	if errors.As(err, &apiErr) && apiErr.IsValidationError() {
+		msg := apiErr.Message
+		if msg == "" {
+			msg = strings.Join(apiErr.Errors, "; ")
+		}
+		if msg == "" {
+			msg = fmt.Sprintf("%s cannot be made primary", d.Hostname)
+		}
+		showCmd := domainsShowCmd(d.Hostname, target)
+		return &output.UserError{
+			Message:  msg,
+			Hint:     "Only an active domain can be made primary. See its status with: " + showCmd,
 			Recovery: []output.Breadcrumb{{Action: "show", Cmd: showCmd + " --json"}},
 		}
 	}

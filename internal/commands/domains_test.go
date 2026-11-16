@@ -114,7 +114,7 @@ func TestDomainsCmd_Structure(t *testing.T) {
 		assert.NotNil(t, sub.Flags().Lookup("server"), "%s needs --server", sub.Name())
 		assert.NotNil(t, sub.Flags().Lookup("global"), "%s needs --global", sub.Name())
 	}
-	for _, want := range []string{"list", "show", "add", "remove", "check"} {
+	for _, want := range []string{"list", "show", "add", "remove", "check", "primary"} {
 		assert.True(t, names[want], "missing subcommand %q", want)
 	}
 }
@@ -1144,4 +1144,80 @@ func TestDomains_NoServerAnywhereIsAUserError(t *testing.T) {
 	assert.Contains(t, userErr.Hint, "-s")
 	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
 	assert.Empty(t, *calls)
+}
+
+const activeApexDomainJSON = `{"identifier":"dom-2","hostname":"example.com","primary":false,"status":"active",` +
+	`"ssl_status":"active","verification_errors":[],"activated_at":"2026-11-06T10:00:00Z","created_at":"2026-11-05T10:00:00Z","dns_records":[]}`
+
+func TestDomainsPrimary_ResolvesHostnameAndPosts(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":           {200, domainsServersJSON},
+		"GET " + domainsBase:                     {200, "[" + domainJSON + "," + activeApexDomainJSON + "]"},
+		"POST " + domainsBase + "/dom-2/primary": {200, strings.Replace(activeApexDomainJSON, `"primary":false`, `"primary":true`, 1)},
+	})
+
+	stdout, err := runCmdCapturingStdout(t, "domains", "primary", "Example.com", "-s", "srv-static", "--json")
+	require.NoError(t, err)
+	last := (*calls)[len(*calls)-1]
+	assert.Equal(t, http.MethodPost, last.method)
+	assert.Equal(t, domainsBase+"/dom-2/primary", last.path)
+	assert.Contains(t, stdout, "is now the primary domain")
+}
+
+func TestDomainsPrimary_AlreadyPrimaryDoesNotPost(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "primary", "www.example.com", "-s", "srv-static", "--json"))
+	for _, c := range *calls {
+		assert.NotEqual(t, http.MethodPost, c.method)
+	}
+}
+
+func TestDomainsPrimary_NotActiveShowsTheAPIReason(t *testing.T) {
+	withResolvableContext(t)
+	pending := strings.Replace(domainJSON, `"primary":true`, `"primary":false`, 1)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":           {200, domainsServersJSON},
+		"GET " + domainsBase:                     {200, "[" + pending + "]"},
+		"POST " + domainsBase + "/dom-1/primary": {422, `{"error":"Only an active domain can be made primary"}`},
+	})
+
+	err := runServersCmd(t, "domains", "primary", "www.example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Equal(t, "Only an active domain can be made primary", userErr.Message)
+	assert.Contains(t, userErr.Hint, "dhq domains show www.example.com -p my-app -s srv-static")
+	require.NotEmpty(t, userErr.Recovery)
+}
+
+func TestDomainsPrimary_UnknownDomainDoesNotPost(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+	})
+
+	err := runServersCmd(t, "domains", "primary", "other.example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	for _, c := range *calls {
+		assert.NotEqual(t, http.MethodPost, c.method)
+	}
+}
+
+func TestDomainsPrimary_GlobalServer(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /global_servers":                          {200, globalServersJSON},
+		"GET " + globalDomainsBase:                     {200, "[" + activeApexDomainJSON + "]"},
+		"POST " + globalDomainsBase + "/dom-2/primary": {200, activeApexDomainJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "primary", "example.com", "--global", "-s", "Shared Site", "--json"))
+	assert.Equal(t, globalDomainsBase+"/dom-2/primary", (*calls)[len(*calls)-1].path)
 }
