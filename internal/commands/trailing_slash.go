@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -32,6 +33,42 @@ func parseTrailingSlash(raw string) (string, error) {
 	}
 }
 
+// effectiveTrailingSlash is the mode a site's reported setting gives: a site
+// that never chose one reports null and behaves as strip. The API leaves the
+// setting null when strip is requested for such a site.
+func effectiveTrailingSlash(reported *string) string {
+	if reported == nil || *reported == "" {
+		return "strip"
+	}
+	return *reported
+}
+
+// onlyTrailingSlash reports whether an update request sends nothing but the
+// Static Hosting site settings.
+func onlyTrailingSlash(req sdk.ServerUpdateRequest) bool {
+	if req.HostedWebsite == nil {
+		return false
+	}
+	req.HostedWebsite = nil
+	return req == sdk.ServerUpdateRequest{}
+}
+
+// explainTrailingSlashOnlyError explains the refusal of an update that sent
+// only --trailing-slash: the API accepts that for a Static Hosting server, and
+// any other server type answers 400 because nothing was sent for the server
+// itself. Other errors are returned unchanged.
+func explainTrailingSlashOnlyError(err error, onlyTrailingSlash bool, showCmd string) error {
+	var apiErr *sdk.APIError
+	if !onlyTrailingSlash || !errors.As(err, &apiErr) || apiErr.StatusCode != 400 {
+		return err
+	}
+	return &output.UserError{
+		Message:  "--trailing-slash only applies to Static Hosting servers, and nothing else was given to update",
+		Hint:     "Check the server's type with: " + showCmd,
+		Recovery: []output.Breadcrumb{{Action: "show", Cmd: showCmd + " --json"}},
+	}
+}
+
 // warnIfTrailingSlashNotApplied says when a server update did not take the
 // requested trailing-slash mode: the server is not a Static Hosting site, or
 // it reports a different mode. A response without the site block says nothing
@@ -49,7 +86,7 @@ func warnIfTrailingSlashNotApplied(env *output.Envelope, requested string, serve
 	if server.StaticHosting == nil {
 		return
 	}
-	if got := server.StaticHosting.TrailingSlash; got == nil || *got != requested {
+	if effectiveTrailingSlash(server.StaticHosting.TrailingSlash) != requested {
 		env.Warn("The server did not confirm --trailing-slash %s. Check the site's settings with: %s",
 			requested, showCmd)
 	}
@@ -99,7 +136,7 @@ func launchEnsureTrailingSlashOnServer(ctx context.Context, env *output.Envelope
 	if cfg.trailingSlash == "" || server == nil || server.ProtocolType != detect.ProtocolStaticHosting {
 		return
 	}
-	if server.StaticHosting != nil && server.StaticHosting.TrailingSlash != nil && *server.StaticHosting.TrailingSlash == cfg.trailingSlash {
+	if server.StaticHosting != nil && effectiveTrailingSlash(server.StaticHosting.TrailingSlash) == cfg.trailingSlash {
 		return
 	}
 	setCmd := fmt.Sprintf("dhq servers update %s -p %s --trailing-slash %s", server.Identifier, cfg.projectID, cfg.trailingSlash)

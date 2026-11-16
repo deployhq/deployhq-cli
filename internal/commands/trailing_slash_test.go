@@ -303,3 +303,59 @@ func TestGlobalServersUpdate_BadTrailingSlash_NoHTTP(t *testing.T) {
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "--trailing-slash")
 }
+
+// A site that never chose a mode reports null, which behaves as strip; the
+// API leaves it null when strip is requested, so that is not a refusal.
+func TestWarnIfTrailingSlashNotApplied_StripOnUnsetSite(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
+	warnIfTrailingSlashNotApplied(env, "strip", &sdk.Server{ProtocolType: "static_hosting", StaticHosting: &sdk.StaticHostingInfo{}}, "dhq servers show srv-1 -p my-app")
+	assert.Empty(t, stderr.String())
+}
+
+func TestLaunchEnsureTrailingSlash_StripOnUnsetSiteMakesNoRequest(t *testing.T) {
+	srv, requests := launchSettingsAPI(t, http.StatusOK, `{}`)
+	env, _, _ := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+	cfg.trailingSlash = "strip"
+
+	launchEnsureTrailingSlashOnServer(t.Context(), env, cfg, newTestClient(t, srv), launchStaticServer())
+	assert.Empty(t, *requests)
+}
+
+// --trailing-slash alone sends an empty server object beside the site
+// settings, which the API accepts for a Static Hosting server.
+func TestServersUpdate_TrailingSlashOnlySendsEmptyServer(t *testing.T) {
+	withResolvableContext(t)
+	cap := captureRequest(t)
+
+	require.NoError(t, runServersCmd(t, "servers", "update", "srv-1", "--trailing-slash", "force", "--json"))
+	assert.Equal(t, map[string]any{}, cap.server(t))
+	assert.Equal(t, map[string]any{"trailing_slash": "force"}, cap.body["hosted_website_attributes"])
+}
+
+// Any other server type refuses that body as a missing `server`; say what
+// actually went wrong.
+func TestServersUpdate_TrailingSlashOnlyOnOtherServerIsExplained(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"PUT /projects/my-app/servers/srv-ssh": {400, `{"error":"There was a problem in the JSON you submitted: param is missing or the value is empty: server","error_code":"invalid_json"}`},
+	})
+
+	err := runServersCmd(t, "servers", "update", "srv-ssh", "--trailing-slash", "force")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "only applies to Static Hosting")
+}
+
+func TestGlobalServersUpdate_TrailingSlashOnlyOnOtherServerIsExplained(t *testing.T) {
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"PUT /global_servers/srv-ssh": {400, `{"error":"There was a problem in the JSON you submitted: param is missing or the value is empty: server","error_code":"invalid_json"}`},
+	})
+
+	err := runServersCmd(t, "global-servers", "update", "srv-ssh", "--trailing-slash", "force")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Contains(t, userErr.Message, "only applies to Static Hosting")
+}
