@@ -132,12 +132,15 @@ other server types return not-found). Launching a new site? `dhq launch
 - A rate-limited command (a `check` repeated within a minute, too many changes)
   exits 1 with `retryable: true` and, when known, `retry_after` in seconds in
   its `--json` error. Wait that long before repeating it.
-- At most 2 domains per site: an apex + www pair. The first added is the
-  primary; the other redirects to it. `primary` makes another active domain
-  the primary (a domain that is not active is refused with the reason). `add` adds both by default, so a bare
-  domain gets `www` too. DeployHQ skips the other half without an error for a
-  hostname that is neither an apex nor its www form, and on a site that already
-  has another custom domain. `--no-pair` adds only the typed hostname. Read
+- A site can have several custom domains, any hostnames; how many depends on
+  the account and site (a `422` says when the limit is reached). The first
+  added is the primary, and every non-primary domain redirects to the primary.
+  `primary` makes another active domain the primary (a domain that is not
+  active is refused with the reason). For an apex or `www` hostname, `add`
+  adds the other half of the pair by default, so a bare domain gets `www` too.
+  DeployHQ skips the other half without an error for a hostname that is
+  neither an apex nor its www form, and on a site that already has another
+  custom domain. `--no-pair` adds only the typed hostname. Read
   `counterpart` and `counterpart_errors` in the output.
 - DeployHQ registers the domain in the background and `add` waits up to a
   minute for the TXT record. `--no-wait` skips that. While `registering` is

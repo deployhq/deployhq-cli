@@ -54,7 +54,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   file rule hides.
 - **`dhq domains primary <hostname>`**: make an active custom domain the one
   visitors land on. A domain that is not active is refused with the reason;
-  one that is already primary is left as it is.
+  one that is already primary is left as it is. The `dhq domains` help now
+  describes several custom domains per site (as many as the account allows,
+  any hostnames), each non-primary one redirecting to the primary.
 - **`--trailing-slash strip|force|preserve`** for Static Hosting on `dhq
   servers create`, `dhq servers update` and `dhq launch --static`: how the site
   treats `/about` and `/about/`. `force` keeps the URLs of a site moved from

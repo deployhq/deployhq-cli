@@ -121,7 +121,7 @@ func TestDomainsCmd_Structure(t *testing.T) {
 
 func TestDomainsHelp_ExplainsProductRules(t *testing.T) {
 	cmd := newDomainsCmd()
-	for _, want := range []string{"at most 2", "primary", "TXT", "ALIAS", "every few minutes", "7 days", "paid plan"} {
+	for _, want := range []string{"several custom domains", "every non-primary domain redirects to the primary", "dhq domains primary", "TXT", "ALIAS", "every few minutes", "7 days", "paid plan"} {
 		assert.Contains(t, cmd.Long, want)
 	}
 }
@@ -227,11 +227,11 @@ func TestDomainsAdd_ValidationErrorsPassThrough(t *testing.T) {
 	withResolvableContext(t)
 	domainsAPI(t, map[string]cannedResponse{
 		"GET /projects/my-app/servers": {200, domainsServersJSON},
-		"POST " + domainsBase:          {422, `{"errors":["A site can have at most 2 custom domains"]}`},
+		"POST " + domainsBase:          {422, `{"errors":["This site has reached its custom domain limit"]}`},
 	})
 	err := runServersCmd(t, "domains", "add", "blog.example.com", "-s", "srv-static")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "at most 2 custom domains")
+	assert.Contains(t, err.Error(), "reached its custom domain limit")
 
 	var userErr *output.UserError
 	require.ErrorAs(t, err, &userErr, "a refused hostname is explained, not a raw API error")

@@ -22,8 +22,8 @@ type CustomDomainDNSRecord struct {
 type CustomDomain struct {
 	Identifier string `json:"identifier"`
 	Hostname   string `json:"hostname"`
-	// Primary is true for the domain visitors land on; the other domain of an
-	// apex + www pair redirects to it.
+	// Primary is true for the domain visitors land on; every other custom
+	// domain of the site redirects to it.
 	Primary bool `json:"primary"`
 	// Status is one of pending, active, failed or expired.
 	Status string `json:"status"`

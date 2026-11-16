@@ -20,10 +20,11 @@ var domainsRegistrationTimeout = 60 * time.Second
 
 // customDomainRules is the product behaviour every domains command explains:
 // what a site may have, what the customer has to do, and what happens next.
-const customDomainRules = `A Static Hosting site can have at most 2 custom domains: an apex + www pair
-(e.g. example.com and www.example.com). The first domain added is the primary;
-the other redirects to it. Once another domain is active, "dhq domains primary"
-makes it the primary instead. Custom domains need a paid plan.
+const customDomainRules = `A Static Hosting site can have several custom domains, any hostnames you own;
+how many depends on your account and site. The first domain added is the
+primary, and every non-primary domain redirects to the primary. Once another
+domain is active, "dhq domains primary" makes it the primary instead. Custom
+domains need a paid plan.
 
 For each domain, add BOTH DNS records that "dhq domains add" prints at your DNS
 provider:
@@ -276,7 +277,7 @@ func explainDomainsError(err error, target domainsTarget) error {
 		}
 		return &output.UserError{
 			Message:  "Custom domain refused: " + msg,
-			Hint:     "A custom domain must be a bare hostname such as www.example.com, and a site can have two at most: an apex and its www form. See this site's domains with: dhq domains list " + target.flags(),
+			Hint:     "A custom domain must be a bare hostname such as www.example.com, and a site can have only as many custom domains as its account allows. See this site's domains with: dhq domains list " + target.flags(),
 			Recovery: []output.Breadcrumb{{Action: "list_domains", Cmd: fmt.Sprintf("dhq domains list %s --json", target.flags())}},
 		}
 	}
@@ -470,7 +471,7 @@ func newDomainsShowCmd() *cobra.Command {
 				return err
 			}
 
-			// There is no single-domain endpoint; a server has at most two.
+			// There is no single-domain endpoint; a server has only a few.
 			domains, err := client.ListCustomDomains(ctx, target.scope)
 			if err != nil {
 				return explainDomainsError(err, target)
