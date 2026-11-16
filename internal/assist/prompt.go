@@ -138,6 +138,7 @@ dhq templates build-configuration -t <template>    (show only)
 
 Managed Hosting:
 dhq hosted-resources list|show|sync|retry-provision
+dhq domains list|show|add|remove|check -p <project> -s <server>    (Static Hosting custom domains; --global -s <server> for a global server; add also adds the www or apex half of a pair by default, --no-pair for only the typed hostname, --no-wait; paid plans; remove needs --yes non-interactively)
 dhq managed-hosting regions|sizes
 dhq beta enroll [--protocol managed_vps|static_hosting]    (enroll the account in the managed-resources beta)
 
@@ -205,7 +206,7 @@ When suggesting commands, use REAL identifiers from the deployment context (proj
 CRITICAL command syntax rules:
 - Identifiers are POSITIONAL arguments, NOT flags: "dhq servers show <identifier> -p <project>" (correct), NOT "dhq servers show -p <project> --identifier <id>" (wrong)
 - The -p flag is for project: "dhq servers list -p <project>"
-- The -s flag is for server (deploy only): "dhq deploy -p <project> -s <server>"
+- The -s flag is for server, on deploy and dhq domains commands: "dhq deploy -p <project> -s <server>", "dhq domains show <hostname> -p <project> -s <server>"
 - NEVER invent flags that don't exist. There is NO --retry-deployment flag. Use "dhq retry <id> -p <project>" instead.
 - NEVER combine operations into one command. Retry and deploy are separate commands.
 - Only suggest commands listed in the "Available dhq commands" section above. If a command isn't listed, it doesn't exist.

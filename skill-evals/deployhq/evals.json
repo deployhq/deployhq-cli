@@ -693,6 +693,105 @@
       },
       "must_not_contain": ["ssh-commands create"],
       "notes": "ssh-commands create cannot set callback phase, timeout or halt-on-error; a post_deploy ssh deployment check can, and fails the deployment on non-zero exit."
+    },
+    {
+      "id": "launch-with-custom-domain-and-www",
+      "category": "domains",
+      "prompt": "Launch this static site on DeployHQ on my domain example.com, including www",
+      "expected": {
+        "command": "dhq launch",
+        "flags": ["--custom-domain", "example.com"]
+      },
+      "must_not_contain": ["--vps", "--no-pair"],
+      "notes": "A custom domain is requested along with the launch; Static Hosting is implied."
+    },
+    {
+      "id": "launch-custom-domain-dry-run",
+      "category": "domains",
+      "prompt": "Before launching, show me what would happen if I launch this static site on the domain example.com",
+      "expected": {
+        "command": "dhq launch",
+        "flags": ["--dry-run", "--custom-domain", "example.com"]
+      },
+      "must_not_contain": ["--vps"]
+    },
+    {
+      "id": "launch-vps-no-custom-domain",
+      "category": "domains",
+      "prompt": "Launch my Rails app on a Managed VPS in lon1 and accept the cost. It should later use example.com but set that up separately.",
+      "expected": {
+        "command": "dhq launch",
+        "flags": ["--vps", "--accept-cost"]
+      },
+      "must_not_contain": ["--custom-domain"],
+      "notes": "--custom-domain is Static Hosting only and is refused with --vps."
+    },
+    {
+      "id": "add-custom-domain",
+      "category": "domains",
+      "prompt": "Add www.example.com as a custom domain to the Static Hosting server 'My Site' in project my-site",
+      "expected": {
+        "command": "dhq domains add",
+        "args": ["www.example.com"],
+        "flags": ["-p", "my-site", "-s", "My Site"]
+      },
+      "must_not_contain": ["dhq api", "--no-pair"]
+    },
+    {
+      "id": "add-custom-domain-pair",
+      "category": "domains",
+      "prompt": "On server srv-1 of my-site, add example.com and its www version as custom domains",
+      "expected": {
+        "command": "dhq domains add",
+        "args": ["example.com"],
+        "flags": ["-p", "my-site", "-s", "srv-1"]
+      },
+      "must_not_contain": ["--no-pair"]
+    },
+    {
+      "id": "custom-domain-show-records",
+      "category": "domains",
+      "prompt": "What DNS records do I need to publish for www.example.com on server srv-1 of my-site?",
+      "expected": {
+        "command": "dhq domains show",
+        "args": ["www.example.com"],
+        "flags": ["-p", "my-site", "-s", "srv-1"]
+      },
+      "must_not_contain": ["domains add"],
+      "notes": "show repeats the records and never re-adds the domain."
+    },
+    {
+      "id": "custom-domain-check-now",
+      "category": "domains",
+      "prompt": "I published the DNS records for www.example.com on server srv-1 of my-site. Ask DeployHQ to check them now.",
+      "expected": {
+        "command": "dhq domains check",
+        "args": ["www.example.com"],
+        "flags": ["-p", "my-site", "-s", "srv-1"]
+      },
+      "must_not_contain": ["domains add"]
+    },
+    {
+      "id": "custom-domain-remove",
+      "category": "domains",
+      "prompt": "Remove the custom domain www.example.com from server srv-1 of my-site. I confirmed that it can go, do not prompt.",
+      "expected": {
+        "command": "dhq domains remove",
+        "args": ["www.example.com"],
+        "flags": ["-p", "my-site", "-s", "srv-1", "--yes"]
+      }
+    },
+    {
+      "id": "custom-domain-global-server",
+      "category": "domains",
+      "prompt": "Add shop.example.com to the global Static Hosting server called Shared Site",
+      "expected": {
+        "command": "dhq domains add",
+        "args": ["shop.example.com"],
+        "flags": ["--global", "-s", "Shared Site"]
+      },
+      "must_not_contain": ["-p "],
+      "notes": "Global servers take --global instead of a project."
     }
   ]
 }

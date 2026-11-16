@@ -12,8 +12,9 @@ type APIError struct {
 	Message    string   `json:"error,omitempty"`
 	Errors     []string `json:"errors,omitempty"`
 	// RetryAfter is the parsed Retry-After header (in seconds) accompanying a
-	// 429 response, or 0 when absent/unparseable. Callers hitting a provisioning
-	// rate limit should back off for this long before retrying.
+	// 429 response, or the body's retry_after when the header is missing, or 0
+	// when both are absent/unparseable. Callers hitting a rate limit should back
+	// off for this long before retrying.
 	RetryAfter int `json:"retry_after,omitempty"`
 
 	// ErrorCode, Detail and UpgradeURL carry the structured fields some error
@@ -23,6 +24,10 @@ type APIError struct {
 	ErrorCode  string `json:"error_code,omitempty"`
 	Detail     string `json:"message,omitempty"`
 	UpgradeURL string `json:"upgrade_url,omitempty"`
+	// Hint is the suggested fix some error responses include (e.g. "Upgrade
+	// your plan..." alongside error_code "paid_plan_required"). Empty when the
+	// response did not include one.
+	Hint string `json:"hint,omitempty"`
 
 	// SuspensionType and SuspensionReason are set when the API refused the
 	// request because the account is suspended (HTTP 402). SuspensionType is
@@ -124,6 +129,12 @@ func (e *APIError) IsPaymentMethodRequired() bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(e.Error()), "payment method is required")
+}
+
+// IsPaidPlanRequired reports whether the request was refused because the
+// feature (such as Static Hosting custom domains) needs a paid plan.
+func (e *APIError) IsPaidPlanRequired() bool {
+	return e.StatusCode == http.StatusForbidden && e.ErrorCode == "paid_plan_required"
 }
 
 // IsValidationError returns true if the error is a 422.

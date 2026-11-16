@@ -52,6 +52,9 @@ dhq global-servers update 12345 --name "Updated Name" --json
 dhq global-servers delete 12345
 ```
 
+Custom domains of a global Static Hosting server: `dhq domains <command> --global -s <server>`
+(see [servers.md](servers.md)).
+
 ## Global Environment Variables
 
 ### `dhq global-env-vars list`

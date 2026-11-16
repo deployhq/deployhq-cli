@@ -61,9 +61,10 @@ func NewPaginatedResponse(data interface{}, pagination Pagination, summary strin
 // ErrorData is the structured error payload inside a Response.
 type ErrorData struct {
 	Error      string       `json:"error"`
-	Code       string       `json:"code"`      // user_error, auth_error, internal_error, not_found, conflict, network_error
-	ExitCode   int          `json:"exit_code"` // numeric exit code (1-6)
-	Retryable  bool         `json:"retryable"` // safe to retry the same command
+	Code       string       `json:"code"`                  // user_error, auth_error, internal_error, not_found, conflict, network_error
+	ExitCode   int          `json:"exit_code"`             // numeric exit code (1-6)
+	Retryable  bool         `json:"retryable"`             // safe to retry the same command
+	RetryAfter int          `json:"retry_after,omitempty"` // seconds to wait before retrying, when known
 	Suggestion string       `json:"suggestion,omitempty"`
 	DocURL     string       `json:"doc_url,omitempty"`
 	Recovery   []Breadcrumb `json:"recovery,omitempty"` // suggested recovery actions
@@ -131,6 +132,8 @@ func ErrorResponseFromErr(err error) *Response {
 	hint := ""
 	exitCode := ClassifyError(err)
 	var recovery []Breadcrumb
+	retryable := false
+	retryAfter := 0
 
 	switch e := err.(type) {
 	case *UserError:
@@ -138,6 +141,8 @@ func ErrorResponseFromErr(err error) *Response {
 		message = e.Message
 		hint = e.Hint
 		recovery = e.Recovery
+		retryable = e.Retryable
+		retryAfter = e.RetryAfter
 	case *AuthError:
 		code = "auth_error"
 		message = e.Message
@@ -189,7 +194,8 @@ func ErrorResponseFromErr(err error) *Response {
 			Error:      message,
 			Code:       code,
 			ExitCode:   exitCode,
-			Retryable:  isRetryable(code, message),
+			Retryable:  retryable || isRetryable(code, message),
+			RetryAfter: retryAfter,
 			Suggestion: hint,
 			Recovery:   recovery,
 		},

@@ -23,6 +23,11 @@ func findProjectsNamed(ctx context.Context, client *sdk.Client, name string) ([]
 	if err != nil {
 		return nil, err
 	}
+	return projectsNamed(projects, name), nil
+}
+
+// projectsNamed is findProjectsNamed over projects already listed.
+func projectsNamed(projects []sdk.Project, name string) []sdk.Project {
 	want := strings.TrimSpace(name)
 	var matches []sdk.Project
 	for _, p := range projects {
@@ -30,7 +35,7 @@ func findProjectsNamed(ctx context.Context, client *sdk.Client, name string) ([]
 			matches = append(matches, p)
 		}
 	}
-	return matches, nil
+	return matches
 }
 
 // describeProjects formats projects as "Name (permalink)" for messages.

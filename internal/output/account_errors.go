@@ -14,6 +14,7 @@ const (
 	CodeAPIAccessRestricted   = "api_access_restricted"
 	CodeAccountSuspended      = "account_suspended"
 	CodePaymentMethodRequired = "payment_method_required"
+	CodePaidPlanRequired      = "paid_plan_required"
 )
 
 // supportURL is where to go when a suspension cannot be resolved self-serve.
@@ -114,6 +115,28 @@ func ExplainAccountError(err error) error {
 			Hint:    "This cannot be resolved from the CLI or the billing pages. Contact DeployHQ support: " + supportURL,
 			URL:     supportURL,
 			Action:  "contact_support",
+			Cause:   apiErr,
+		}
+
+	case apiErr.IsPaidPlanRequired():
+		url := apiErr.UpgradeURL
+		if url == "" {
+			url = page("/account/packages")
+		}
+		msg := apiErr.Message
+		if msg == "" || msg == apiErr.ErrorCode {
+			msg = "This feature is only available on paid DeployHQ plans."
+		}
+		hint := apiErr.Hint
+		if hint == "" {
+			hint = at("Upgrade the plan", url) + ", then re-run the command."
+		}
+		return &AccountError{
+			Code:    CodePaidPlanRequired,
+			Message: msg,
+			Hint:    hint,
+			URL:     url,
+			Action:  "upgrade_plan",
 			Cause:   apiErr,
 		}
 
