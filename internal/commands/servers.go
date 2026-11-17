@@ -901,7 +901,16 @@ func resolveServerArg(ctx context.Context, client *sdk.Client, projectID, in str
 	case len(matches) == 1:
 		return matches[0].Identifier, nil
 	case len(matches) > 1:
-		return "", ambiguousServerError(in, matches, nil)
+		// Not ambiguousServerError: its message names a --server flag, and this
+		// value is the command's positional argument.
+		var dups []string
+		for _, s := range matches {
+			dups = append(dups, fmt.Sprintf("%s (%s)", s.Name, s.Identifier))
+		}
+		return "", &output.UserError{
+			Message: fmt.Sprintf("Server name %q matches more than one server", in),
+			Hint:    "Use the identifier instead. Matches: " + strings.Join(dups, ", "),
+		}
 	}
 	if isListedIdentifier(in, servers, nil) {
 		return in, nil

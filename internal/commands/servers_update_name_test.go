@@ -72,6 +72,8 @@ func TestServersUpdate_SharedNameIsAmbiguous(t *testing.T) {
 	err := runServersCmd(t, "servers", "update", "site", "--name", "renamed")
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
+	// The value is the positional argument: there is no --server flag to fix.
+	assert.Equal(t, `Server name "site" matches more than one server`, userErr.Message)
 	assert.Contains(t, userErr.Hint+userErr.Message, "srv-a")
 	assert.Contains(t, userErr.Hint+userErr.Message, "srv-b")
 	assert.Len(t, *calls, 2, "no update may be sent for an ambiguous name")
