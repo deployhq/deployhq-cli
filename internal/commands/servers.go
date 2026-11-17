@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -786,8 +787,12 @@ func newServersUpdateCmd() *cobra.Command {
 	deployFlags := &serverDeploymentFlags{}
 
 	cmd := &cobra.Command{
-		Use:               "update <identifier>",
-		Short:             "Update a server",
+		Use:   "update <name-or-identifier>",
+		Short: "Update a server",
+		Long: `Update a server, named by its identifier or by its name.
+
+An identifier is used as given. A value that is not one is matched against the
+project's server names, as --server does for other commands.`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeServerNames,
 		Example: `  # Point a server at a different branch
@@ -833,11 +838,24 @@ func newServersUpdateCmd() *cobra.Command {
 				req.HostedWebsite = &sdk.HostedWebsiteUpdate{TrailingSlash: trailingSlash}
 			}
 
-			server, err := client.UpdateServer(cliCtx.Background(), projectID, args[0], req)
+			serverID := args[0]
+			server, err := client.UpdateServer(cliCtx.Background(), projectID, serverID, req)
+			// Not an identifier: try it as a server name. A 404 changed nothing,
+			// so the update is safe to send again to the resolved identifier.
+			if sdk.IsNotFound(err) && !isCanonicalUUID(serverID) {
+				resolved, resolveErr := resolveServerArg(cliCtx.Background(), client, projectID, serverID)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				if resolved != serverID {
+					serverID = resolved
+					server, err = client.UpdateServer(cliCtx.Background(), projectID, serverID, req)
+				}
+			}
 			if err != nil {
-				err = explainTrailingSlashOnlyError(err, onlyTrailingSlash(req), fmt.Sprintf("dhq servers show %s -p %s", args[0], projectID))
+				err = explainTrailingSlashOnlyError(err, onlyTrailingSlash(req), fmt.Sprintf("dhq servers show %s -p %s", serverID, projectID))
 				return explainTrailingSlashNotChanged(err, trailingSlash != "",
-					fmt.Sprintf("dhq servers update %s -p %s --trailing-slash %s", args[0], projectID, trailingSlash))
+					fmt.Sprintf("dhq servers update %s -p %s --trailing-slash %s", serverID, projectID, trailingSlash))
 			}
 
 			env := cliCtx.Envelope
@@ -859,6 +877,38 @@ func newServersUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&trailingSlash, "trailing-slash", "", trailingSlashFlagHelp)
 	deployFlags.register(cmd)
 	return cmd
+}
+
+// resolveServerArg turns a server name into the identifier of the project's
+// server with that name. A listed identifier resolves to itself. An unknown or
+// shared name fails with the project's servers, so the caller can retry with
+// an identifier.
+func resolveServerArg(ctx context.Context, client *sdk.Client, projectID, in string) (string, error) {
+	servers, err := client.ListServers(ctx, projectID, nil)
+	if err != nil {
+		return "", err
+	}
+	if id, _ := resolveServerName(in, servers); id != "" {
+		if dups := sameNamedServers(in, servers); len(dups) > 1 {
+			return "", ambiguousServerError(in, dups, nil)
+		}
+		return id, nil
+	}
+	if isListedIdentifier(in, servers, nil) {
+		return in, nil
+	}
+	var names []string
+	for _, s := range servers {
+		names = append(names, fmt.Sprintf("%s (%s)", s.Name, s.Identifier))
+	}
+	hint := fmt.Sprintf("This project has no servers. See them with: dhq servers list -p %s", projectID)
+	if len(names) > 0 {
+		hint = "Servers: " + strings.Join(names, ", ")
+	}
+	return "", &output.UserError{
+		Message: fmt.Sprintf("No unique server matches %q", in),
+		Hint:    hint,
+	}
 }
 
 func newServersDeleteCmd() *cobra.Command {

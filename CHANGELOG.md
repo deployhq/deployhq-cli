@@ -119,6 +119,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   writes. It used to exit 2 asking for `-s`. `--global` still needs `-s`, because
   the configured server belongs to the folder's project. With no server at all
   the error now exits 1.
+- **`dhq servers update` accepts a server name**, as its examples show. A value
+  that is not a server identifier is matched against the project's server
+  names; it used to fail with "not found". An identifier is still sent as is,
+  with no extra request, and a name shared by two servers is refused without
+  updating either.
 
 ### Changed
 
