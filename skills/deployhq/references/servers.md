@@ -433,8 +433,10 @@ out=$(dhq deploy -p my-app -s Staging --wait --json)
 dhq deploy -p my-app -s Production --json
 ```
 
-### `dhq servers update <identifier>`
-Update server settings. Accepts the same **deployment configuration flags** as
+### `dhq servers update <name-or-identifier>`
+Update server settings. The server is named by its identifier or by its exact
+name (ignoring case); a partial name, or a name two servers share, updates
+nothing and lists the project's servers. Accepts the same **deployment configuration flags** as
 `dhq servers create` (`--branch`, `--auto-deploy`, `--atomic`,
 `--atomic-strategy`, `--atomic-retention`) — see the table in the `create`
 section above for values and constraints.
