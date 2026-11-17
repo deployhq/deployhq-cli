@@ -123,7 +123,9 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   that is not a server identifier must match a server name exactly (ignoring
   case); it used to fail with "not found". A partial name updates nothing. An identifier is still sent as is,
   with no extra request, and a name shared by two servers is refused without
-  updating either.
+  updating either. A name may contain any character, `%` and `/` included: the
+  Go SDK's `UpdateServer` now escapes the server it is given into one path
+  segment. The skill reference documents the name form.
 
 ### Changed
 
