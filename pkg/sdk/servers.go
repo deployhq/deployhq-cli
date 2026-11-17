@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 // ListServers returns all servers for a project.
@@ -65,7 +66,9 @@ func (c *Client) UpdateServer(ctx context.Context, projectID, serverID string, r
 		body["hosted_website_attributes"] = req.HostedWebsite
 	}
 	var server Server
-	if err := c.put(ctx, fmt.Sprintf("/projects/%s/servers/%s", projectID, serverID), body, &server); err != nil {
+	// serverID may be a server name typed by a person (`dhq servers update`
+	// resolves names after a 404), so it is escaped into one path segment.
+	if err := c.put(ctx, fmt.Sprintf("/projects/%s/servers/%s", projectID, url.PathEscape(serverID)), body, &server); err != nil {
 		return nil, err
 	}
 	return &server, nil

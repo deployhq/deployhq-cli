@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -120,4 +121,24 @@ func TestServersUpdate_NameMatchIgnoresCase(t *testing.T) {
 	require.NoError(t, runServersCmd(t, "servers", "update", "SITE", "--name", "renamed"))
 	require.Len(t, *calls, 3)
 	assert.Equal(t, "/projects/my-app/servers/srv-static", (*calls)[2].path)
+}
+
+// A name with characters that mean something in a URL path is sent as one
+// path segment, so it 404s as an identifier and then resolves by name: a `%`
+// must not fail before any request, and `/..` must not re-target the update.
+func TestServersUpdate_NameWithURLCharactersResolves(t *testing.T) {
+	for _, name := range []string{"100% uptime", "a/../../other"} {
+		t.Run(name, func(t *testing.T) {
+			withResolvableContext(t)
+			calls := domainsAPI(t, map[string]cannedResponse{
+				"PUT /projects/my-app/servers/" + name:    {http.StatusNotFound, serversNotFound},
+				serversListPath:                           {http.StatusOK, fmt.Sprintf(`[{"identifier":"srv-static","name":%q}]`, name)},
+				"PUT /projects/my-app/servers/srv-static": {http.StatusOK, serversUpdateJSON},
+			})
+
+			require.NoError(t, runServersCmd(t, "servers", "update", name, "--name", "renamed"))
+			require.Len(t, *calls, 3)
+			assert.Equal(t, "/projects/my-app/servers/srv-static", (*calls)[2].path)
+		})
+	}
 }
