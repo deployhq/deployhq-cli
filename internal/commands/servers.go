@@ -791,8 +791,8 @@ func newServersUpdateCmd() *cobra.Command {
 		Short: "Update a server",
 		Long: `Update a server, named by its identifier or by its name.
 
-An identifier is used as given. A value that is not one is matched against the
-project's server names, as --server does for other commands.`,
+An identifier is used as given. A value that is not one must match a server
+name exactly (ignoring case); a partial name updates nothing.`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeServerNames,
 		Example: `  # Point a server at a different branch
@@ -880,7 +880,8 @@ project's server names, as --server does for other commands.`,
 }
 
 // resolveServerArg turns a server name into the identifier of the project's
-// server with that name. A listed identifier resolves to itself. An unknown or
+// server with exactly that name, ignoring case. A listed identifier resolves to
+// itself. An unknown or
 // shared name fails with the project's servers, so the caller can retry with
 // an identifier.
 func resolveServerArg(ctx context.Context, client *sdk.Client, projectID, in string) (string, error) {
@@ -888,11 +889,19 @@ func resolveServerArg(ctx context.Context, client *sdk.Client, projectID, in str
 	if err != nil {
 		return "", err
 	}
-	if id, _ := resolveServerName(in, servers); id != "" {
-		if dups := sameNamedServers(in, servers); len(dups) > 1 {
-			return "", ambiguousServerError(in, dups, nil)
+	// Exact names only (ignoring case): this resolves the target of an update,
+	// so a partial match such as "site" for "my-site" must not pick a server.
+	var matches []sdk.Server
+	for _, s := range servers {
+		if strings.EqualFold(s.Name, in) {
+			matches = append(matches, s)
 		}
-		return id, nil
+	}
+	switch {
+	case len(matches) == 1:
+		return matches[0].Identifier, nil
+	case len(matches) > 1:
+		return "", ambiguousServerError(in, matches, nil)
 	}
 	if isListedIdentifier(in, servers, nil) {
 		return in, nil

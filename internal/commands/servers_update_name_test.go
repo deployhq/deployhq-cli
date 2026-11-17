@@ -90,3 +90,34 @@ func TestServersUpdate_UnknownNameListsTheServers(t *testing.T) {
 	assert.Equal(t, `No unique server matches "nope"`, userErr.Message)
 	assert.Equal(t, "Servers: site (srv-static)", userErr.Hint)
 }
+
+// A name that only partly matches a server updates nothing: "site" must not
+// pick "my-site".
+func TestServersUpdate_PartialNameDoesNotUpdate(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"PUT /projects/my-app/servers/site": {http.StatusNotFound, serversNotFound},
+		serversListPath:                     {http.StatusOK, `[{"identifier":"srv-static","name":"my-site"}]`},
+	})
+
+	err := runServersCmd(t, "servers", "update", "site", "--name", "renamed")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Equal(t, `No unique server matches "site"`, userErr.Message)
+	assert.Equal(t, "Servers: my-site (srv-static)", userErr.Hint)
+	assert.Len(t, *calls, 2, "no update may be sent for a partial name")
+}
+
+// An exact name matches whatever its case.
+func TestServersUpdate_NameMatchIgnoresCase(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"PUT /projects/my-app/servers/SITE":       {http.StatusNotFound, serversNotFound},
+		serversListPath:                           {http.StatusOK, `[{"identifier":"srv-static","name":"site"}]`},
+		"PUT /projects/my-app/servers/srv-static": {http.StatusOK, serversUpdateJSON},
+	})
+
+	require.NoError(t, runServersCmd(t, "servers", "update", "SITE", "--name", "renamed"))
+	require.Len(t, *calls, 3)
+	assert.Equal(t, "/projects/my-app/servers/srv-static", (*calls)[2].path)
+}
