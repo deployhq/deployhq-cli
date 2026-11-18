@@ -782,18 +782,6 @@
       }
     },
     {
-      "id": "custom-domain-global-server",
-      "category": "domains",
-      "prompt": "Add shop.example.com to the global Static Hosting server called Shared Site",
-      "expected": {
-        "command": "dhq domains add",
-        "args": ["shop.example.com"],
-        "flags": ["--global", "-s", "Shared Site"]
-      },
-      "must_not_contain": ["-p "],
-      "notes": "Global servers take --global instead of a project."
-    },
-    {
       "id": "redirect-wordpress-query",
       "category": "redirects",
       "prompt": "My old WordPress links look like example.com/?p=123. On server srv-1 of my-site, redirect them to /posts/123",

@@ -43,15 +43,8 @@ dhq global-servers copy 12345 -p my-app --name "My Staging" --json
 ```
 
 ### `dhq global-servers update <id>`
-`--trailing-slash strip|force|preserve` sets how a global Static Hosting site
-treats a trailing slash (see [servers.md](servers.md)); the CLI warns if the
-server does not confirm the mode, and refuses an update that sends only
-`--trailing-slash` to a server that is not Static Hosting. A mode that could
-not be published leaves the rest of the update saved and exits 1, retryable.
-
 ```bash
 dhq global-servers update 12345 --name "Updated Name" --json
-dhq global-servers update 12345 --trailing-slash force   # a site moved from WordPress
 ```
 
 ### `dhq global-servers delete <id>`
@@ -59,9 +52,9 @@ dhq global-servers update 12345 --trailing-slash force   # a site moved from Wor
 dhq global-servers delete 12345
 ```
 
-Custom domains and redirect rules of a global Static Hosting server:
-`dhq domains <command> --global -s <server>` and
-`dhq servers redirects <command> --global -s <server>` (see [servers.md](servers.md)).
+Static Hosting sites are created inside a project; they can't be global
+servers. Create one with `dhq servers create -p <project> --protocol-type
+static_hosting` or `dhq launch --static` (see [servers.md](servers.md)).
 
 ## Global Environment Variables
 

@@ -13,8 +13,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 - **`dhq domains list | show | add | remove | check`**: custom domains for a
   Static Hosting site, scoped by `-p <project>` and `-s <server>` (name or
-  identifier), or by `--global -s <server>` for a global server (no project
-  needed). `add` prints the two DNS records to create (the CNAME, with an
+  identifier). Static Hosting sites are created inside a project; they can't be
+  global servers. `add` prints the two DNS records to create (the CNAME, with an
   ALIAS/ANAME note for an apex domain, and the TXT ownership record); the
   domain goes live automatically once both are detected. `add` also adds the
   other half of the apex and www pair by default, so a bare domain gets `www`
@@ -41,8 +41,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   Re-running launch adds the domain to the existing site, or reports it if it is
   already there.
 - **`dhq servers redirects list | add | update | remove | reorder`**: redirect
-  rules for a Static Hosting site, scoped like `dhq domains` (`-p` and `-s`, or
-  `--global -s`; `-s` defaults to the configured server). Rules apply straight
+  rules for a Static Hosting site, scoped like `dhq domains` (`-p` and `-s`;
+  `-s` defaults to the configured server). Rules apply straight
   away, without a deploy. `add <source> <destination>` takes `--status` (301,
   302, 307 or 308, checked before any request), `--query "p=:id"` to match
   query parameters (e.g. WordPress `?p=` links) and `--position`. `update
@@ -67,8 +67,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   site (up to five by default, any hostnames), each non-primary one
   redirecting to the primary.
 - **`--trailing-slash strip|force|preserve`** for Static Hosting on `dhq
-  servers create`, `dhq servers update`, `dhq global-servers update` and `dhq
-  launch --static`: how the site
+  servers create`, `dhq servers update` and `dhq launch --static`: how the site
   treats `/about` and `/about/`. `force` keeps the URLs of a site moved from
   WordPress working. Unknown values, other server types and `--vps` are refused
   before any request. `dhq servers update` warns when the server does not
@@ -86,13 +85,12 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `RedirectFileWarning.IsNote()`; `ListRedirectRules`, `CreateRedirectRule`, `UpdateRedirectRule`
   (`RedirectRuleUpdateRequest.Position` moves a rule),
   `DeleteRedirectRule` and `ReorderRedirectRules`, scoped with
-  `ProjectServerRedirects` or `GlobalServerRedirects`;
+  `ProjectServerRedirects`;
   `MakeCustomDomainPrimary`; `HostedWebsiteAttributes.TrailingSlash`,
   `ServerUpdateRequest.HostedWebsite` (sent as top-level
-  `hosted_website_attributes` by `UpdateServer` and `UpdateGlobalServer`) and `StaticHostingInfo.TrailingSlash`.
+  `hosted_website_attributes` by `UpdateServer`) and `StaticHostingInfo.TrailingSlash`.
 - **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`,
-  `RefreshCustomDomain`, scoped with `ProjectServerDomains` or
-  `GlobalServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.
+  `RefreshCustomDomain`, scoped with `ProjectServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.
   Error responses with an `error_code` but no `error` field now report the code
   rather than the raw JSON body. `APIError.RetryAfter` also reads a
   `retry_after` in the response body when the header is missing.
@@ -116,8 +114,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   suggestion text.
 - **`dhq domains` uses the configured server when `-s` is absent**: `-s` first,
   then `DEPLOYHQ_SERVER`, then `server` in `.deployhq.toml`, which `dhq launch`
-  writes. It used to exit 2 asking for `-s`. `--global` still needs `-s`, because
-  the configured server belongs to the folder's project. With no server at all
+  writes. It used to exit 2 asking for `-s`. With no server at all
   the error now exits 1.
 - **`dhq servers update` accepts a server name**, as its examples show. A value
   that is not a server identifier must match a server name exactly (ignoring

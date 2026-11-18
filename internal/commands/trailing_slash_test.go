@@ -273,19 +273,6 @@ func TestLaunchEnsureTrailingSlash_FailureIsAWarning(t *testing.T) {
 	assert.Contains(t, stderr.String(), "dhq servers update srv-1 -p my-app --trailing-slash preserve")
 }
 
-func TestGlobalServersUpdate_TrailingSlashIsHoisted(t *testing.T) {
-	withResolvableContext(t)
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"PUT /global_servers/srv-global": {200, `{"identifier":"srv-global","name":"Shared Site","protocol_type":"static_hosting"}`},
-	})
-
-	require.NoError(t, runServersCmd(t, "global-servers", "update", "srv-global", "--trailing-slash", "force"))
-	require.Len(t, *calls, 1)
-	body := (*calls)[0].body
-	assert.Equal(t, map[string]any{"trailing_slash": "force"}, body["hosted_website_attributes"])
-	assert.NotContains(t, body["server"], "trailing_slash")
-}
-
 func TestGlobalServersUpdate_NoTrailingSlashSendsNoSiteSettings(t *testing.T) {
 	withResolvableContext(t)
 	calls := domainsAPI(t, map[string]cannedResponse{
@@ -296,13 +283,11 @@ func TestGlobalServersUpdate_NoTrailingSlashSendsNoSiteSettings(t *testing.T) {
 	assert.NotContains(t, (*calls)[0].body, "hosted_website_attributes")
 }
 
-func TestGlobalServersUpdate_BadTrailingSlash_NoHTTP(t *testing.T) {
-	withResolvableContext(t)
-	blockNetwork(t)
-	err := runServersCmd(t, "global-servers", "update", "srv-global", "--trailing-slash", "maybe")
-	var userErr *output.UserError
-	require.True(t, errors.As(err, &userErr), "got %v", err)
-	assert.Contains(t, userErr.Message, "--trailing-slash")
+// Static Hosting sites can't be global servers, so a global server has no
+// trailing slash setting to change.
+func TestGlobalServersUpdate_HasNoTrailingSlashFlag(t *testing.T) {
+	cmd := newGlobalServersUpdateCmd()
+	assert.Nil(t, cmd.Flags().Lookup("trailing-slash"))
 }
 
 // A site that never chose a mode reports null, which behaves as strip; the
@@ -344,18 +329,6 @@ func TestServersUpdate_TrailingSlashOnlyOnOtherServerIsExplained(t *testing.T) {
 	})
 
 	err := runServersCmd(t, "servers", "update", "srv-ssh", "--trailing-slash", "force")
-	var userErr *output.UserError
-	require.True(t, errors.As(err, &userErr), "got %v", err)
-	assert.Contains(t, userErr.Message, "only applies to Static Hosting")
-}
-
-func TestGlobalServersUpdate_TrailingSlashOnlyOnOtherServerIsExplained(t *testing.T) {
-	withResolvableContext(t)
-	domainsAPI(t, map[string]cannedResponse{
-		"PUT /global_servers/srv-ssh": {400, `{"error":"There was a problem in the JSON you submitted: param is missing or the value is empty: server","error_code":"invalid_json"}`},
-	})
-
-	err := runServersCmd(t, "global-servers", "update", "srv-ssh", "--trailing-slash", "force")
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "only applies to Static Hosting")
@@ -418,19 +391,6 @@ func TestServersUpdate_TrailingSlashNotPublishedIsAPartialSave(t *testing.T) {
 			assert.Contains(t, userErr.Hint, "dhq servers update srv-1 -p my-app --trailing-slash force")
 		})
 	}
-}
-
-func TestGlobalServersUpdate_TrailingSlashNotPublishedIsAPartialSave(t *testing.T) {
-	withResolvableContext(t)
-	domainsAPI(t, map[string]cannedResponse{
-		"PUT /global_servers/srv-global": {409, `{"error":"The server was saved, but the trailing slash setting was not changed: the site is busy publishing a deployment or another change. Try again in a moment."}`},
-	})
-
-	err := runServersCmd(t, "global-servers", "update", "srv-global", "--trailing-slash", "force")
-	var userErr *output.UserError
-	require.True(t, errors.As(err, &userErr), "got %v", err)
-	assert.True(t, userErr.Retryable)
-	assert.Contains(t, userErr.Hint, "dhq global-servers update srv-global --trailing-slash force")
 }
 
 // A launch re-run keeps deploying; the warning says how long to wait.

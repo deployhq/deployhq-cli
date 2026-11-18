@@ -115,8 +115,7 @@ Use `--trailing-slash force` for a site moved from WordPress, or any site whose
 URLs end in a slash, so existing links and search rankings keep working. With
 `preserve` the site answers on both forms, so it should carry canonical tags.
 Files with an extension (`/style.css`) are never redirected. `dhq servers update
-<server> -p <project> --trailing-slash force` changes it on an existing site
-(`dhq global-servers update <id> --trailing-slash force` for a global one); the
+<server> -p <project> --trailing-slash force` changes it on an existing site; the
 CLI warns if the server does not confirm the mode, and an update that sends only
 `--trailing-slash` to another server type is refused with that explanation.
 When the mode cannot be published (the site is busy publishing, the hourly
@@ -129,12 +128,10 @@ other server types return not-found). Launching a new site? `dhq launch
 --custom-domain <domain>` does this in one go; see
 [launch.md](launch.md).
 
-- Name the server with `-p <project> -s <server>`, or `--global -s <server>`
-  for a global Static Hosting server (no project needed; adding, removing or
-  checking a domain on one needs an account administrator). `-s` can be left
+- Name the server with `-p <project> -s <server>`. Static Hosting sites are
+  created inside a project; they can't be global servers. `-s` can be left
   out in a folder `dhq launch` has set up: the `server` in `.deployhq.toml` (or
-  `DEPLOYHQ_SERVER`) is used, and an explicit `-s` wins. `--global` always needs
-  `-s`.
+  `DEPLOYHQ_SERVER`) is used, and an explicit `-s` wins.
 - A rate-limited command (a `check` repeated within a minute, too many changes)
   exits 1 with `retryable: true` and, when known, `retry_after` in seconds in
   its `--json` error. Wait that long before repeating it.
@@ -184,13 +181,11 @@ dhq domains show www.example.com -p my-site -s "My Site" --json=status,registeri
 dhq domains check www.example.com -p my-site -s "My Site" --json
 dhq domains remove www.example.com -p my-site -s "My Site" --yes --json
 dhq domains primary example.com -p my-site -s "My Site" --json   # visitors land on example.com
-dhq domains list --global -s "Shared Site" --json   # a global Static Hosting server
 ```
 
 **Redirect rules for a Static Hosting site** (`dhq servers redirects`; other
 server types return not-found). Server flags as for `dhq domains`: `-p <project>
--s <server>`, or `--global -s <server>`, and `-s` defaults to the server in
-`.deployhq.toml`.
+-s <server>`, and `-s` defaults to the server in `.deployhq.toml`.
 
 - Two sources of rules. A `_redirects` file in the published folder (one rule
   per line: `/old /new 301`, `/ p=:id /posts/:id 301` for a query rule) is

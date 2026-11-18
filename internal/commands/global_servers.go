@@ -109,41 +109,24 @@ func newGlobalServersCreateCmd() *cobra.Command {
 }
 
 func newGlobalServersUpdateCmd() *cobra.Command {
-	var name, protocol, serverPath, environment, trailingSlash string
+	var name, protocol, serverPath, environment string
 	cmd := &cobra.Command{
 		Use: "update <id>", Short: "Update a global server", Args: cobra.ExactArgs(1),
-		Example: `  # Make a global Static Hosting site add a trailing slash (/about -> /about/)
-  dhq global-servers update <id> --trailing-slash force`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("trailing-slash") {
-				mode, err := parseTrailingSlash(trailingSlash)
-				if err != nil {
-					return err
-				}
-				trailingSlash = mode
-			}
 			client, err := cliCtx.Client()
 			if err != nil {
 				return err
 			}
-			req := sdk.ServerUpdateRequest{
+			s, err := client.UpdateGlobalServer(cliCtx.Background(), args[0], sdk.ServerUpdateRequest{
 				Name: name, ProtocolType: protocol, ServerPath: serverPath, Environment: environment,
-			}
-			if trailingSlash != "" {
-				req.HostedWebsite = &sdk.HostedWebsiteUpdate{TrailingSlash: trailingSlash}
-			}
-			s, err := client.UpdateGlobalServer(cliCtx.Background(), args[0], req)
+			})
 			if err != nil {
-				err = explainTrailingSlashOnlyError(err, onlyTrailingSlash(req), "dhq global-servers show "+args[0])
-				return explainTrailingSlashNotChanged(err, trailingSlash != "",
-					fmt.Sprintf("dhq global-servers update %s --trailing-slash %s", args[0], trailingSlash))
+				return err
 			}
-			warnIfTrailingSlashNotApplied(cliCtx.Envelope, trailingSlash, s, "dhq global-servers show "+s.Identifier)
 			cliCtx.Envelope.Status("Updated global server: %s", s.Name)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&trailingSlash, "trailing-slash", "", trailingSlashFlagHelp)
 	cmd.Flags().StringVar(&name, "name", "", "Server name")
 	cmd.Flags().StringVar(&protocol, "protocol", "", "Protocol type")
 	cmd.Flags().StringVar(&serverPath, "path", "", "Server path")

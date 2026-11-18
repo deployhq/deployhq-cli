@@ -38,8 +38,9 @@ match.`
 // redirectsServerHelp explains how every redirects command names its server.
 const redirectsServerHelp = `Every command takes the project (-p) and the Static Hosting server (-s, name or
 identifier). Without -s, the server from DEPLOYHQ_SERVER or .deployhq.toml is
-used; dhq launch saves it there. For a global Static Hosting server, pass --global
-instead of the project, with -s. Other server types do not support redirects.`
+used; dhq launch saves it there. Static Hosting sites are created inside a
+project; they can't be global servers. Other server types do not support
+redirects.`
 
 func newServersRedirectsCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -57,8 +58,7 @@ a WordPress site.
   dhq servers redirects add / /posts/:id --query "p=:id" -p my-site -s "My Site"
   dhq servers redirects update <identifier> --status 302 -p my-site -s "My Site"
   dhq servers redirects reorder <identifier> <identifier> -p my-site -s "My Site"
-  dhq servers redirects remove <identifier> -p my-site -s "My Site" --yes
-  dhq servers redirects list --global -s "Shared Site"`,
+  dhq servers redirects remove <identifier> -p my-site -s "My Site" --yes`,
 	}
 	cmd.AddCommand(
 		newRedirectsListCmd(),
@@ -72,9 +72,6 @@ a WordPress site.
 
 // redirectScope is the redirect rules scope of a resolved server.
 func redirectScope(t domainsTarget) sdk.RedirectRuleScope {
-	if t.global {
-		return sdk.GlobalServerRedirects(t.serverID)
-	}
 	return sdk.ProjectServerRedirects(t.projectID, t.serverID)
 }
 
@@ -136,9 +133,6 @@ func explainRedirectsError(err error, target domainsTarget) error {
 		hint := apiErr.Hint
 		if hint == "" {
 			hint = "Ask an account administrator for access to this project's servers."
-			if target.global {
-				hint = "Changing the redirect rules of a global server needs an account administrator."
-			}
 		}
 		return &output.AuthError{Message: msg, Hint: hint}
 	case apiErr.IsRateLimited():

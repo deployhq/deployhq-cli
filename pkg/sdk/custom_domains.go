@@ -74,8 +74,8 @@ type CustomDomainCheck struct {
 }
 
 // CustomDomainScope names the Static Hosting server whose custom domains a call
-// acts on: a project's server or a global server. Build one with
-// ProjectServerDomains or GlobalServerDomains.
+// acts on. Build one with ProjectServerDomains: Static Hosting sites are
+// created inside a project; they can't be global servers.
 type CustomDomainScope struct {
 	path string
 }
@@ -83,11 +83,6 @@ type CustomDomainScope struct {
 // ProjectServerDomains is the scope of a Static Hosting server in a project.
 func ProjectServerDomains(projectID, serverID string) CustomDomainScope {
 	return CustomDomainScope{path: fmt.Sprintf("/projects/%s/servers/%s/custom_domains", url.PathEscape(projectID), url.PathEscape(serverID))}
-}
-
-// GlobalServerDomains is the scope of a global Static Hosting server.
-func GlobalServerDomains(serverID string) CustomDomainScope {
-	return CustomDomainScope{path: fmt.Sprintf("/global_servers/%s/custom_domains", url.PathEscape(serverID))}
 }
 
 func (s CustomDomainScope) domainPath(identifier string) string {

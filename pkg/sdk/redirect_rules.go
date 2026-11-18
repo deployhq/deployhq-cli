@@ -123,7 +123,8 @@ type RedirectRuleUpdateRequest struct {
 }
 
 // RedirectRuleScope names the Static Hosting server whose redirect rules a call
-// acts on. Build one with ProjectServerRedirects or GlobalServerRedirects.
+// acts on. Build one with ProjectServerRedirects: Static Hosting sites are
+// created inside a project; they can't be global servers.
 type RedirectRuleScope struct {
 	path string
 }
@@ -131,11 +132,6 @@ type RedirectRuleScope struct {
 // ProjectServerRedirects is the scope of a Static Hosting server in a project.
 func ProjectServerRedirects(projectID, serverID string) RedirectRuleScope {
 	return RedirectRuleScope{path: fmt.Sprintf("/projects/%s/servers/%s/redirect_rules", url.PathEscape(projectID), url.PathEscape(serverID))}
-}
-
-// GlobalServerRedirects is the scope of a global Static Hosting server.
-func GlobalServerRedirects(serverID string) RedirectRuleScope {
-	return RedirectRuleScope{path: fmt.Sprintf("/global_servers/%s/redirect_rules", url.PathEscape(serverID))}
 }
 
 func (s RedirectRuleScope) rulePath(identifier string) string {

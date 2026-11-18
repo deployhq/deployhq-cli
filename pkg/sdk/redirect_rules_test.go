@@ -66,13 +66,13 @@ func TestListRedirectRules(t *testing.T) {
 
 func TestListRedirectRules_BeforeFirstDeploy(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/global_servers/srv1/redirect_rules", r.URL.Path)
+		assert.Equal(t, "/projects/my-app/servers/srv1/redirect_rules", r.URL.Path)
 		_, _ = w.Write([]byte(`{"rules":[],"file_rules":[],"file_warnings":[],"deployment_uuid":null}`))
 	}))
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	rules, err := c.ListRedirectRules(context.Background(), GlobalServerRedirects("srv1"))
+	rules, err := c.ListRedirectRules(context.Background(), ProjectServerRedirects("my-app", "srv1"))
 	require.NoError(t, err)
 	assert.Empty(t, rules.Rules)
 	assert.Nil(t, rules.DeploymentUUID)
@@ -138,13 +138,13 @@ func TestUpdateRedirectRule_SendsOnlySetFields(t *testing.T) {
 func TestDeleteRedirectRule(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Equal(t, "/global_servers/srv1/redirect_rules/rr-1", r.URL.Path)
+		assert.Equal(t, "/projects/my-app/servers/srv1/redirect_rules/rr-1", r.URL.Path)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	require.NoError(t, c.DeleteRedirectRule(context.Background(), GlobalServerRedirects("srv1"), "rr-1"))
+	require.NoError(t, c.DeleteRedirectRule(context.Background(), ProjectServerRedirects("my-app", "srv1"), "rr-1"))
 }
 
 func TestReorderRedirectRules(t *testing.T) {

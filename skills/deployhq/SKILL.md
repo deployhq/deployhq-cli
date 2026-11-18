@@ -120,7 +120,7 @@ Small steps, each one something the person can approve on its own:
 
 ### "Put this site on my own domain"
 1. If the site is not launched yet and the person chose DeployHQ Static Hosting: `dhq launch --static --custom-domain <domain> --dry-run --json`, show them what it would do, then run it without `--dry-run` once they agree. A bare domain gets `www` too by default; add `--no-pair` only if they want just that hostname.
-2. For a site that already has a Static Hosting server: `dhq domains add <domain> -p <project> -s <server> --json` (the apex and www pair is added by default, `--no-pair` for only that hostname, `--global` instead of `-p` for a global server).
+2. For a site that already has a Static Hosting server: `dhq domains add <domain> -p <project> -s <server> --json` (the apex and www pair is added by default, `--no-pair` for only that hostname).
 3. Hand the person both records from `dns_records` (CNAME, and TXT once `registering` is false; for an apex domain they use an ALIAS/ANAME or CNAME flattening). `dhq domains show <domain> -p <project> -s <server> --json` repeats them.
 4. After they publish the records: `dhq domains check <domain> -p <project> -s <server> --json`, then `dhq domains show` until `status` is `active`. Until then, report the `deployhq-sites.com` URL as the site's address.
 5. Custom domains need a paid plan. `dhq launch` with a domain refused for any reason other than a bad hostname still launches: read `custom_domain.status` and `custom_domain.next_step` in the JSON.

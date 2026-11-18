@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	redirectsBase       = "/projects/my-app/servers/srv-static/redirect_rules"
-	globalRedirectsBase = "/global_servers/srv-global/redirect_rules"
+	redirectsBase = "/projects/my-app/servers/srv-static/redirect_rules"
 
 	redirectRuleJSON = `{"identifier":"rr-1","position":1,"source":"/","destination":"/posts/:id",` +
 		`"status":301,"query":"p=:id","shadowed_by":null}`
@@ -34,7 +33,8 @@ func TestRedirectsCmd_Structure(t *testing.T) {
 	for _, sub := range cmd.Commands() {
 		names[sub.Name()] = true
 		assert.NotNil(t, sub.Flags().Lookup("server"), "%s needs --server", sub.Name())
-		assert.NotNil(t, sub.Flags().Lookup("global"), "%s needs --global", sub.Name())
+		// Static Hosting sites can't be global servers, so there is no --global.
+		assert.Nil(t, sub.Flags().Lookup("global"), "%s must not offer --global", sub.Name())
 	}
 	for _, want := range []string{"list", "add", "update", "remove", "reorder"} {
 		assert.True(t, names[want], "missing subcommand %q", want)
@@ -43,7 +43,7 @@ func TestRedirectsCmd_Structure(t *testing.T) {
 
 func TestRedirectsHelp_ExplainsFileVersusCommands(t *testing.T) {
 	cmd := newServersRedirectsCmd()
-	for _, want := range []string{"_redirects", "file wins", "301", "308", "--query", "p=:id", "--global"} {
+	for _, want := range []string{"_redirects", "file wins", "301", "308", "--query", "p=:id", "can't be global servers"} {
 		assert.Contains(t, cmd.Long, want)
 	}
 }
@@ -68,17 +68,6 @@ func TestRedirectsList_ResolvesServerAndListsJSON(t *testing.T) {
 	require.Len(t, resp.Data.FileRules, 1)
 	require.Len(t, resp.Data.FileWarnings, 1)
 	require.NotNil(t, resp.Data.Rules[1].ShadowedBy)
-}
-
-func TestRedirectsList_GlobalServer(t *testing.T) {
-	withResolvableContext(t)
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":        {200, globalServersJSON},
-		"GET " + globalRedirectsBase: {200, `{"rules":[],"file_rules":[],"file_warnings":[],"deployment_uuid":null}`},
-	})
-
-	require.NoError(t, runServersCmd(t, "servers", "redirects", "list", "--global", "-s", "Shared Site", "--json"))
-	assert.Equal(t, globalRedirectsBase, (*calls)[len(*calls)-1].path)
 }
 
 func TestRedirectsList_UsesServerFromProjectConfig(t *testing.T) {
@@ -201,17 +190,6 @@ func TestRedirectsAdd_ValidationErrorsPassThrough(t *testing.T) {
 	assert.Contains(t, userErr.Hint, "dhq servers redirects list -p my-app -s srv-static")
 }
 
-func TestRedirectsAdd_GlobalServer(t *testing.T) {
-	withResolvableContext(t)
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"POST /global_servers/0b9f3c2e-1d4a-4c8b-9e2f-123456789abc/redirect_rules": {201, redirectRuleJSON},
-	})
-
-	require.NoError(t, runServersCmd(t, "servers", "redirects", "add", "/old", "/new",
-		"--global", "-s", "0b9f3c2e-1d4a-4c8b-9e2f-123456789abc", "--json"))
-	require.Len(t, *calls, 1)
-}
-
 func TestRedirectsUpdate_SendsOnlyGivenFlags(t *testing.T) {
 	withResolvableContext(t)
 	calls := domainsAPI(t, map[string]cannedResponse{
@@ -319,15 +297,6 @@ func TestRedirectsReorder_RefusalPassesThrough(t *testing.T) {
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.Contains(t, userErr.Message, "must list every rule once")
-}
-
-func TestRedirects_ProjectFlagWithGlobalIsRefused(t *testing.T) {
-	withResolvableContext(t)
-	blockNetwork(t)
-	err := runServersCmd(t, "servers", "redirects", "list", "-p", "my-app", "--global", "-s", "Shared Site")
-	var userErr *output.UserError
-	require.True(t, errors.As(err, &userErr), "got %v", err)
-	assert.Contains(t, userErr.Message, "--global")
 }
 
 func TestRedirectsUpdate_PositionMovesTheRule(t *testing.T) {
@@ -447,18 +416,6 @@ func TestRedirectsReorder_SiteBusyIsRetryable(t *testing.T) {
 	var userErr *output.UserError
 	require.True(t, errors.As(err, &userErr), "got %v", err)
 	assert.True(t, userErr.Retryable)
-}
-
-func TestRedirects_GlobalAccessDeniedIsAnAuthError(t *testing.T) {
-	withResolvableContext(t)
-	domainsAPI(t, map[string]cannedResponse{
-		"POST /global_servers/0b9f3c2e-1d4a-4c8b-9e2f-123456789abc/redirect_rules": {403, `{"error":"access_denied","error_code":"access_denied"}`},
-	})
-
-	err := runServersCmd(t, "servers", "redirects", "add", "/old", "/new", "--global", "-s", "0b9f3c2e-1d4a-4c8b-9e2f-123456789abc")
-	var authErr *output.AuthError
-	require.True(t, errors.As(err, &authErr), "got %v", err)
-	assert.Contains(t, authErr.Hint, "account administrator")
 }
 
 func TestRedirectsAdd_RateLimitIsRetryable(t *testing.T) {

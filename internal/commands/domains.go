@@ -61,15 +61,15 @@ func newDomainsCmd() *cobra.Command {
 
 Every command takes the project (-p) and the Static Hosting server (-s, name or
 identifier). Without -s, the server from DEPLOYHQ_SERVER or .deployhq.toml is
-used; dhq launch saves it there. For a global Static Hosting server, pass --global
-instead of the project, with -s. Other server types do not support custom domains.`,
+used; dhq launch saves it there. Static Hosting sites are created inside a
+project; they can't be global servers. Other server types do not support custom
+domains.`,
 		Example: `  dhq domains add www.example.com -p my-site -s "My Site"
   dhq domains list -p my-site -s "My Site"
   dhq domains show www.example.com -p my-site -s "My Site"
   dhq domains remove www.example.com -p my-site -s "My Site" --yes
   dhq domains check www.example.com -p my-site -s "My Site"
-  dhq domains primary example.com -p my-site -s "My Site"
-  dhq domains list --global -s "Shared Site"`,
+  dhq domains primary example.com -p my-site -s "My Site"`,
 	}
 
 	cmd.AddCommand(
@@ -84,69 +84,48 @@ instead of the project, with -s. Other server types do not support custom domain
 }
 
 // domainsServerFlags are the flags every domains command names its server with.
+// Static Hosting sites are created inside a project, so the server is always
+// one of the project's.
 type domainsServerFlags struct {
 	server string
-	global bool
 }
 
-// addDomainsServerFlags registers the -s/--server flag and --global, and refuses --global alongside a --project given on this command line. A
-// default project from the config or environment does not conflict.
+// addDomainsServerFlags registers the -s/--server flag.
 func addDomainsServerFlags(cmd *cobra.Command, f *domainsServerFlags) {
-	cmd.Flags().StringVarP(&f.server, "server", "s", "", "Static Hosting server, name or identifier (default: the server in .deployhq.toml; required with --global)")
-	cmd.Flags().BoolVar(&f.global, "global", false, "--server is a global server (no project needed)")
-	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
-		if f.global && cmd.Flags().Changed("project") {
-			return &output.UserError{
-				Message: "--project and --global cannot be used together",
-				Hint:    "A global server belongs to no project: drop --project, or drop --global to use one of the project's servers.",
-			}
-		}
-		return nil
-	}
+	cmd.Flags().StringVarP(&f.server, "server", "s", "", "Static Hosting server, name or identifier (default: the server in .deployhq.toml)")
 }
 
 // domainsTarget is the Static Hosting server a domains command acts on.
 type domainsTarget struct {
 	scope     sdk.CustomDomainScope
-	projectID string // empty for a global server
+	projectID string
 	serverID  string // the resolved server identifier
 	server    string // as the user typed it, for the commands we suggest
-	global    bool
 }
 
 // flags renders the flags that name this server in a suggested command.
 func (t domainsTarget) flags() string {
-	server := shellQuoteIfNeeded(t.server)
-	if t.global {
-		return "--global -s " + server
-	}
-	return fmt.Sprintf("-p %s -s %s", t.projectID, server)
+	return fmt.Sprintf("-p %s -s %s", t.projectID, shellQuoteIfNeeded(t.server))
 }
 
 // listServersCmd is the command that lists the servers this target is one of.
 func (t domainsTarget) listServersCmd() string {
-	if t.global {
-		return "dhq global-servers list"
-	}
 	return "dhq servers list -p " + t.projectID
 }
 
-// openDomainsTarget resolves the flags to a server: the project (unless
-// --global) and the -s value, as a name or an identifier. Without -s it uses the
-// configured server, which comes from the environment or .deployhq.toml. That
-// server belongs to the folder's project, so it never stands in for --global.
+// openDomainsTarget resolves the flags to a server: the project and the -s
+// value, as a name or an identifier. Without -s it uses the configured server,
+// which comes from the environment or .deployhq.toml.
 func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, domainsTarget, error) {
-	target := domainsTarget{server: strings.TrimSpace(f.server), global: f.global}
-	if target.server == "" && !f.global {
+	target := domainsTarget{server: strings.TrimSpace(f.server)}
+	if target.server == "" {
 		target.server = strings.TrimSpace(cliCtx.Config.Server)
 	}
-	if !f.global {
-		projectID, err := cliCtx.RequireProject()
-		if err != nil {
-			return nil, target, err
-		}
-		target.projectID = projectID
+	projectID, err := cliCtx.RequireProject()
+	if err != nil {
+		return nil, target, err
 	}
+	target.projectID = projectID
 	client, err := cliCtx.Client()
 	if err != nil {
 		return nil, target, err
@@ -156,11 +135,7 @@ func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, 
 		return nil, target, err
 	}
 	target.serverID = serverID
-	if f.global {
-		target.scope = sdk.GlobalServerDomains(serverID)
-	} else {
-		target.scope = sdk.ProjectServerDomains(target.projectID, serverID)
-	}
+	target.scope = sdk.ProjectServerDomains(target.projectID, serverID)
 	return client, target, nil
 }
 
@@ -168,25 +143,15 @@ func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, 
 func resolveDomainsServer(ctx context.Context, client *sdk.Client, target domainsTarget) (string, error) {
 	in := target.server
 	if in == "" {
-		hint := "Pass it with -s. Find the Static Hosting server with: " + target.listServersCmd()
-		if !target.global {
-			hint += "\nTo remember it for this folder: dhq config set server <identifier>"
-		}
+		hint := "Pass it with -s. Find the Static Hosting server with: " + target.listServersCmd() +
+			"\nTo remember it for this folder: dhq config set server <identifier>"
 		return "", &output.UserError{Message: "--server is required", Hint: hint}
 	}
 	// A canonical UUID is taken as an identifier without a listing.
 	if isCanonicalUUID(in) {
 		return in, nil
 	}
-	var (
-		servers []sdk.Server
-		err     error
-	)
-	if target.global {
-		servers, err = client.ListGlobalServers(ctx, nil)
-	} else {
-		servers, err = client.ListServers(ctx, target.projectID, nil)
-	}
+	servers, err := client.ListServers(ctx, target.projectID, nil)
 	if err != nil {
 		return "", err
 	}
@@ -206,9 +171,6 @@ func resolveDomainsServer(ctx context.Context, client *sdk.Client, target domain
 		}
 	}
 	hint := fmt.Sprintf("This project has no Static Hosting server. Create one with: dhq servers create -p %s --protocol-type static_hosting ...", target.projectID)
-	if target.global {
-		hint = "This account has no global Static Hosting server. See its global servers with: dhq global-servers list"
-	}
 	if len(names) > 0 {
 		hint = "Static Hosting servers: " + strings.Join(names, ", ")
 	}
@@ -245,9 +207,6 @@ func explainDomainsError(err error, target domainsTarget) error {
 		hint := apiErr.Hint
 		if hint == "" {
 			hint = "Ask an account administrator for access to this project's servers."
-			if target.global {
-				hint = "Adding, removing or checking a domain on a global server needs an account administrator."
-			}
 		}
 		return &output.AuthError{Message: msg, Hint: hint}
 	case apiErr.IsRateLimited():

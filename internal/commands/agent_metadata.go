@@ -464,8 +464,7 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"hosted_resource"},
 	},
 
-	// Static Hosting custom domains (all take -p <project> -s <server>, or
-	// --global -s <server> for a global server)
+	// Static Hosting custom domains (all take -p <project> -s <server>)
 	"dhq domains list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"custom_domain"},
@@ -501,9 +500,8 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"custom_domain"},
 	},
 
-	// Static Hosting redirect rules (all take -p <project> -s <server>, or
-	// --global -s <server> for a global server). Changes apply to the live site
-	// straight away, without a deploy.
+	// Static Hosting redirect rules (all take -p <project> -s <server>). Changes
+	// apply to the live site straight away, without a deploy.
 	"dhq servers redirects list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"redirect_rule"},
