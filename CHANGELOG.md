@@ -69,13 +69,15 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 - **`--trailing-slash strip|force|preserve`** for Static Hosting on `dhq
   servers create`, `dhq servers update` and `dhq launch --static`: how the site
   treats `/about` and `/about/`. `force` keeps the URLs of a site moved from
-  WordPress working. Unknown values, other server types and `--vps` are refused
-  before any request. `dhq servers update` warns when the server does not
+  WordPress working. Unknown values are refused before any request, as are
+  other server types on `dhq servers create` and `--vps` on `dhq launch`.
+  `dhq servers update` warns when the server does not
   confirm the mode (a site that never chose one counts as `strip`), explains
   an update that sends only `--trailing-slash` to another server type,
   reports a mode that could not be published (site busy, hourly limit,
   publish failed) as retryable while the rest of the update is saved, and a
-  `dhq launch` re-run applies it to the existing site.
+  `dhq launch` re-run applies it to the existing site, warning when the site
+  does not confirm the mode.
 - **`dhq domains add`** (and `dhq launch --custom-domain`) help and the skill
   now say the other half of the apex and www pair is also offered on later
   adds, redirecting to the site's primary domain; it is skipped only when it
