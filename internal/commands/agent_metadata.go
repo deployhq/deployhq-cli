@@ -464,8 +464,7 @@ var commandMetadataTable = map[string]AgentMetadata{
 		ResourceTypes: []string{"hosted_resource"},
 	},
 
-	// Static Hosting custom domains (all take -p <project> -s <server>, or
-	// --global -s <server> for a global server)
+	// Static Hosting custom domains (all take -p <project> -s <server>)
 	"dhq domains list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"custom_domain"},
@@ -492,6 +491,40 @@ var commandMetadataTable = map[string]AgentMetadata{
 		Interactive: true, Destructive: true, RequiresConfirmation: true,
 		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"custom_domain"},
+	},
+
+	"dhq domains primary": {
+		// Changes which domain visitors land on; the others redirect to it.
+		// Making the current primary primary again changes nothing.
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+
+	// Static Hosting redirect rules (all take -p <project> -s <server>). Changes
+	// reach the live site within about a minute, without a deploy.
+	"dhq servers redirects list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"redirect_rule"},
+	},
+	"dhq servers redirects add": {
+		// Adding the same rule twice creates two rules.
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"redirect_rule"},
+	},
+	"dhq servers redirects update": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"redirect_rule"},
+	},
+	"dhq servers redirects reorder": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"redirect_rule"},
+	},
+	"dhq servers redirects remove": {
+		// The redirect stops applying on the live site. Prompts unless --yes,
+		// which non-interactive mode requires.
+		Interactive: true, Destructive: true, RequiresConfirmation: true,
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"redirect_rule"},
 	},
 
 	// Managed hosting catalog (read-only)

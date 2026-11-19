@@ -98,12 +98,7 @@ func domainsAPISequence(t *testing.T, routes map[string][]cannedResponse) *[]dom
 	return &calls
 }
 
-const (
-	domainsBase       = "/projects/my-app/servers/srv-static/custom_domains"
-	globalDomainsBase = "/global_servers/srv-global/custom_domains"
-
-	globalServersJSON = `[{"identifier":"srv-global","name":"Shared Site","protocol_type":"static_hosting"}]`
-)
+const domainsBase = "/projects/my-app/servers/srv-static/custom_domains"
 
 func TestDomainsCmd_Structure(t *testing.T) {
 	cmd := newDomainsCmd()
@@ -112,16 +107,17 @@ func TestDomainsCmd_Structure(t *testing.T) {
 	for _, sub := range cmd.Commands() {
 		names[sub.Name()] = true
 		assert.NotNil(t, sub.Flags().Lookup("server"), "%s needs --server", sub.Name())
-		assert.NotNil(t, sub.Flags().Lookup("global"), "%s needs --global", sub.Name())
+		// Static Hosting sites can't be global servers, so there is no --global.
+		assert.Nil(t, sub.Flags().Lookup("global"), "%s must not offer --global", sub.Name())
 	}
-	for _, want := range []string{"list", "show", "add", "remove", "check"} {
+	for _, want := range []string{"list", "show", "add", "remove", "check", "primary"} {
 		assert.True(t, names[want], "missing subcommand %q", want)
 	}
 }
 
 func TestDomainsHelp_ExplainsProductRules(t *testing.T) {
 	cmd := newDomainsCmd()
-	for _, want := range []string{"at most 2", "primary", "TXT", "ALIAS", "every few minutes", "7 days", "paid plan"} {
+	for _, want := range []string{"several custom domains", "every non-primary domain redirects to the primary", "dhq domains primary", "TXT", "ALIAS", "every few minutes", "7 days", "paid plan"} {
 		assert.Contains(t, cmd.Long, want)
 	}
 }
@@ -227,11 +223,11 @@ func TestDomainsAdd_ValidationErrorsPassThrough(t *testing.T) {
 	withResolvableContext(t)
 	domainsAPI(t, map[string]cannedResponse{
 		"GET /projects/my-app/servers": {200, domainsServersJSON},
-		"POST " + domainsBase:          {422, `{"errors":["A site can have at most 2 custom domains"]}`},
+		"POST " + domainsBase:          {422, `{"errors":["This site has reached its custom domain limit"]}`},
 	})
 	err := runServersCmd(t, "domains", "add", "blog.example.com", "-s", "srv-static")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "at most 2 custom domains")
+	assert.Contains(t, err.Error(), "reached its custom domain limit")
 
 	var userErr *output.UserError
 	require.ErrorAs(t, err, &userErr, "a refused hostname is explained, not a raw API error")
@@ -296,152 +292,6 @@ func TestDomainsRemove_UnknownDomainDoesNotDelete(t *testing.T) {
 	}
 }
 
-func TestDomainsGlobal_ListResolvesNameAgainstGlobalServers(t *testing.T) {
-	withResolvableContext(t)
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":      {200, globalServersJSON},
-		"GET " + globalDomainsBase: {200, "[" + domainJSON + "]"},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "list", "--global", "-s", "Shared Site", "--json"))
-	require.Len(t, *calls, 2)
-	assert.Equal(t, "/global_servers", (*calls)[0].path)
-	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
-}
-
-func TestDomainsGlobal_UUIDSkipsServerListing(t *testing.T) {
-	withResolvableContext(t)
-	uuid := "0b9f3c2e-1d4a-4c8b-9e2f-123456789abc"
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers/" + uuid + "/custom_domains": {200, "[]"},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "list", "--global", "-s", uuid, "--json"))
-	require.Len(t, *calls, 1)
-}
-
-func TestDomainsGlobal_DoesNotNeedAProject(t *testing.T) {
-	withResolvableContext(t)
-	t.Setenv("DEPLOYHQ_PROJECT", "")
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":      {200, globalServersJSON},
-		"GET " + globalDomainsBase: {200, "[]"},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "list", "--global", "-s", "srv-global", "--json"))
-	require.Len(t, *calls, 2)
-}
-
-func TestDomainsGlobal_Show(t *testing.T) {
-	withResolvableContext(t)
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":      {200, globalServersJSON},
-		"GET " + globalDomainsBase: {200, "[" + domainJSON + "]"},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "show", "www.example.com", "--global", "-s", "srv-global", "--json"))
-	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
-}
-
-func TestDomainsGlobal_Add(t *testing.T) {
-	withResolvableContext(t)
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":       {200, globalServersJSON},
-		"POST " + globalDomainsBase: {201, domainJSON},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "add", "www.example.com", "--global", "-s", "Shared Site", "--json"))
-	require.Len(t, *calls, 2)
-	assert.Equal(t, http.MethodPost, (*calls)[1].method)
-	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
-}
-
-func TestDomainsGlobal_Remove(t *testing.T) {
-	withResolvableContext(t)
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":                    {200, globalServersJSON},
-		"GET " + globalDomainsBase:               {200, "[" + domainJSON + "]"},
-		"DELETE " + globalDomainsBase + "/dom-1": {202, `{"status":"removal_requested","identifier":"dom-1"}`},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "remove", "www.example.com", "--global", "-s", "srv-global", "--yes", "--json"))
-	require.Len(t, *calls, 3)
-	assert.Equal(t, globalDomainsBase+"/dom-1", (*calls)[2].path)
-}
-
-func TestDomainsGlobal_ErrorsSuggestGlobalCommands(t *testing.T) {
-	withResolvableContext(t)
-	domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":      {200, globalServersJSON},
-		"GET " + globalDomainsBase: {404, `{"status":"not_found","error_code":"record_not_found"}`},
-	})
-
-	err := runServersCmd(t, "domains", "list", "--global", "-s", "Shared Site")
-	var userErr *output.UserError
-	require.True(t, errors.As(err, &userErr), "got %v", err)
-	assert.Contains(t, userErr.Hint, "dhq global-servers list")
-	assert.Contains(t, userErr.Hint, "--global -s 'Shared Site'")
-	assert.NotContains(t, userErr.Hint, "-p ")
-}
-
-func TestDomainsGlobal_UnknownServerListsChoices(t *testing.T) {
-	withResolvableContext(t)
-	domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers": {200, globalServersJSON},
-	})
-
-	err := runServersCmd(t, "domains", "list", "--global", "-s", "nope")
-	var userErr *output.UserError
-	require.True(t, errors.As(err, &userErr), "got %v", err)
-	assert.Contains(t, userErr.Hint, "Shared Site (srv-global)")
-}
-
-// --project names a project and --global says there is none: every subcommand
-// refuses the contradiction before calling the API.
-func TestDomains_ProjectFlagWithGlobalIsRefused(t *testing.T) {
-	cases := map[string][]string{
-		"list":   {"domains", "list"},
-		"show":   {"domains", "show", "www.example.com"},
-		"add":    {"domains", "add", "www.example.com"},
-		"remove": {"domains", "remove", "www.example.com", "--yes"},
-		"check":  {"domains", "check", "www.example.com"},
-	}
-	for name, args := range cases {
-		for _, projectFlag := range []string{"-p", "--project"} {
-			t.Run(name+" "+projectFlag, func(t *testing.T) {
-				withResolvableContext(t)
-				blockNetwork(t)
-				err := runServersCmd(t, append(args, projectFlag, "my-app", "--global", "-s", "srv-global", "--json")...)
-				var userErr *output.UserError
-				require.True(t, errors.As(err, &userErr), "got %v", err)
-				assert.Contains(t, userErr.Message, "--project")
-				assert.Contains(t, userErr.Message, "--global")
-				assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
-				resp := output.ErrorResponseFromErr(err)
-				assert.False(t, resp.OK)
-				data, ok := resp.Data.(output.ErrorData)
-				require.True(t, ok)
-				assert.Equal(t, output.ExitUserError, data.ExitCode)
-			})
-		}
-	}
-}
-
-// A default project (config or environment) says nothing about this command,
-// so it does not conflict with --global.
-func TestDomainsGlobal_DefaultProjectIsAllowed(t *testing.T) {
-	withResolvableContext(t)
-	t.Setenv("DEPLOYHQ_PROJECT", "my-app")
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":      {200, globalServersJSON},
-		"GET " + globalDomainsBase: {200, "[]"},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "list", "--global", "-s", "srv-global", "--json"))
-	require.Len(t, *calls, 2)
-	assert.Equal(t, globalDomainsBase, (*calls)[1].path)
-}
-
 // Without a public suffix list the CLI cannot tell example.co.uk from a
 // subdomain, so the apex guidance is shown, conditionally, unless the hostname
 // plainly is not an apex.
@@ -503,8 +353,8 @@ func TestDomainsAdd_WithWWWFlagIsGone(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown flag: --with-www")
 }
 
-// The server skips the other half for a subdomain, or a site with another
-// domain: asking for the default pair is not a mistake to warn about.
+// The server skips the other half for a subdomain, or when it is already on
+// the site: asking for the default pair is not a mistake to warn about.
 func TestDomainsAdd_SkippedPairIsNotAWarning(t *testing.T) {
 	withResolvableContext(t)
 	blog := strings.ReplaceAll(domainJSON, "www.example.com", "blog.example.com")
@@ -571,18 +421,6 @@ func TestDomainsCheck_ResolvesHostnameAndAccepts(t *testing.T) {
 	require.Len(t, *calls, 3)
 	assert.Equal(t, http.MethodPost, (*calls)[2].method)
 	assert.Equal(t, domainsBase+"/dom-1/refresh", (*calls)[2].path)
-}
-
-func TestDomainsCheck_GlobalServer(t *testing.T) {
-	withResolvableContext(t)
-	calls := domainsAPI(t, map[string]cannedResponse{
-		"GET /global_servers":                          {200, globalServersJSON},
-		"GET " + globalDomainsBase:                     {200, "[" + domainJSON + "]"},
-		"POST " + globalDomainsBase + "/dom-1/refresh": {202, `{"status":"check_requested","identifier":"dom-1"}`},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "check", "dom-1", "--global", "-s", "srv-global", "--json"))
-	assert.Equal(t, globalDomainsBase+"/dom-1/refresh", (*calls)[2].path)
 }
 
 func TestDomainsCheck_RateLimitedSaysWhenToRetry(t *testing.T) {
@@ -995,19 +833,6 @@ func TestDomainsAdd_RemovedWhileWaitingIsAnError(t *testing.T) {
 	assert.Contains(t, err.Error(), "no longer on this server")
 }
 
-func TestDomainsAdd_GlobalServerPollsGlobalPath(t *testing.T) {
-	withResolvableContext(t)
-	fastDomainsPolling(t, 5*time.Second)
-	calls := domainsAPISequence(t, map[string][]cannedResponse{
-		"GET /global_servers":       {{200, globalServersJSON}},
-		"POST " + globalDomainsBase: {{201, registeringDomainJSON}},
-		"GET " + globalDomainsBase:  {{200, "[" + registeredDomainJSON + "]"}},
-	})
-
-	require.NoError(t, runServersCmd(t, "domains", "add", "www.example.com", "--global", "-s", "srv-global", "--json"))
-	assert.Equal(t, globalDomainsBase, (*calls)[2].path)
-}
-
 func TestWriteDNSRecords_WhileRegisteringAsksForOnlyTheCNAME(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	env := &output.Envelope{Stdout: &stdout, Stderr: &stderr}
@@ -1115,22 +940,6 @@ func TestDomains_ExplicitServerBeatsProjectConfig(t *testing.T) {
 	assert.Equal(t, domainsBase, (*calls)[len(*calls)-1].path)
 }
 
-// The configured server belongs to the folder's project, so it never names a
-// global server.
-func TestDomains_GlobalIgnoresServerFromProjectConfig(t *testing.T) {
-	withResolvableContext(t)
-	inFolderLinkedTo(t, "my-app", "srv-static")
-	calls := domainsAPI(t, map[string]cannedResponse{})
-
-	err := runServersCmd(t, "domains", "list", "--global")
-
-	var userErr *output.UserError
-	require.True(t, errors.As(err, &userErr), "got %v", err)
-	assert.Equal(t, "--server is required", userErr.Message)
-	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
-	assert.Empty(t, *calls)
-}
-
 func TestDomains_NoServerAnywhereIsAUserError(t *testing.T) {
 	withResolvableContext(t)
 	inFolderLinkedTo(t, "my-app", "")
@@ -1144,4 +953,141 @@ func TestDomains_NoServerAnywhereIsAUserError(t *testing.T) {
 	assert.Contains(t, userErr.Hint, "-s")
 	assert.Equal(t, output.ExitUserError, output.ClassifyError(err))
 	assert.Empty(t, *calls)
+}
+
+const activeApexDomainJSON = `{"identifier":"dom-2","hostname":"example.com","primary":false,"status":"active",` +
+	`"ssl_status":"active","verification_errors":[],"activated_at":"2026-11-06T10:00:00Z","created_at":"2026-11-05T10:00:00Z","dns_records":[]}`
+
+func TestDomainsPrimary_ResolvesHostnameAndPosts(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":           {200, domainsServersJSON},
+		"GET " + domainsBase:                     {200, "[" + domainJSON + "," + activeApexDomainJSON + "]"},
+		"POST " + domainsBase + "/dom-2/primary": {200, strings.Replace(activeApexDomainJSON, `"primary":false`, `"primary":true`, 1)},
+	})
+
+	stdout, err := runCmdCapturingStdout(t, "domains", "primary", "Example.com", "-s", "srv-static", "--json")
+	require.NoError(t, err)
+	last := (*calls)[len(*calls)-1]
+	assert.Equal(t, http.MethodPost, last.method)
+	assert.Equal(t, domainsBase+"/dom-2/primary", last.path)
+	assert.Contains(t, stdout, "is now the primary domain")
+}
+
+func TestDomainsPrimary_AlreadyPrimaryDoesNotPost(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+	})
+
+	require.NoError(t, runServersCmd(t, "domains", "primary", "www.example.com", "-s", "srv-static", "--json"))
+	for _, c := range *calls {
+		assert.NotEqual(t, http.MethodPost, c.method)
+	}
+}
+
+func TestDomainsPrimary_NotActiveShowsTheAPIReason(t *testing.T) {
+	withResolvableContext(t)
+	pending := strings.Replace(domainJSON, `"primary":true`, `"primary":false`, 1)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":           {200, domainsServersJSON},
+		"GET " + domainsBase:                     {200, "[" + pending + "]"},
+		"POST " + domainsBase + "/dom-1/primary": {422, `{"error":"Only an active domain can be made primary"}`},
+	})
+
+	err := runServersCmd(t, "domains", "primary", "www.example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	assert.Equal(t, "Only an active domain can be made primary", userErr.Message)
+	assert.Contains(t, userErr.Hint, "dhq domains show www.example.com -p my-app -s srv-static")
+	require.NotEmpty(t, userErr.Recovery)
+}
+
+func TestDomainsPrimary_UnknownDomainDoesNotPost(t *testing.T) {
+	withResolvableContext(t)
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"GET " + domainsBase:           {200, "[" + domainJSON + "]"},
+	})
+
+	err := runServersCmd(t, "domains", "primary", "other.example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	for _, c := range *calls {
+		assert.NotEqual(t, http.MethodPost, c.method)
+	}
+}
+
+func primaryRefusal(t *testing.T, status int, body string) *output.UserError {
+	t.Helper()
+	withResolvableContext(t)
+	domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers":           {200, domainsServersJSON},
+		"GET " + domainsBase:                     {200, "[" + domainJSON + "," + activeApexDomainJSON + "]"},
+		"POST " + domainsBase + "/dom-2/primary": {status, body},
+	})
+	err := runServersCmd(t, "domains", "primary", "example.com", "-s", "srv-static")
+	var userErr *output.UserError
+	require.True(t, errors.As(err, &userErr), "got %v", err)
+	return userErr
+}
+
+// A running deployment holds the site, so the change is refused with 409:
+// nothing changed, and trying again later works.
+func TestDomainsPrimary_DeploymentRunningIsRetryable(t *testing.T) {
+	userErr := primaryRefusal(t, 409,
+		`{"error":"A deployment of this site is running, so example.com could not be made primary. Try again once it has finished"}`)
+	assert.Contains(t, userErr.Message, "A deployment of this site is running")
+	assert.True(t, userErr.Retryable)
+	assert.Contains(t, userErr.Hint, "dhq domains primary example.com -p my-app -s srv-static")
+}
+
+func TestDomainsPrimary_PushFailureIsRetryable(t *testing.T) {
+	userErr := primaryRefusal(t, 503,
+		`{"error":"We couldn't make example.com the primary domain right now. Please try again in a few minutes"}`)
+	assert.Contains(t, userErr.Message, "couldn't make example.com the primary domain")
+	assert.True(t, userErr.Retryable)
+}
+
+func TestDomainsPrimary_RateLimitIsRetryable(t *testing.T) {
+	userErr := primaryRefusal(t, 429, `{"error":"Too many custom domain changes","retry_after":3600}`)
+	assert.True(t, userErr.Retryable)
+	assert.Equal(t, 3600, userErr.RetryAfter)
+}
+
+// A 422 is not always about the domain's status: a site being deleted refuses
+// it too.
+func TestDomainsPrimary_SiteBeingDeletedIsNotAboutActivation(t *testing.T) {
+	userErr := primaryRefusal(t, 422, `{"error":"This site is being deleted"}`)
+	assert.Contains(t, userErr.Message, "This site is being deleted")
+	assert.NotContains(t, userErr.Hint, "Only an active domain")
+}
+
+// The counterpart is offered on later adds too: a site that already has a
+// primary still asks for the pair, and both new domains redirect to the
+// primary.
+func TestDomainsAdd_LaterAddStillAsksForThePair(t *testing.T) {
+	withResolvableContext(t)
+	newDomain := func(id, hostname string) string {
+		return `{"identifier":"` + id + `","hostname":"` + hostname + `","primary":false,"status":"pending","registering":false,` +
+			`"verification_errors":[],"dns_records":[]}`
+	}
+	calls := domainsAPI(t, map[string]cannedResponse{
+		"GET /projects/my-app/servers": {200, domainsServersJSON},
+		"POST " + domainsBase: {201, strings.TrimSuffix(newDomain("dom-2", "example.org"), "}") +
+			`,"counterpart":` + newDomain("dom-3", "www.example.org") + `,"counterpart_errors":[]}`},
+	})
+
+	stdout, err := runCmdCapturingStdout(t, "domains", "add", "example.org", "-s", "srv-static", "--no-wait", "--json")
+	require.NoError(t, err)
+	post := (*calls)[len(*calls)-1]
+	assert.Equal(t, map[string]any{"custom_domain": map[string]any{"hostname": "example.org", "with_counterpart": true}}, post.body)
+	assert.Contains(t, stdout, "www.example.org")
+}
+
+func TestDomainsAdd_HelpDoesNotSaySecondAddSkipsThePair(t *testing.T) {
+	cmd := newDomainsAddCmd()
+	assert.NotContains(t, cmd.Long, "already has another custom domain")
+	assert.Contains(t, cmd.Long, "to the site's primary domain otherwise")
 }

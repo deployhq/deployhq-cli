@@ -127,45 +127,6 @@ func TestCreateCustomDomain_ValidationErrors(t *testing.T) {
 	assert.Equal(t, "deployhq api: 422 Hostname has already been taken", err.Error())
 }
 
-func TestCustomDomains_GlobalServerPaths(t *testing.T) {
-	const base = "/global_servers/srv1/custom_domains"
-	var calls []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls = append(calls, r.Method+" "+r.URL.Path)
-		switch {
-		case r.Method == http.MethodGet:
-			_, _ = w.Write([]byte("[" + pendingDomainJSON + "]"))
-		case r.Method == http.MethodPost && r.URL.Path == base:
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(pendingDomainJSON))
-		default:
-			w.WriteHeader(http.StatusAccepted)
-			_, _ = w.Write([]byte(`{"status":"accepted","identifier":"dom-1"}`))
-		}
-	}))
-	defer server.Close()
-
-	c := newTestClient(t, server)
-	ctx := context.Background()
-	scope := GlobalServerDomains("srv1")
-
-	_, err := c.ListCustomDomains(ctx, scope)
-	require.NoError(t, err)
-	_, err = c.CreateCustomDomain(ctx, scope, CustomDomainCreateRequest{Hostname: "www.example.com"})
-	require.NoError(t, err)
-	_, err = c.RefreshCustomDomain(ctx, scope, "dom-1")
-	require.NoError(t, err)
-	_, err = c.DeleteCustomDomain(ctx, scope, "dom-1")
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{
-		"GET " + base,
-		"POST " + base,
-		"POST " + base + "/dom-1/refresh",
-		"DELETE " + base + "/dom-1",
-	}, calls)
-}
-
 func TestCreateCustomDomain_WithCounterpart(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]map[string]interface{}
@@ -227,4 +188,34 @@ func TestRefreshCustomDomain_HeaderWinsOverBody(t *testing.T) {
 	apiErr, ok := err.(*APIError)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, 7, apiErr.RetryAfter)
+}
+
+func TestMakeCustomDomainPrimary(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/projects/my-app/servers/srv1/custom_domains/dom-2/primary", r.URL.Path)
+		_, _ = w.Write([]byte(`{"identifier":"dom-2","hostname":"example.com","primary":true,"status":"active"}`))
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	d, err := c.MakeCustomDomainPrimary(context.Background(), ProjectServerDomains("my-app", "srv1"), "dom-2")
+	require.NoError(t, err)
+	assert.Equal(t, "example.com", d.Hostname)
+	assert.True(t, d.Primary)
+}
+
+func TestMakeCustomDomainPrimary_NotActiveIsValidationError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"error":"Only an active domain can be made primary"}`))
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	_, err := c.MakeCustomDomainPrimary(context.Background(), ProjectServerDomains("my-app", "srv1"), "dom-2")
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.True(t, apiErr.IsValidationError())
+	assert.Equal(t, "Only an active domain can be made primary", apiErr.Message)
 }

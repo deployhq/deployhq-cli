@@ -13,8 +13,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 - **`dhq domains list | show | add | remove | check`**: custom domains for a
   Static Hosting site, scoped by `-p <project>` and `-s <server>` (name or
-  identifier), or by `--global -s <server>` for a global server (no project
-  needed). `add` prints the two DNS records to create (the CNAME, with an
+  identifier). Static Hosting sites are created inside a project; they can't be
+  global servers. `add` prints the two DNS records to create (the CNAME, with an
   ALIAS/ANAME note for an apex domain, and the TXT ownership record); the
   domain goes live automatically once both are detected. `add` also adds the
   other half of the apex and www pair by default, so a bare domain gets `www`
@@ -40,9 +40,59 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   live URL. The site keeps its `deployhq-sites.com` URL until the domain is live.
   Re-running launch adds the domain to the existing site, or reports it if it is
   already there.
+- **`dhq servers redirects list | add | update | remove | reorder`**: redirect
+  rules for a Static Hosting site, scoped like `dhq domains` (`-p` and `-s`;
+  `-s` defaults to the configured server). Rules apply within about a minute,
+  without a deploy. `add <source> <destination>` takes `--status` (301,
+  302, 307 or 308, checked before any request), `--query "p=:id"` to match
+  query parameters (e.g. WordPress `?p=` links) and `--position`. `update
+  <identifier>` sends only the flags given; `--query ""` removes the matcher
+  and `--position` moves the rule. `reorder <identifier>...` sets the order
+  rules are checked in and must name every rule exactly once. `remove` asks
+  for confirmation unless `--yes`, which non-interactive mode requires. `list`
+  also shows the rules and skipped lines of the active deployment's
+  `_redirects` file (checked first, so it wins), lists notes on lines applied
+  in a normalised form apart from skipped ones, and warns about a rule that a
+  file rule overrides for some or all of the URLs it matches, or that an
+  earlier rule takes over completely. The account-wide limit of 60 redirect
+  changes per hour is a retryable error with the wait time. A change refused
+  while the site is publishing a deployment, or a failed publish, is a
+  retryable error that changed nothing. A `dhq launch` re-run warns when the
+  saved server is not Static Hosting and `--trailing-slash` cannot apply.
+- **`dhq domains primary <hostname>`**: make an active custom domain the one
+  visitors land on. A domain that is not active is refused with the reason;
+  one that is already primary is left as it is. While a deployment of the site
+  is running the change is refused with a retryable error and nothing
+  changes. The `dhq domains` help now describes several custom domains per
+  site (up to five by default, any hostnames), each non-primary one
+  redirecting to the primary.
+- **`--trailing-slash strip|force|preserve`** for Static Hosting on `dhq
+  servers create`, `dhq servers update` and `dhq launch --static`: how the site
+  treats `/about` and `/about/`. `force` keeps the URLs of a site moved from
+  WordPress working. Unknown values are refused before any request, as are
+  other server types on `dhq servers create` and `--vps` on `dhq launch`.
+  `dhq servers update` warns when the server does not
+  confirm the mode (a site that never chose one counts as `strip`), explains
+  an update that sends only `--trailing-slash` to another server type,
+  reports a mode that could not be published (site busy, hourly limit,
+  publish failed) as retryable while the rest of the update is saved, and a
+  `dhq launch` re-run applies it to the existing site, warning when the site
+  does not confirm the mode.
+- **`dhq domains add`** (and `dhq launch --custom-domain`) help and the skill
+  now say the other half of the apex and www pair is also offered on later
+  adds, redirecting to the site's primary domain; it is skipped only when it
+  is already on the site or the hostname has no pair.
+- **SDK**: `RedirectRuleShadow.Line` is a pointer and
+  `RedirectRuleShadow.RuleIdentifier` names an earlier rule;
+  `RedirectFileWarning.IsNote()`; `ListRedirectRules`, `CreateRedirectRule`, `UpdateRedirectRule`
+  (`RedirectRuleUpdateRequest.Position` moves a rule),
+  `DeleteRedirectRule` and `ReorderRedirectRules`, scoped with
+  `ProjectServerRedirects`;
+  `MakeCustomDomainPrimary`; `HostedWebsiteAttributes.TrailingSlash`,
+  `ServerUpdateRequest.HostedWebsite` (sent as top-level
+  `hosted_website_attributes` by `UpdateServer`) and `StaticHostingInfo.TrailingSlash`.
 - **SDK**: `ListCustomDomains`, `CreateCustomDomain`, `DeleteCustomDomain`,
-  `RefreshCustomDomain`, scoped with `ProjectServerDomains` or
-  `GlobalServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.
+  `RefreshCustomDomain`, scoped with `ProjectServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.
   Error responses with an `error_code` but no `error` field now report the code
   rather than the raw JSON body. `APIError.RetryAfter` also reads a
   `retry_after` in the response body when the header is missing.
@@ -66,9 +116,15 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   suggestion text.
 - **`dhq domains` uses the configured server when `-s` is absent**: `-s` first,
   then `DEPLOYHQ_SERVER`, then `server` in `.deployhq.toml`, which `dhq launch`
-  writes. It used to exit 2 asking for `-s`. `--global` still needs `-s`, because
-  the configured server belongs to the folder's project. With no server at all
+  writes. It used to exit 2 asking for `-s`. With no server at all
   the error now exits 1.
+- **`dhq servers update` accepts a server name**, as its examples show. A value
+  that is not a server identifier must match a server name exactly (ignoring
+  case); it used to fail with "not found". A partial name updates nothing. An identifier is still sent as is,
+  with no extra request, and a name shared by two servers is refused without
+  updating either. A name may contain any character, `%` and `/` included: the
+  Go SDK's `UpdateServer` now escapes the server it is given into one path
+  segment. The skill reference documents the name form.
 
 ### Changed
 

@@ -181,7 +181,7 @@ func launchPromptCustomDomain(env *output.Envelope, cfg *launchConfig) {
 		return
 	}
 	prompt := promptui.Select{
-		Label: fmt.Sprintf("Also add %s, which redirects to %s?", counterpart, cfg.customDomain),
+		Label: fmt.Sprintf("Also add %s, which redirects to the site's primary domain?", counterpart),
 		Items: []string{"Yes", "No"},
 	}
 	if idx, _, err := prompt.Run(); err == nil {
