@@ -190,7 +190,8 @@ server types return not-found). Server flags as for `dhq domains`: `-p <project>
 - Two sources of rules. A `_redirects` file in the published folder (one rule
   per line: `/old /new 301`, `/ p=:id /posts/:id 301` for a query rule) is
   versioned with the code and applies on deploy. Rules managed with these
-  commands apply straight away, without a deploy. Prefer the file when the
+  commands reach the live site within about a minute (the change propagates
+  across the edge network), without a deploy. Prefer the file when the
   person's repository is the source of truth (a static-site generator, a
   migration script that writes redirects); use the commands for one-off fixes
   or when there is no repository change to make.

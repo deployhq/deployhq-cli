@@ -42,8 +42,8 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   already there.
 - **`dhq servers redirects list | add | update | remove | reorder`**: redirect
   rules for a Static Hosting site, scoped like `dhq domains` (`-p` and `-s`;
-  `-s` defaults to the configured server). Rules apply straight
-  away, without a deploy. `add <source> <destination>` takes `--status` (301,
+  `-s` defaults to the configured server). Rules apply within about a minute,
+  without a deploy. `add <source> <destination>` takes `--status` (301,
   302, 307 or 308, checked before any request), `--query "p=:id"` to match
   query parameters (e.g. WordPress `?p=` links) and `--position`. `update
   <identifier>` sends only the flags given; `--query ""` removes the matcher

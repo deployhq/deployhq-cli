@@ -501,7 +501,7 @@ var commandMetadataTable = map[string]AgentMetadata{
 	},
 
 	// Static Hosting redirect rules (all take -p <project> -s <server>). Changes
-	// apply to the live site straight away, without a deploy.
+	// reach the live site within about a minute, without a deploy.
 	"dhq servers redirects list": {
 		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
 		ResourceTypes: []string{"redirect_rule"},

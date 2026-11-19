@@ -19,7 +19,8 @@ const redirectRulesHelp = `Redirect rules come from two places:
     line ("/old /new 301"). It is versioned with your code and takes effect
     when you deploy.
   - rules managed with these commands (or in the dashboard). They take effect
-    straight away, without a deploy.
+    within about a minute (the change propagates across the edge network),
+    without a deploy.
 Rules from the _redirects file are checked first: when a rule of each kind
 matches a URL, the file wins. "list" shows both, and which rules here a file
 rule overrides. Lines of the file that cannot be honoured (200 rewrites, 404 lines,
@@ -353,8 +354,8 @@ func newRedirectsAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <source> <destination>",
 		Short: "Add a redirect rule to a Static Hosting server",
-		Long: `Add a redirect rule. It takes effect straight away, without a deploy. New rules
-go last unless --position is given.
+		Long: `Add a redirect rule. It takes effect within about a minute, without a
+deploy. New rules go last unless --position is given.
 
 ` + redirectRulesHelp,
 		Example: `  dhq servers redirects add /old-page /new-page -p my-site -s "My Site"
@@ -513,7 +514,8 @@ func newRedirectsRemoveCmd() *cobra.Command {
 		Use:     "remove <identifier>",
 		Aliases: []string{"delete", "rm"},
 		Short:   "Remove a redirect rule",
-		Long: `Remove a redirect rule managed in DeployHQ; it stops applying straight away.
+		Long: `Remove a redirect rule managed in DeployHQ; it stops applying within about
+a minute, once the change has propagated across the edge network.
 Rules from a _redirects file are removed by editing the file and deploying.
 Asks for confirmation unless --yes is given, which is required in
 non-interactive mode (agents, CI, piped output, --json).`,
