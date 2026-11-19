@@ -197,6 +197,12 @@ func launchEnsureTrailingSlashOnServer(ctx context.Context, env *output.Envelope
 	}
 	if updated.StaticHosting != nil {
 		server.StaticHosting = updated.StaticHosting
+		// As warnIfTrailingSlashNotApplied: a response without the site block
+		// says nothing either way, but a different mode is not a success.
+		if effectiveTrailingSlash(updated.StaticHosting.TrailingSlash) != cfg.trailingSlash {
+			env.Warn("The server did not confirm --trailing-slash %s. Set it later with: %s", cfg.trailingSlash, setCmd)
+			return
+		}
 	}
 	env.Status("Trailing slash set to %s.", cfg.trailingSlash)
 }

@@ -406,3 +406,17 @@ func TestLaunchEnsureTrailingSlash_RateLimitedWarnsWithTheWait(t *testing.T) {
 	assert.Contains(t, stderr.String(), "3600 seconds")
 	assert.Contains(t, stderr.String(), "dhq servers update srv-1 -p my-app --trailing-slash force")
 }
+
+// A re-run reports success only when the site confirms the mode it was given.
+func TestLaunchEnsureTrailingSlash_UnconfirmedModeIsAWarning(t *testing.T) {
+	srv, _ := launchSettingsAPI(t, http.StatusOK,
+		`{"identifier":"srv-1","protocol_type":"static_hosting","static_hosting":{"trailing_slash":"preserve"}}`)
+	env, _, stderr := testLaunchEnvelope()
+	cfg := launchDomainCfg("")
+	cfg.trailingSlash = "force"
+
+	launchEnsureTrailingSlashOnServer(t.Context(), env, cfg, newTestClient(t, srv), launchStaticServer())
+	assert.Contains(t, stderr.String(), "did not confirm --trailing-slash force")
+	assert.Contains(t, stderr.String(), "dhq servers update srv-1 -p my-app --trailing-slash force")
+	assert.NotContains(t, stderr.String(), "Trailing slash set to")
+}
