@@ -53,8 +53,9 @@ dhq global-servers delete 12345
 ```
 
 Static Hosting sites are created inside a project; they can't be global
-servers. Create one with `dhq servers create -p <project> --protocol-type
-static_hosting` or `dhq launch --static` (see [servers.md](servers.md)).
+servers. Create one with `dhq servers create -p <project> --name site
+--protocol-type static_hosting --subdomain <unique-subdomain>` or
+`dhq launch --static` (see [servers.md](servers.md)).
 
 ## Global Environment Variables
 
