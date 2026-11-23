@@ -2,8 +2,12 @@ package commands
 
 import (
 	"bytes"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/deployhq/deployhq-cli/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,6 +35,29 @@ func TestProfileUpdateCommand_Help(t *testing.T) {
 	assert.Contains(t, out, "--first-name")
 	assert.Contains(t, out, "--alphabetic-sort")
 	assert.Contains(t, out, "--promotions-enabled")
+}
+
+// --email no longer changes the address. It must fail before any request is made: if it fell
+// through to the global --email auth flag, the update would run as a different user.
+func TestProfileUpdateCommand_EmailIsRefusedWithoutCallingTheAPI(t *testing.T) {
+	withResolvableContext(t)
+	var profileCalls int
+	orig := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(r.URL.Path, "/profile") {
+			profileCalls++
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)),
+			Header: http.Header{"Content-Type": []string{"application/json"}}, Request: r}, nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = orig })
+
+	_, err := runCmdCapturingStdout(t, "profile", "update", "--email", "attacker@example.com", "--first-name", "Z")
+
+	var userErr *output.UserError
+	require.ErrorAs(t, err, &userErr)
+	assert.Contains(t, userErr.Hint, "identity.deployhq.com")
+	assert.Zero(t, profileCalls)
 }
 
 func TestAgentMetadata_ProfileGet(t *testing.T) {
