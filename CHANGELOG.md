@@ -74,6 +74,16 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
 
 - **Installed copies of the skill are reported as outdated** (its version is
   now 3), so they pick up `dhq domains`.
+- **`dhq profile update --email`** no longer changes your e-mail address. The
+  API now refuses address changes through `PATCH /profile`, which skipped the
+  current-password check and verification of the new address. The flag is
+  hidden and fails before any request with a hint to change it on your DeployHQ
+  Identity profile (`https://identity.deployhq.com/email_addresses`).
+
+### Breaking (SDK)
+
+- `ProfileUpdateRequest.EmailAddress` is removed, for the same reason. Code that
+  set it now fails to compile instead of receiving a `422` at runtime.
 
 ## [0.25.0] - 2026-11-06
 
