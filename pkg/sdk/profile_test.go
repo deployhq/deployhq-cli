@@ -72,12 +72,12 @@ func TestUpdateProfile(t *testing.T) {
 func TestUpdateProfile_ValidationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		_ = json.NewEncoder(w).Encode(map[string][]string{"email_address": {"is invalid"}})
+		_ = json.NewEncoder(w).Encode(map[string][]string{"time_zone": {"is not included in the list"}})
 	}))
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	err := c.UpdateProfile(context.Background(), ProfileUpdateRequest{EmailAddress: strPtr("not-an-email")})
+	err := c.UpdateProfile(context.Background(), ProfileUpdateRequest{TimeZone: strPtr("Nowhere/Nope")})
 	require.Error(t, err)
 
 	apiErr, ok := err.(*APIError)

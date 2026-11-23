@@ -42,11 +42,12 @@ type ProfileAccount struct {
 }
 
 // ProfileUpdateRequest is the payload for updating the current user's profile.
-// Pointer fields are only serialised when set.
+// Pointer fields are only serialised when set. The e-mail address is not
+// updatable here: the API refuses it, and it is changed on DeployHQ Identity,
+// which requires the current password and verifies the new address.
 type ProfileUpdateRequest struct {
 	FirstName         *string `json:"first_name,omitempty"`
 	LastName          *string `json:"last_name,omitempty"`
-	EmailAddress      *string `json:"email_address,omitempty"`
 	TimeZone          *string `json:"time_zone,omitempty"`
 	AlphabeticSort    *bool   `json:"alphabetic_sort,omitempty"`
 	PromotionsEnabled *bool   `json:"promotions_enabled,omitempty"`
