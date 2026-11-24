@@ -58,12 +58,18 @@ func newProfileGetCmd() *cobra.Command {
 
 func newProfileUpdateCmd() *cobra.Command {
 	var (
-		firstName, lastName, email, timeZone string
-		alphabeticSort, promotionsEnabled    bool
+		firstName, lastName, timeZone, removedEmail string
+		alphabeticSort, promotionsEnabled           bool
 	)
 	cmd := &cobra.Command{
 		Use: "update", Short: "Update your profile",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("email") {
+				return &output.UserError{
+					Message: "Your e-mail address can't be changed with dhq profile update.",
+					Hint:    "Change it on your DeployHQ Identity profile: https://identity.deployhq.com/email_addresses",
+				}
+			}
 			client, err := cliCtx.Client()
 			if err != nil {
 				return err
@@ -74,9 +80,6 @@ func newProfileUpdateCmd() *cobra.Command {
 			}
 			if cmd.Flags().Changed("last-name") {
 				req.LastName = &lastName
-			}
-			if cmd.Flags().Changed("email") {
-				req.EmailAddress = &email
 			}
 			if cmd.Flags().Changed("time-zone") {
 				req.TimeZone = &timeZone
@@ -104,9 +107,13 @@ func newProfileUpdateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&firstName, "first-name", "", "First name")
 	cmd.Flags().StringVar(&lastName, "last-name", "", "Last name")
-	cmd.Flags().StringVar(&email, "email", "", "Email address")
 	cmd.Flags().StringVar(&timeZone, "time-zone", "", "Time zone")
 	cmd.Flags().BoolVar(&alphabeticSort, "alphabetic-sort", false, "Sort projects alphabetically")
 	cmd.Flags().BoolVar(&promotionsEnabled, "promotions-enabled", false, "Receive promotional emails")
+	// --email used to change the address here. The API now refuses that, so keep the flag
+	// (hidden) to fail with a clear message: without it, --email would fall through to the
+	// global authentication flag and run the request as a different user.
+	cmd.Flags().StringVar(&removedEmail, "email", "", "")
+	_ = cmd.Flags().MarkHidden("email")
 	return cmd
 }
