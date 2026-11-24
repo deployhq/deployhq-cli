@@ -456,8 +456,8 @@ func TestLaunchFinishCustomDomain_ActiveDomain(t *testing.T) {
 	assert.Equal(t, "active", got.Status)
 }
 
-// A hostname with no www form (or a site with another domain) has its pair
-// skipped by the server. That is the default working, not a problem to report.
+// A hostname with no www form (or whose other half is already on the site) has
+// its pair skipped by the server. That is the default working, not a problem to report.
 func TestLaunchFinishCustomDomain_SkippedDefaultPairIsNotAnError(t *testing.T) {
 	env, _, _ := testLaunchEnvelope()
 	srv, _ := launchDomainListServer(t, "["+registeredDomainJSON+"]")

@@ -20,9 +20,11 @@ var domainsRegistrationTimeout = 60 * time.Second
 
 // customDomainRules is the product behaviour every domains command explains:
 // what a site may have, what the customer has to do, and what happens next.
-const customDomainRules = `A Static Hosting site can have at most 2 custom domains: an apex + www pair
-(e.g. example.com and www.example.com). The first domain added is the primary;
-the other redirects to it. Custom domains need a paid plan.
+const customDomainRules = `A Static Hosting site can have several custom domains, any hostnames you own:
+up to five by default (expired domains do not count). The first domain added
+is the primary, and every non-primary domain redirects to the primary. Once another
+domain is active, "dhq domains primary" makes it the primary instead. Custom
+domains need a paid plan.
 
 For each domain, add BOTH DNS records that "dhq domains add" prints at your DNS
 provider:
@@ -59,14 +61,15 @@ func newDomainsCmd() *cobra.Command {
 
 Every command takes the project (-p) and the Static Hosting server (-s, name or
 identifier). Without -s, the server from DEPLOYHQ_SERVER or .deployhq.toml is
-used; dhq launch saves it there. For a global Static Hosting server, pass --global
-instead of the project, with -s. Other server types do not support custom domains.`,
+used; dhq launch saves it there. Static Hosting sites are created inside a
+project; they can't be global servers. Other server types do not support custom
+domains.`,
 		Example: `  dhq domains add www.example.com -p my-site -s "My Site"
   dhq domains list -p my-site -s "My Site"
   dhq domains show www.example.com -p my-site -s "My Site"
   dhq domains remove www.example.com -p my-site -s "My Site" --yes
   dhq domains check www.example.com -p my-site -s "My Site"
-  dhq domains list --global -s "Shared Site"`,
+  dhq domains primary example.com -p my-site -s "My Site"`,
 	}
 
 	cmd.AddCommand(
@@ -75,73 +78,54 @@ instead of the project, with -s. Other server types do not support custom domain
 		newDomainsAddCmd(),
 		newDomainsRemoveCmd(),
 		newDomainsCheckCmd(),
+		newDomainsPrimaryCmd(),
 	)
 	return cmd
 }
 
 // domainsServerFlags are the flags every domains command names its server with.
+// Static Hosting sites are created inside a project, so the server is always
+// one of the project's.
 type domainsServerFlags struct {
 	server string
-	global bool
 }
 
-// addDomainsServerFlags registers the -s/--server flag and --global, and refuses --global alongside a --project given on this command line. A
-// default project from the config or environment does not conflict.
+// addDomainsServerFlags registers the -s/--server flag.
 func addDomainsServerFlags(cmd *cobra.Command, f *domainsServerFlags) {
-	cmd.Flags().StringVarP(&f.server, "server", "s", "", "Static Hosting server, name or identifier (default: the server in .deployhq.toml; required with --global)")
-	cmd.Flags().BoolVar(&f.global, "global", false, "--server is a global server (no project needed)")
-	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
-		if f.global && cmd.Flags().Changed("project") {
-			return &output.UserError{
-				Message: "--project and --global cannot be used together",
-				Hint:    "A global server belongs to no project: drop --project, or drop --global to use one of the project's servers.",
-			}
-		}
-		return nil
-	}
+	cmd.Flags().StringVarP(&f.server, "server", "s", "", "Static Hosting server, name or identifier (default: the server in .deployhq.toml)")
 }
 
 // domainsTarget is the Static Hosting server a domains command acts on.
 type domainsTarget struct {
 	scope     sdk.CustomDomainScope
-	projectID string // empty for a global server
+	projectID string
+	serverID  string // the resolved server identifier
 	server    string // as the user typed it, for the commands we suggest
-	global    bool
 }
 
 // flags renders the flags that name this server in a suggested command.
 func (t domainsTarget) flags() string {
-	server := shellQuoteIfNeeded(t.server)
-	if t.global {
-		return "--global -s " + server
-	}
-	return fmt.Sprintf("-p %s -s %s", t.projectID, server)
+	return fmt.Sprintf("-p %s -s %s", t.projectID, shellQuoteIfNeeded(t.server))
 }
 
 // listServersCmd is the command that lists the servers this target is one of.
 func (t domainsTarget) listServersCmd() string {
-	if t.global {
-		return "dhq global-servers list"
-	}
 	return "dhq servers list -p " + t.projectID
 }
 
-// openDomainsTarget resolves the flags to a server: the project (unless
-// --global) and the -s value, as a name or an identifier. Without -s it uses the
-// configured server, which comes from the environment or .deployhq.toml. That
-// server belongs to the folder's project, so it never stands in for --global.
+// openDomainsTarget resolves the flags to a server: the project and the -s
+// value, as a name or an identifier. Without -s it uses the configured server,
+// which comes from the environment or .deployhq.toml.
 func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, domainsTarget, error) {
-	target := domainsTarget{server: strings.TrimSpace(f.server), global: f.global}
-	if target.server == "" && !f.global {
+	target := domainsTarget{server: strings.TrimSpace(f.server)}
+	if target.server == "" {
 		target.server = strings.TrimSpace(cliCtx.Config.Server)
 	}
-	if !f.global {
-		projectID, err := cliCtx.RequireProject()
-		if err != nil {
-			return nil, target, err
-		}
-		target.projectID = projectID
+	projectID, err := cliCtx.RequireProject()
+	if err != nil {
+		return nil, target, err
 	}
+	target.projectID = projectID
 	client, err := cliCtx.Client()
 	if err != nil {
 		return nil, target, err
@@ -150,11 +134,8 @@ func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, 
 	if err != nil {
 		return nil, target, err
 	}
-	if f.global {
-		target.scope = sdk.GlobalServerDomains(serverID)
-	} else {
-		target.scope = sdk.ProjectServerDomains(target.projectID, serverID)
-	}
+	target.serverID = serverID
+	target.scope = sdk.ProjectServerDomains(target.projectID, serverID)
 	return client, target, nil
 }
 
@@ -162,25 +143,15 @@ func openDomainsTarget(ctx context.Context, f domainsServerFlags) (*sdk.Client, 
 func resolveDomainsServer(ctx context.Context, client *sdk.Client, target domainsTarget) (string, error) {
 	in := target.server
 	if in == "" {
-		hint := "Pass it with -s. Find the Static Hosting server with: " + target.listServersCmd()
-		if !target.global {
-			hint += "\nTo remember it for this folder: dhq config set server <identifier>"
-		}
+		hint := "Pass it with -s. Find the Static Hosting server with: " + target.listServersCmd() +
+			"\nTo remember it for this folder: dhq config set server <identifier>"
 		return "", &output.UserError{Message: "--server is required", Hint: hint}
 	}
 	// A canonical UUID is taken as an identifier without a listing.
 	if isCanonicalUUID(in) {
 		return in, nil
 	}
-	var (
-		servers []sdk.Server
-		err     error
-	)
-	if target.global {
-		servers, err = client.ListGlobalServers(ctx, nil)
-	} else {
-		servers, err = client.ListServers(ctx, target.projectID, nil)
-	}
+	servers, err := client.ListServers(ctx, target.projectID, nil)
 	if err != nil {
 		return "", err
 	}
@@ -200,9 +171,6 @@ func resolveDomainsServer(ctx context.Context, client *sdk.Client, target domain
 		}
 	}
 	hint := fmt.Sprintf("This project has no Static Hosting server. Create one with: dhq servers create -p %s --protocol-type static_hosting ...", target.projectID)
-	if target.global {
-		hint = "This account has no global Static Hosting server. See its global servers with: dhq global-servers list"
-	}
 	if len(names) > 0 {
 		hint = "Static Hosting servers: " + strings.Join(names, ", ")
 	}
@@ -239,9 +207,6 @@ func explainDomainsError(err error, target domainsTarget) error {
 		hint := apiErr.Hint
 		if hint == "" {
 			hint = "Ask an account administrator for access to this project's servers."
-			if target.global {
-				hint = "Adding, removing or checking a domain on a global server needs an account administrator."
-			}
 		}
 		return &output.AuthError{Message: msg, Hint: hint}
 	case apiErr.IsRateLimited():
@@ -271,11 +236,32 @@ func explainDomainsError(err error, target domainsTarget) error {
 		}
 		return &output.UserError{
 			Message:  "Custom domain refused: " + msg,
-			Hint:     "A custom domain must be a bare hostname such as www.example.com, and a site can have two at most: an apex and its www form. See this site's domains with: dhq domains list " + target.flags(),
+			Hint:     "A custom domain must be a bare hostname such as www.example.com, and a site can have up to five custom domains by default. See this site's domains with: dhq domains list " + target.flags(),
 			Recovery: []output.Breadcrumb{{Action: "list_domains", Cmd: fmt.Sprintf("dhq domains list %s --json", target.flags())}},
 		}
 	}
 	return err
+}
+
+// siteBeingDeletedError explains a 422 refused because the Static Hosting site
+// is being deleted: nothing about the request can fix it. It returns nil for
+// any other error.
+func siteBeingDeletedError(apiErr *sdk.APIError, target domainsTarget) error {
+	if apiErr == nil || !apiErr.IsValidationError() {
+		return nil
+	}
+	msg := apiErr.Message
+	if msg == "" {
+		msg = strings.Join(apiErr.Errors, "; ")
+	}
+	if !strings.Contains(strings.ToLower(msg), "being deleted") {
+		return nil
+	}
+	return &output.UserError{
+		Message:  msg,
+		Hint:     "The site is being deleted, so it can no longer be changed. See the servers with: " + target.listServersCmd(),
+		Recovery: []output.Breadcrumb{{Action: "list_servers", Cmd: target.listServersCmd() + " --json"}},
+	}
 }
 
 // recordField renders a nullable DNS record field.
@@ -465,7 +451,7 @@ func newDomainsShowCmd() *cobra.Command {
 				return err
 			}
 
-			// There is no single-domain endpoint; a server has at most two.
+			// There is no single-domain endpoint; a server has only a few.
 			domains, err := client.ListCustomDomains(ctx, target.scope)
 			if err != nil {
 				return explainDomainsError(err, target)
@@ -541,9 +527,13 @@ record); get the TXT record later with "dhq domains show". A domain that cannot
 be set up prints the reason and exits non-zero.
 
 By default the other half of the apex and www pair is added too: example.com
-brings www.example.com, and www.example.com brings example.com. DeployHQ skips
-it for a hostname that is neither an apex nor its www form, and on a site that
-already has another custom domain. --no-pair adds only the hostname you typed.
+brings www.example.com, and www.example.com brings example.com. It is never the
+primary: it redirects to the domain you typed on a site with no custom domains
+yet, and to the site's primary domain otherwise. DeployHQ skips it for a
+hostname that is neither an apex nor its www form, and when it is already one of
+the site's custom domains. When the site has no room left for it, it is refused
+with a warning and the domain you typed is still added. --no-pair adds only the
+hostname you typed.
 
 ` + customDomainRules,
 		Example: `  dhq domains add www.example.com -p my-site -s "My Site"
@@ -921,6 +911,106 @@ func explainDomainsCheckError(err error, d *sdk.CustomDomain, target domainsTarg
 		return &output.UserError{
 			Message:  msg,
 			Hint:     "Only a pending domain can be checked. See its status with: " + showCmd,
+			Recovery: []output.Breadcrumb{{Action: "show", Cmd: showCmd + " --json"}},
+		}
+	}
+	return explainDomainsError(err, target)
+}
+
+func newDomainsPrimaryCmd() *cobra.Command {
+	var flags domainsServerFlags
+	cmd := &cobra.Command{
+		Use:   "primary <hostname|identifier>",
+		Short: "Make a custom domain the one visitors land on",
+		Long: `Make a custom domain the primary: visitors land on it, and the site's other
+custom domains redirect to it. Only an active domain can be made primary; any
+other is refused with the reason. A domain that is already primary is left as
+it is.`,
+		Example: `  dhq domains primary example.com -p my-site -s "My Site"`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cliCtx.Background()
+			client, target, err := openDomainsTarget(ctx, flags)
+			if err != nil {
+				return err
+			}
+
+			// Resolve a hostname to its identifier (and confirm it exists).
+			domains, err := client.ListCustomDomains(ctx, target.scope)
+			if err != nil {
+				return explainDomainsError(err, target)
+			}
+			d := findDomain(domains, args[0])
+			if d == nil {
+				return domainNotFoundError(args[0], target, domains)
+			}
+
+			env := cliCtx.Envelope
+			listCrumb := output.Breadcrumb{Action: "list", Cmd: fmt.Sprintf("dhq domains list %s", target.flags())}
+			if d.Primary {
+				if env.WantsJSON() {
+					return env.WriteJSON(output.NewResponse(d, fmt.Sprintf("%s is already the primary domain", d.Hostname), listCrumb))
+				}
+				env.Status("%s is already the primary domain.", d.Hostname)
+				return nil
+			}
+
+			primary, err := client.MakeCustomDomainPrimary(ctx, target.scope, d.Identifier)
+			if err != nil {
+				return explainDomainsPrimaryError(err, d, target)
+			}
+
+			if env.WantsJSON() {
+				return env.WriteJSON(output.NewResponse(primary,
+					fmt.Sprintf("%s is now the primary domain; the other custom domains redirect to it", primary.Hostname),
+					listCrumb,
+				))
+			}
+			env.Status("%s is now the primary domain; the site's other custom domains redirect to it.", primary.Hostname)
+			return nil
+		},
+	}
+	addDomainsServerFlags(cmd, &flags)
+	return cmd
+}
+
+// explainDomainsPrimaryError passes on why a domain cannot be made primary. A
+// 422 carries the API's reason (typically that the domain is not active yet,
+// or that the site is being deleted); a 409 means a deployment of the site is
+// running. Nothing changes in either case. The other refusals (429, 503) are
+// shared with the rest of the domains commands.
+func explainDomainsPrimaryError(err error, d *sdk.CustomDomain, target domainsTarget) error {
+	var apiErr *sdk.APIError
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	if deleting := siteBeingDeletedError(apiErr, target); deleting != nil {
+		return deleting
+	}
+	primaryCmd := fmt.Sprintf("dhq domains primary %s %s", d.Hostname, target.flags())
+	switch {
+	case apiErr.StatusCode == 409:
+		msg := apiErr.Message
+		if msg == "" {
+			msg = fmt.Sprintf("A deployment of this site is running, so %s could not be made primary", d.Hostname)
+		}
+		return &output.UserError{
+			Message:   msg,
+			Hint:      "Nothing was changed. Run it again once the deployment has finished: " + primaryCmd,
+			Retryable: true,
+		}
+	case apiErr.IsValidationError():
+		msg := apiErr.Message
+		if msg == "" {
+			msg = strings.Join(apiErr.Errors, "; ")
+		}
+		if msg == "" {
+			msg = fmt.Sprintf("%s cannot be made primary", d.Hostname)
+		}
+		showCmd := domainsShowCmd(d.Hostname, target)
+		return &output.UserError{
+			Message:  msg,
+			Hint:     "Only an active domain can be made primary. See its status with: " + showCmd,
 			Recovery: []output.Breadcrumb{{Action: "show", Cmd: showCmd + " --json"}},
 		}
 	}

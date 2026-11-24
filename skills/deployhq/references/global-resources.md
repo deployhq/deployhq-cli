@@ -52,8 +52,10 @@ dhq global-servers update 12345 --name "Updated Name" --json
 dhq global-servers delete 12345
 ```
 
-Custom domains of a global Static Hosting server: `dhq domains <command> --global -s <server>`
-(see [servers.md](servers.md)).
+Static Hosting sites are created inside a project; they can't be global
+servers. Create one with `dhq servers create -p <project> --name site
+--protocol-type static_hosting --subdomain <unique-subdomain>` or
+`dhq launch --static` (see [servers.md](servers.md)).
 
 ## Global Environment Variables
 

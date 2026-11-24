@@ -22,8 +22,8 @@ type CustomDomainDNSRecord struct {
 type CustomDomain struct {
 	Identifier string `json:"identifier"`
 	Hostname   string `json:"hostname"`
-	// Primary is true for the domain visitors land on; the other domain of an
-	// apex + www pair redirects to it.
+	// Primary is true for the domain visitors land on; every other custom
+	// domain of the site redirects to it.
 	Primary bool `json:"primary"`
 	// Status is one of pending, active, failed or expired.
 	Status string `json:"status"`
@@ -74,8 +74,8 @@ type CustomDomainCheck struct {
 }
 
 // CustomDomainScope names the Static Hosting server whose custom domains a call
-// acts on: a project's server or a global server. Build one with
-// ProjectServerDomains or GlobalServerDomains.
+// acts on. Build one with ProjectServerDomains: Static Hosting sites are
+// created inside a project; they can't be global servers.
 type CustomDomainScope struct {
 	path string
 }
@@ -83,11 +83,6 @@ type CustomDomainScope struct {
 // ProjectServerDomains is the scope of a Static Hosting server in a project.
 func ProjectServerDomains(projectID, serverID string) CustomDomainScope {
 	return CustomDomainScope{path: fmt.Sprintf("/projects/%s/servers/%s/custom_domains", url.PathEscape(projectID), url.PathEscape(serverID))}
-}
-
-// GlobalServerDomains is the scope of a global Static Hosting server.
-func GlobalServerDomains(serverID string) CustomDomainScope {
-	return CustomDomainScope{path: fmt.Sprintf("/global_servers/%s/custom_domains", url.PathEscape(serverID))}
 }
 
 func (s CustomDomainScope) domainPath(identifier string) string {
@@ -138,4 +133,19 @@ func (c *Client) RefreshCustomDomain(ctx context.Context, scope CustomDomainScop
 		return nil, err
 	}
 	return &check, nil
+}
+
+// MakeCustomDomainPrimary makes a custom domain the one visitors land on; the
+// site's other custom domains redirect to it. A domain that is already primary
+// is left as it is (200). Only an active domain can be made primary: any other
+// is a 422 whose message says why, as is a site being deleted. A running
+// deployment of the site refuses the change with a 409, and a failure to apply
+// it with a 503; neither changes anything. It counts towards the same hourly
+// limit as adding and removing domains (429).
+func (c *Client) MakeCustomDomainPrimary(ctx context.Context, scope CustomDomainScope, identifier string) (*CustomDomain, error) {
+	var domain CustomDomain
+	if err := c.post(ctx, scope.domainPath(identifier)+"/primary", nil, &domain); err != nil {
+		return nil, err
+	}
+	return &domain, nil
 }

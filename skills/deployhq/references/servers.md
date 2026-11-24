@@ -109,27 +109,49 @@ dhq servers show srv-001 -p my-app --json=branch,preferred_branch
 | `--subdomain` | Globally unique subdomain under deployhq-sites.com |
 | `--spa-mode` | Enable SPA routing (rewrites all paths to index.html) |
 | `--subdirectory` | Output subdirectory to publish (e.g. dist) |
+| `--trailing-slash` | `strip` (default: `/about/` redirects to `/about`), `force` (`/about` redirects to `/about/`) or `preserve` (both work, no redirect). Needs `--subdomain` on create; also on `dhq servers update` |
+
+Use `--trailing-slash force` for a site moved from WordPress, or any site whose
+URLs end in a slash, so existing links and search rankings keep working. With
+`preserve` the site answers on both forms, so it should carry canonical tags.
+Files with an extension (`/style.css`) are never redirected. `dhq servers update
+<server> -p <project> --trailing-slash force` changes it on an existing site; the
+CLI warns if the server does not confirm the mode, and an update that sends only
+`--trailing-slash` to another server type is refused with that explanation.
+When the mode cannot be published (the site is busy publishing, the hourly
+limit on redirect changes is reached, or publishing failed), the rest of the
+update is still saved: the command exits 1 with `retryable: true` and a hint
+that sets only the trailing slash again.
 
 **Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;
 other server types return not-found). Launching a new site? `dhq launch
 --custom-domain <domain>` does this in one go; see
 [launch.md](launch.md).
 
-- Name the server with `-p <project> -s <server>`, or `--global -s <server>`
-  for a global Static Hosting server (no project needed; adding, removing or
-  checking a domain on one needs an account administrator). `-s` can be left
+- Name the server with `-p <project> -s <server>`. Static Hosting sites are
+  created inside a project; they can't be global servers. `-s` can be left
   out in a folder `dhq launch` has set up: the `server` in `.deployhq.toml` (or
-  `DEPLOYHQ_SERVER`) is used, and an explicit `-s` wins. `--global` always needs
-  `-s`.
+  `DEPLOYHQ_SERVER`) is used, and an explicit `-s` wins.
 - A rate-limited command (a `check` repeated within a minute, too many changes)
   exits 1 with `retryable: true` and, when known, `retry_after` in seconds in
   its `--json` error. Wait that long before repeating it.
-- At most 2 domains per site: an apex + www pair. The first added is the
-  primary; the other redirects to it. `add` adds both by default, so a bare
-  domain gets `www` too. DeployHQ skips the other half without an error for a
-  hostname that is neither an apex nor its www form, and on a site that already
-  has another custom domain. `--no-pair` adds only the typed hostname. Read
-  `counterpart` and `counterpart_errors` in the output.
+- A site can have several custom domains, any hostnames: up to five by
+  default (a `422` says when the limit is reached; expired domains do not
+  count). The first
+  added is the primary, and every non-primary domain redirects to the primary.
+  `primary` makes another active domain the primary (a domain that is not
+  active is refused with the reason; while a deployment of the site is
+  running it is refused with a retryable error, and nothing changes). For an
+  apex or `www` hostname, `add` adds the other half of the pair by default, so
+  a bare domain gets `www` too, on the first domain of a site and on later ones
+  alike. The other half is never primary: it redirects to the typed hostname
+  on a site with no custom domains yet, and to the site's primary otherwise.
+  DeployHQ skips it without an error for a hostname that is neither an apex
+  nor its www form, and when it is already one of the site's custom domains.
+  When the site has no room left for it, it is refused in
+  `counterpart_errors` (a warning; the typed hostname is still added).
+  `--no-pair` adds only the typed hostname. Read `counterpart` and
+  `counterpart_errors` in the output.
 - DeployHQ registers the domain in the background and `add` waits up to a
   minute for the TXT record. `--no-wait` skips that. While `registering` is
   `true`, `dns_records` holds only the CNAME: get the rest with `show`. If the
@@ -158,7 +180,63 @@ dhq domains list -p my-site -s "My Site" --json
 dhq domains show www.example.com -p my-site -s "My Site" --json=status,registering,dns_records,verification_errors
 dhq domains check www.example.com -p my-site -s "My Site" --json
 dhq domains remove www.example.com -p my-site -s "My Site" --yes --json
-dhq domains list --global -s "Shared Site" --json   # a global Static Hosting server
+dhq domains primary example.com -p my-site -s "My Site" --json   # visitors land on example.com
+```
+
+**Redirect rules for a Static Hosting site** (`dhq servers redirects`; other
+server types return not-found). Server flags as for `dhq domains`: `-p <project>
+-s <server>`, and `-s` defaults to the server in `.deployhq.toml`.
+
+- Two sources of rules. A `_redirects` file in the published folder (one rule
+  per line: `/old /new 301`, `/ p=:id /posts/:id 301` for a query rule) is
+  versioned with the code and applies on deploy. Rules managed with these
+  commands reach the live site within about a minute (the change propagates
+  across the edge network), without a deploy. Prefer the file when the
+  person's repository is the source of truth (a static-site generator, a
+  migration script that writes redirects); use the commands for one-off fixes
+  or when there is no repository change to make.
+- File rules are checked first: if both match a URL, the file wins. `list`
+  shows the managed rules, then the file's rules and skipped lines
+  (`file_rules`, `file_warnings`, from the active deployment; `deployment_uuid`
+  is null before the first deploy). A managed rule with `shadowed_by` is taken
+  over by another rule: a file rule (`line` set) for some or all of the URLs
+  it matches, or an earlier managed rule (`rule_identifier` set, `line` null)
+  for all of them, so it never applies. `file_warnings` with code
+  `source_normalised` or `slash_only_redirect` are notes on lines that were
+  applied, not skipped.
+- Unsupported lines in the file are skipped with a warning, never approximated:
+  200 rewrites, 404 lines and `Country`/`Language`/`Role`/`Cookie` conditions.
+- Sources are paths (`/old`, `/blog/:slug`, `/docs/*`); destinations are paths
+  or http(s) URLs that can use `:name` captures and `:splat`. Matching ignores a
+  trailing slash. Status: 301 (default), 302, 307 or 308. Rules apply in
+  `position` order and the first match wins, so put specific rules first.
+- `--query` matches query parameters as well as the path: `--query "p=:id"` on
+  source `/` matches WordPress's `/?p=123` and captures `123` as `:id`. Listed
+  keys must be present (`p=123` requires that exact value); other parameters
+  (`utm_*`) do not stop a match. Several: `"p=:id lang=en"`.
+- `add` appends unless `--position N`. `update <identifier>` changes only the
+  flags given (`--query ""` removes the query matcher; `--position N` moves
+  the rule). `reorder <id>...` must name every rule of the site exactly once,
+  in the new order; any other list is refused and nothing moves. `remove`
+  needs `--yes` in non-interactive mode and only removes managed rules (a file rule goes by editing the file and
+  deploying). Identifiers come from `list`.
+- While a deployment of the site (or another change) is publishing, a change
+  is refused with a retryable error and nothing changes; so is a change the
+  live site could not take. Run it again in a moment. A site being deleted
+  refuses every change.
+- An account can make 60 redirect changes per hour across its sites (adding,
+  changing, removing or reordering rules, and trailing-slash changes). Past
+  that, a change exits 1 with `retryable: true` and `retry_after` in seconds.
+
+```bash
+dhq servers redirects list -p my-site -s "My Site" --json
+dhq servers redirects add /old-page /new-page -p my-site -s "My Site" --json
+dhq servers redirects add / /posts/:id --query "p=:id" -p my-site -s "My Site" --json   # WordPress ?p=123
+dhq servers redirects add /blog/* /news/:splat --status 302 --position 1 -p my-site -s "My Site" --json
+dhq servers redirects update <identifier> --destination /articles/:id -p my-site -s "My Site" --json
+dhq servers redirects update <identifier> --position 1 -p my-site -s "My Site" --json   # check it first
+dhq servers redirects reorder <identifier> <identifier> -p my-site -s "My Site" --json
+dhq servers redirects remove <identifier> -p my-site -s "My Site" --yes --json
 ```
 
 **Managed VPS flags (beta, requires managed-resources beta on account):**
@@ -292,6 +370,10 @@ dhq servers create -p my-app --name Netlify --protocol-type netlify \
 dhq servers create -p my-app --name "My Site" --protocol-type static_hosting \
   --subdomain my-app --subdirectory dist --json
 
+# Static Hosting site for a former WordPress site (URLs end in a slash)
+dhq servers create -p my-app --name "My Site" --protocol-type static_hosting \
+  --subdomain my-app --trailing-slash force --json
+
 # Managed VPS (beta)
 # Note: requires managed-resources beta enabled; use `dhq launch` for guided setup
 dhq servers create -p my-app --name "My VPS" --protocol-type managed_vps \
@@ -347,8 +429,10 @@ out=$(dhq deploy -p my-app -s Staging --wait --json)
 dhq deploy -p my-app -s Production --json
 ```
 
-### `dhq servers update <identifier>`
-Update server settings. Accepts the same **deployment configuration flags** as
+### `dhq servers update <name-or-identifier>`
+Update server settings. The server is named by its identifier or by its exact
+name (ignoring case); a partial name, or a name two servers share, updates
+nothing and lists the project's servers. Accepts the same **deployment configuration flags** as
 `dhq servers create` (`--branch`, `--auto-deploy`, `--atomic`,
 `--atomic-strategy`, `--atomic-retention`) — see the table in the `create`
 section above for values and constraints.

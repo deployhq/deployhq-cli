@@ -138,7 +138,8 @@ dhq templates build-configuration -t <template>    (show only)
 
 Managed Hosting:
 dhq hosted-resources list|show|sync|retry-provision
-dhq domains list|show|add|remove|check -p <project> -s <server>    (Static Hosting custom domains; --global -s <server> for a global server; add also adds the www or apex half of a pair by default, --no-pair for only the typed hostname, --no-wait; paid plans; remove needs --yes non-interactively)
+dhq domains list|show|add|remove|check|primary -p <project> -s <server>    (Static Hosting custom domains, project servers only; add also adds the www or apex half of a pair by default, --no-pair for only the typed hostname, --no-wait; primary makes an active domain the one the others redirect to; paid plans; remove needs --yes non-interactively)
+dhq servers redirects list|add|update|remove|reorder -p <project> -s <server>    (Static Hosting redirect rules, applied without a deploy; the _redirects file is checked first; update --position moves a rule; reorder must name every rule once; remove needs --yes non-interactively)
 dhq managed-hosting regions|sizes
 dhq beta enroll [--protocol managed_vps|static_hosting]    (enroll the account in the managed-resources beta)
 
