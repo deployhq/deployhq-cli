@@ -389,7 +389,7 @@ func TestLaunchStatic_ProvisionThenBuildCommand_Integration(t *testing.T) {
 	detection := detect.Result{BuildCommands: []detect.BuildCommandStep{{Command: "npm run build"}}, OutputDir: "dist"}
 
 	// Step 8: provision the static server.
-	server, err := launchProvisionStatic(t.Context(), env, cfg, client)
+	server, err := launchProvisionStatic(t.Context(), env, &cfg, client)
 	require.NoError(t, err)
 	require.NotNil(t, server)
 	assert.Equal(t, "srv-1", server.Identifier)
@@ -820,7 +820,7 @@ func TestLaunchStatic_SubdomainTaken_NonInteractive(t *testing.T) {
 		subdomain:      "taken-subdomain",
 	}
 
-	server, err := launchProvisionStatic(t.Context(), env, cfg, client)
+	server, err := launchProvisionStatic(t.Context(), env, &cfg, client)
 	require.Error(t, err)
 	assert.Nil(t, server)
 
@@ -1398,7 +1398,10 @@ func TestLaunchEnsureProject_StaleConfigProjectFallsThrough(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte(`{"status":"not_found","error_code":"record_not_found"}`)) //nolint:errcheck
 		case r.Method == http.MethodGet && r.URL.Path == "/projects":
-			w.Write([]byte("[]")) //nolint:errcheck // no projects → falls through to "no project specified"
+			w.Write([]byte("[]")) //nolint:errcheck // no projects → falls through to creating one
+		case r.Method == http.MethodPost && r.URL.Path == "/projects":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":"boom"}`)) //nolint:errcheck // stops the flow before anything is linked
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -1415,6 +1418,7 @@ func TestLaunchEnsureProject_StaleConfigProjectFallsThrough(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, stderr.String(), "no longer exists", "must warn about the stale saved project")
 	assert.NotContains(t, err.Error(), "Could not connect repository", "must not surface the misleading repo error")
+	assert.Contains(t, err.Error(), "Could not create project", "normal resolution ran")
 }
 
 func TestLaunchEnsureProject_StaleFlagProjectErrorsClearly(t *testing.T) {

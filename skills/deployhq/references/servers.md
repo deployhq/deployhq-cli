@@ -110,6 +110,57 @@ dhq servers show srv-001 -p my-app --json=branch,preferred_branch
 | `--spa-mode` | Enable SPA routing (rewrites all paths to index.html) |
 | `--subdirectory` | Output subdirectory to publish (e.g. dist) |
 
+**Custom domains for a Static Hosting site** (`dhq domains`, paid plans only;
+other server types return not-found). Launching a new site? `dhq launch
+--custom-domain <domain>` does this in one go; see
+[launch.md](launch.md).
+
+- Name the server with `-p <project> -s <server>`, or `--global -s <server>`
+  for a global Static Hosting server (no project needed; adding, removing or
+  checking a domain on one needs an account administrator). `-s` can be left
+  out in a folder `dhq launch` has set up: the `server` in `.deployhq.toml` (or
+  `DEPLOYHQ_SERVER`) is used, and an explicit `-s` wins. `--global` always needs
+  `-s`.
+- A rate-limited command (a `check` repeated within a minute, too many changes)
+  exits 1 with `retryable: true` and, when known, `retry_after` in seconds in
+  its `--json` error. Wait that long before repeating it.
+- At most 2 domains per site: an apex + www pair. The first added is the
+  primary; the other redirects to it. `add` adds both by default, so a bare
+  domain gets `www` too. DeployHQ skips the other half without an error for a
+  hostname that is neither an apex nor its www form, and on a site that already
+  has another custom domain. `--no-pair` adds only the typed hostname. Read
+  `counterpart` and `counterpart_errors` in the output.
+- DeployHQ registers the domain in the background and `add` waits up to a
+  minute for the TXT record. `--no-wait` skips that. While `registering` is
+  `true`, `dns_records` holds only the CNAME: get the rest with `show`. If the
+  wait runs out, `add` still exits 0 with `registering: true`; do not add the
+  domain again. A domain that ends up `failed` exits non-zero with its reason:
+  remove it and add it again.
+- After `add`, the person must create BOTH DNS records the command prints: the
+  CNAME (for an apex such as `example.com`, an ALIAS/ANAME record or CNAME
+  flattening instead) and the TXT ownership record. The TXT name/value can be
+  `null` for a moment after adding; re-check with `show`.
+- The domain goes live automatically once both records are detected (checked
+  every few minutes). `check` asks for a pending domain to be checked now, at
+  most once a minute (429 carries how long to wait; 422 means it is not
+  pending). Status: `pending` -> `active`, or `failed`; a domain not verified
+  within 7 days becomes `expired` (remove and add again).
+- `remove` happens in the background and needs `--yes` in non-interactive mode.
+  Check with the person first: the site stops answering on that domain.
+- A `paid_plan_required` error means the account must upgrade; relay its hint.
+
+```bash
+dhq domains add www.example.com -p my-site -s "My Site" --json   # dns_records to hand to the person
+dhq domains add example.com -p my-site -s "My Site" --json   # the apex and www pair (the default)
+dhq domains add example.com -p my-site -s "My Site" --no-pair --json   # only example.com
+dhq domains add www.example.com -p my-site -s "My Site" --no-wait --json   # do not wait for the TXT record
+dhq domains list -p my-site -s "My Site" --json
+dhq domains show www.example.com -p my-site -s "My Site" --json=status,registering,dns_records,verification_errors
+dhq domains check www.example.com -p my-site -s "My Site" --json
+dhq domains remove www.example.com -p my-site -s "My Site" --yes --json
+dhq domains list --global -s "Shared Site" --json   # a global Static Hosting server
+```
+
 **Managed VPS flags (beta, requires managed-resources beta on account):**
 
 | Flag | Description |

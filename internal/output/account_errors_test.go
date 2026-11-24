@@ -96,6 +96,35 @@ func TestExplainAccountError_PaymentMethodRequired(t *testing.T) {
 	assert.Contains(t, acct.Error(), "https://acme.deployhq.com/account/payment_details")
 }
 
+func TestExplainAccountError_PaidPlanRequired(t *testing.T) {
+	apiErr := &sdk.APIError{StatusCode: 403, AccountURL: "https://acme.deployhq.com",
+		Message:   "Custom domains are available on paid plans",
+		ErrorCode: "paid_plan_required",
+		Hint:      "Upgrade your plan to add a custom domain"}
+	err := ExplainAccountError(apiErr)
+	var acct *AccountError
+	require.True(t, errors.As(err, &acct))
+	assert.Equal(t, CodePaidPlanRequired, acct.Code)
+	assert.Equal(t, "Custom domains are available on paid plans", acct.Message)
+	// The API's own hint is what the person sees.
+	assert.Equal(t, "Upgrade your plan to add a custom domain", acct.Hint)
+	assert.Equal(t, ExitAuthError, ClassifyError(err))
+
+	data := errorData(t, apiErr)
+	assert.Equal(t, CodePaidPlanRequired, data["code"])
+	assert.Equal(t, "Upgrade your plan to add a custom domain", data["suggestion"])
+	assert.Equal(t, "https://acme.deployhq.com/account/packages", data["doc_url"])
+	step := data["recovery"].([]any)[0].(map[string]any)
+	assert.Equal(t, "upgrade_plan", step["action"])
+	// Logging in again cannot fix a plan restriction.
+	assert.NotContains(t, fmt.Sprint(data["recovery"]), "dhq auth login")
+}
+
+func TestExplainAccountError_AccessDeniedIsNotPaidPlan(t *testing.T) {
+	apiErr := &sdk.APIError{StatusCode: 403, Message: "Access denied", ErrorCode: "access_denied"}
+	assert.Same(t, error(apiErr), ExplainAccountError(apiErr))
+}
+
 func TestExplainAccountError_NoAccountURLStillExplains(t *testing.T) {
 	apiErr := &sdk.APIError{StatusCode: 402, Message: "account suspended", SuspensionType: "lapsed"}
 	var acct *AccountError

@@ -37,6 +37,12 @@ type UserError struct {
 	// Recovery, when set, replaces the generic recovery actions in --json
 	// output with commands specific to this error.
 	Recovery []Breadcrumb
+	// Retryable marks an error that succeeds if the same command is repeated
+	// later, such as a rate limit. Surfaced as `retryable` in --json output.
+	Retryable bool
+	// RetryAfter is how many seconds to wait before repeating the command, when
+	// known. Surfaced as `retry_after` in --json output.
+	RetryAfter int
 }
 
 func (e *UserError) Error() string {

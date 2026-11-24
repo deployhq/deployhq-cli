@@ -47,11 +47,13 @@ var commandMetadataTable = map[string]AgentMetadata{
 		// double-provisioning (idempotent). A Managed VPS is a managed resource (see
 		// managedVPSAcknowledgePhrase in metered.go for the current cost framing), so
 		// agents should confirm — and the command itself requires --accept-cost in
-		// non-interactive mode before provisioning a Managed VPS.
+		// non-interactive mode before provisioning a Managed VPS. With
+		// --custom-domain it also adds a custom domain, which the person must
+		// then publish DNS records for.
 		Interactive: true, Destructive: false, Idempotent: true,
 		RequiresConfirmation: true,
 		SupportsJSON:         true, SafeForAutomation: true,
-		ResourceTypes: []string{"project", "server", "deployment"},
+		ResourceTypes: []string{"project", "server", "deployment", "custom_domain"},
 	},
 
 	// Skills
@@ -460,6 +462,36 @@ var commandMetadataTable = map[string]AgentMetadata{
 		// Only valid when the resource is in the error state; not blindly retry-safe.
 		Idempotent: false, SupportsJSON: true, SafeForAutomation: false,
 		ResourceTypes: []string{"hosted_resource"},
+	},
+
+	// Static Hosting custom domains (all take -p <project> -s <server>, or
+	// --global -s <server> for a global server)
+	"dhq domains list": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+	"dhq domains show": {
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+	"dhq domains add": {
+		// Re-adding a hostname is refused (422), not duplicated, but it is not
+		// a no-op either; the person then has to create DNS records. Waits up
+		// to a minute for the TXT record unless --no-wait.
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+	"dhq domains check": {
+		// Only asks for a check sooner; repeats within a minute are refused (429).
+		Idempotent: true, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
+	},
+	"dhq domains remove": {
+		// The site stops answering on the domain. Prompts unless --yes, which
+		// non-interactive mode requires.
+		Interactive: true, Destructive: true, RequiresConfirmation: true,
+		Idempotent: false, SupportsJSON: true, SafeForAutomation: true,
+		ResourceTypes: []string{"custom_domain"},
 	},
 
 	// Managed hosting catalog (read-only)

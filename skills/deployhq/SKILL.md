@@ -34,6 +34,8 @@ DeployHQ deploys the person's code to places they care about, so the person make
 - **Secrets stay out of the chat.** The agent does not ask for API keys or passwords, and does not put them on a command line it runs. Anything that needs a secret (`dhq auth login`, `dhq signup`, a password-only server) is done by the person in their own terminal or in the DeployHQ web app.
 - **The person's details come from the person.** The agent asks for the DeployHQ login email and account name rather than guessing them (for example from git settings).
 - **The first deploy is the person's call.** The agent summarises what will be deployed and where, asks before running it, and reports success only once the deployment's status is `completed`.
+- **A custom domain is not live until the person publishes its DNS records.** Static Hosting on the person's own domain (paid plans only) is `dhq launch --custom-domain example.com` or `dhq domains add` for a site that already exists. A bare domain gets `www` too by default (and `www.example.com` gets the bare domain); pass `--no-pair` only when the person wants just that one hostname. The agent hands the person the CNAME and TXT records the command prints, keeps reporting the site's `deployhq-sites.com` URL until `dhq domains show` says the domain's status is `active`, and treats a `custom_domain` problem in a launch result as something to relay: the site itself is live. See [launch.md](references/launch.md) and [servers.md](references/servers.md).
+- **`dhq launch` can start from an empty account, and it creates the project itself.** With no project configured it runs without prompting: it reuses the project connected to this repository, uses the account's only project if there is exactly one (whatever repository that is, so check `dhq projects list --json` first and pass `--project` if it is the wrong one), and otherwise creates a project named after the repository. There is no need to run `dhq projects create` first unless files must be excluded before the first deploy. The person agrees to the project first: `--dry-run --json` reports it as `would.create_project` and `would.project_name`, or as `would.project` for an existing one. A `project_ambiguous` error lists the candidates: ask the person which one, then pass `--project`.
 
 ## Authentication
 
@@ -82,7 +84,7 @@ In non-interactive mode, any ambiguity (e.g. multiple servers, missing required 
 |-------|-------------|-----------|
 | **launch** | All-in-one setup for DeployHQ Static Hosting or a Managed VPS (an option when the person picks DeployHQ hosting) | [launch.md](references/launch.md) |
 | **projects** | Create, list, update, delete projects | [projects.md](references/projects.md) |
-| **servers** | Manage deployment targets (SSH, FTP, S3, etc.) | [servers.md](references/servers.md) |
+| **servers** | Manage deployment targets (SSH, FTP, S3, etc.); `dhq domains` adds custom domains to a Static Hosting site | [servers.md](references/servers.md) |
 | **deployments** | Create, monitor, rollback deployments | [deployments.md](references/deployments.md) |
 | **repos** | Repository configuration, branches, commits | [repos.md](references/repos.md) |
 | **configuration** | Env vars, config files, build commands, exclusions, deployment checks, cache files, build languages, known hosts | [configuration.md](references/configuration.md) |
@@ -115,6 +117,13 @@ Small steps, each one something the person can approve on its own:
 2. `dhq servers list -p <project> --json` — find server identifier
 3. `dhq deploy -p <project> -s <server> --wait --json` — create the deployment (check with the person first) and wait for its final status
 4. Report success only if the JSON shows `"status": "completed"` (a non-zero exit means the command failed: if a deployment was created, its `status` says how it ended; otherwise read the error)
+
+### "Put this site on my own domain"
+1. If the site is not launched yet and the person chose DeployHQ Static Hosting: `dhq launch --static --custom-domain <domain> --dry-run --json`, show them what it would do, then run it without `--dry-run` once they agree. A bare domain gets `www` too by default; add `--no-pair` only if they want just that hostname.
+2. For a site that already has a Static Hosting server: `dhq domains add <domain> -p <project> -s <server> --json` (the apex and www pair is added by default, `--no-pair` for only that hostname, `--global` instead of `-p` for a global server).
+3. Hand the person both records from `dns_records` (CNAME, and TXT once `registering` is false; for an apex domain they use an ALIAS/ANAME or CNAME flattening). `dhq domains show <domain> -p <project> -s <server> --json` repeats them.
+4. After they publish the records: `dhq domains check <domain> -p <project> -s <server> --json`, then `dhq domains show` until `status` is `active`. Until then, report the `deployhq-sites.com` URL as the site's address.
+5. Custom domains need a paid plan. `dhq launch` with a domain refused for any reason other than a bad hostname still launches: read `custom_domain.status` and `custom_domain.next_step` in the JSON.
 
 ### "Check what's deployed"
 1. `dhq deployments list -p <project> --json` — recent deployments
@@ -181,6 +190,8 @@ dhq api POST /projects/<permalink>/deployments --body '{"deployment":{...}}'
 - User mentions "rollback", "revert", "undo" → rollback workflow
 - User mentions "environment variable", "env var", "config", "secret" → configuration
 - User mentions "branch", "commit", "repository" → repo management
+- User mentions a custom domain, "my domain", "www", "DNS records" for a site → "Put this site on my own domain"; check with the person before adding or removing one
+- User says they published DNS records or asks whether their domain is live → `dhq domains check` then `dhq domains show` (a public DNS lookup cannot tell you whether DeployHQ has verified it)
 - User mentions "set up DeployHQ", "deploy this site/repo" for the first time → "Set up DeployHQ for this project": ask about their account, then where to deploy
 - User mentions "managed hosting", "managed VPS", "static hosting" → DeployHQ hosting; offer the step-by-step path or `dhq launch` and let the person choose (see [launch.md](references/launch.md))
 - User mentions "DeployHQ", "deployhq", "dhq" → general CLI usage
