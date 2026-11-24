@@ -24,15 +24,17 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   server returned; if the wait runs out, `add` says so, exits 0 and names the
   command that shows the records later; a domain that cannot be set up prints
   the reason and exits non-zero. `check` asks for a pending domain to be
-  checked now (at most once a minute). `show` repeats the records and any
-  verification errors. `remove` takes a hostname or identifier and asks for
-  confirmation unless `--yes`, which non-interactive mode requires. Custom
-  domains need a paid plan: that refusal now explains itself (error code
-  `paid_plan_required`, with the API's hint and a link to the plans page).
+  checked now (at most once a minute). `show` lists any verification errors
+  and, while the domain is pending, repeats the records. `remove` takes a
+  hostname or identifier and asks for confirmation unless `--yes`, which
+  non-interactive mode requires. Custom domains need a paid plan: that refusal
+  now explains itself (error code `paid_plan_required`, with the API's hint and
+  a link to the plans page).
 - **`dhq launch --custom-domain <hostname>` and `--no-pair`**: launch Static
   Hosting on your own domain. Refused with `--vps` (exit 1). A hostname the API
-  refuses fails the launch with `custom_domain_invalid` (exit 1) and nothing is
-  provisioned; any other problem with the domain (no paid plan, rate limit,
+  refuses fails the launch with `custom_domain_invalid` (exit 1) and no server is
+  provisioned (a project created by that run stays, and the error names it and
+  how to delete it); any other problem with the domain (no paid plan, rate limit,
   failed registration) leaves the launch exiting 0 and `status: "live"`, with the
   problem and a concrete `next_step` under `custom_domain` in `--json`. After the
   deploy, launch waits up to a minute for the domain to register and prints the
@@ -45,7 +47,7 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   `GlobalServerDomains`; `APIError.Hint` and `APIError.IsPaidPlanRequired()`.
   Error responses with an `error_code` but no `error` field now report the code
   rather than the raw JSON body. `APIError.RetryAfter` also reads a
-  `retry_after` in the response body when the header is missing.
+  `retry_after` in an `{"error": ...}` response body when the header is missing.
 
 ### Fixed
 
@@ -54,10 +56,11 @@ While the CLI is pre-1.0, minor versions may carry breaking changes to the publi
   project specified". It now reuses the project already connected to this
   repository, or creates one named after the repository as the interactive
   "Create a new project" choice does. With exactly one project in the account
-  that project is still used, as before. Two projects connected to the
-  repository, or a project with the repository's name on another repository,
-  refuse with `project_ambiguous` (exit 1) and nothing is created; a failed
-  create reports `project_create_failed`. `--dry-run` creates nothing and reports
+  that project is still used, as before, whatever repository it is connected to.
+  Otherwise, two projects connected to the repository, or a project with the
+  repository's name on another repository, refuse with `project_ambiguous`
+  (exit 1) and nothing is created; a failed create reports
+  `project_create_failed`. `--dry-run` creates nothing and reports
   `would.create_project` and `would.project_name`.
 - **`dhq launch --static --vps` is refused (exit 1)** before any API call. Static
   Hosting used to win silently and a real deploy followed.
